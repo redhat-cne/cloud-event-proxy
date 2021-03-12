@@ -1,2 +1,2 @@
 # sidecar
-Sidecar O-RAN Event Manager
+Sidecar Cloud Native Events Manager
