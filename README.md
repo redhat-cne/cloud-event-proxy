@@ -1,2 +1,2 @@
-# sidecar
-Sidecar Cloud Native Events Manager
+# cloud-event-proxy
+ Cloud Native Events  manager
