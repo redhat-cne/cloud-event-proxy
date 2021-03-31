@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 
@@ -30,17 +31,21 @@ func init() {
 }
 
 func TestSidecar_Main(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	pl := plugins.Handler{Path: "../plugins"}
+	go processOutChannel(wg)
 	//plugins := []string{"plugins/amqp_plugin.so", "plugins/rest_api_plugin.so"}
 	amqAvailable := true
-	pubSubInstance = v1pubsub.GetAPIInstance(".")
-	wg := &sync.WaitGroup{}
-	pl:=plugins.PluginLoader{Path: "../plugins"}
+	pubSubInstance = v1pubsub.GetAPIInstance("../")
+
 	//base con configuration we should be able to build this plugin
 	err := pl.LoadAMQPPlugin(wg, amqpHost, eventInCh, eventOutCh, closeCh)
-	if err.Error() == "error starting amqp" {
+	if err != nil {
 		amqAvailable = false
+		log.Printf("skipping amqp usage, test will be reading dirctly from in channel. reason: %v", err)
 	}
-	server, _ = pl.LoadRestPlugin(wg, restPort, apiPath, storePath, eventOutCh, closeCh)
+	_, err = pl.LoadRestPlugin(wg, restPort, apiPath, storePath, eventOutCh, closeCh)
+	assert.Nil(t, err)
 
 	common.EndPointHealthChk(fmt.Sprintf("http://%s:%d%shealth", "localhost", restPort, apiPath))
 	//create publisher
@@ -51,16 +56,17 @@ func TestSidecar_Main(t *testing.T) {
 		log.Printf("failed to create publisher transport")
 	} else if amqAvailable { // skip creating transport
 		v1amqp.CreateSender(eventInCh, pub.GetResource())
-		log.Printf("publisher %v", pub)
+		log.Printf("publisher %v\n", pub)
 	}
 
+	// CREATE Subscription and listeners
 	endpointURL = &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8080", Path: fmt.Sprintf("%s%s", apiPath, "log")}}
 	sub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "test/test"))
 	if err != nil {
 		log.Printf("failed to create subscription transport")
 	} else if amqAvailable { // skip creating transport
-		v1amqp.CreateSender(eventInCh, sub.GetResource())
-		log.Printf("subscription %v", sub)
+		v1amqp.CreateListener(eventInCh, sub.GetResource())
+		log.Printf("subscription:%v\n", sub)
 	}
 	// create an event
 	event := v1event.CloudNativeEvent()
@@ -90,8 +96,7 @@ func TestSidecar_Main(t *testing.T) {
 	}
 
 	log.Printf("waiting for the data ////")
-	go processOutChannel(wg)
+
 	time.Sleep(2 * time.Second)
 	close(closeCh)
-
 }

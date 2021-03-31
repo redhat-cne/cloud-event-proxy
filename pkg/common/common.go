@@ -6,18 +6,20 @@ import (
 	"time"
 )
 
+//EndPointHealthChk checks for rest service health
 func EndPointHealthChk(url string) {
 	log.Printf("health check %s ", url)
 	for {
 		log.Printf("checking for rest service health")
 		response, err := http.Get(url)
 		if err != nil {
-			log.Printf("error while checking health of the rest service %v", err)
+			log.Printf("retrung health check of the rest service for error  %v", err)
 			time.Sleep(2 * time.Second)
 			continue
 		}
 		if response != nil && response.StatusCode == http.StatusOK {
 			response.Body.Close()
+			log.Printf("rest service returned healthy status")
 			return
 		}
 		response.Body.Close()
@@ -25,4 +27,3 @@ func EndPointHealthChk(url string) {
 		time.Sleep(2 * time.Second)
 	}
 }
-
