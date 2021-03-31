@@ -15,15 +15,26 @@ endif
 build:test
 	go fmt ./...
 	make lint
+	go build -o cloud-event-proxy cmd/main.go
+
+build-only:
+	go build -mod=readonly -o cloud-event-proxy cmd/main.go
 
 lint:
 	golint `go list ./... | grep -v vendor`
 	golangci-lint run
 
 build-plugins:
-	go build -o plugins/rest_api_plugin.so -buildmode=plugin plugins/rest_api/rest_api_plugin.go
-	go build -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
+	go build -mod=readonly -o plugins/rest_api_plugin.so -buildmode=plugin plugins/rest_api/rest_api_plugin.go
+	go build -mod=readonly -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 
+build-rest-plugin:
+	go build -mod=readonly -o plugins/rest_api_plugin.so -buildmode=plugin plugins/rest_api/rest_api_plugin.go
+
+build-amqp-plugin:
+	go build -mod=readonly -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
+run:
+	go run cmd/main.go
 test:
 	go test ./...  -coverprofile=cover.out
 
