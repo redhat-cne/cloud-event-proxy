@@ -16,3 +16,5 @@
 *.so
 pub.json
 sub.json
+
+.idea
