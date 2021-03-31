@@ -40,11 +40,12 @@ func init() {
 func main() {
 	//plugins := []string{"plugins/amqp_plugin.so", "plugins/rest_api_plugin.so"}
 	pubSubInstance = v1pubsub.GetAPIInstance(".")
+	pl:=plugins.PluginLoader{Path:"../plugins"}
 	wg := &sync.WaitGroup{}
 	//based on configuration we should be able to build this plugin
 	//TODO:  read metadata from env and configure plugin accordingly
-	plugins.LoadAMQPPlugin(wg, amqpHost, eventInCh, eventOutCh, closeCh)
-	server, _ = plugins.LoadRestPlugin(wg, restPort, apiPath, storePath, eventOutCh, closeCh)
+	pl.LoadAMQPPlugin(wg, amqpHost, eventInCh, eventOutCh, closeCh)
+	server, _ = pl.LoadRestPlugin(wg, restPort, apiPath, storePath, eventOutCh, closeCh)
 	common.EndPointHealthChk(fmt.Sprintf("http://%s:%d%shealth", "localhost", restPort, apiPath))
 	log.Printf("waiting for events")
 	processOutChannel(wg)

@@ -34,12 +34,13 @@ func TestSidecar_Main(t *testing.T) {
 	amqAvailable := true
 	pubSubInstance = v1pubsub.GetAPIInstance(".")
 	wg := &sync.WaitGroup{}
+	pl:=plugins.PluginLoader{Path: "../plugins"}
 	//base con configuration we should be able to build this plugin
-	err := plugins.LoadAMQPPlugin(wg, amqpHost, eventInCh, eventOutCh, closeCh)
+	err := pl.LoadAMQPPlugin(wg, amqpHost, eventInCh, eventOutCh, closeCh)
 	if err.Error() == "error starting amqp" {
 		amqAvailable = false
 	}
-	server, _ = plugins.LoadRestPlugin(wg, restPort, apiPath, storePath, eventOutCh, closeCh)
+	server, _ = pl.LoadRestPlugin(wg, restPort, apiPath, storePath, eventOutCh, closeCh)
 
 	common.EndPointHealthChk(fmt.Sprintf("http://%s:%d%shealth", "localhost", restPort, apiPath))
 	//create publisher
