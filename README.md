@@ -112,12 +112,15 @@ POST /api/ocloudNotifications/v1/create/event
 
 ```
 ####Code snippet to create pub/sub
-// create subscription
+```go
+
+//create subscription
 pub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "test/test"))
 
 // create publisher
 pub, err := pubSubInstance.CreatePublisher(v1pubsub.NewPubSub(endpointURL, "test/test"))
 
+```
 ###AMQP Objects
 ####Create AMQP Sender for Publisher object
 ```go
