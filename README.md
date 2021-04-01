@@ -114,11 +114,12 @@ POST /api/ocloudNotifications/v1/create/event
 #### Code snippet to create pub/sub
 ```go
 
-//create subscription
-pub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "test/test"))
-
 // create publisher
 pub, err := pubSubInstance.CreatePublisher(v1pubsub.NewPubSub(endpointURL, "test/test"))
+
+//create subscription
+sub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "test/test"))
+
 
 ```
 ### AMQP Objects
@@ -144,11 +145,11 @@ import (
     v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 )
 
-v1amqp.CreateListener(eventInCh, pub.GetResource())
+v1amqp.CreateListener(eventInCh, sub.GetResource())
 ```
 ### Events
 The following example shows a Cloud Native Events serialized as JSON:
-(Following json should be validated with Cloud native events event_spec.json schema)
+(Following json should be validated with Cloud native events' event_spec.json schema)
 
 
 ```JSON
@@ -216,9 +217,9 @@ v1event.SendNewEventToDataChannel(eventInCh, pub.Resource, cloudEvent)
 ```go
 
 //POST /api/ocloudNotifications/v1/create/event
-if sub,err:=pubSubInstance.GetSubscription(subscriptionID);err==nil {
+if pub,err:=pubSubInstance.GetPublisher(publisherID);err==nil {
     url = fmt.SPrintf("%s%s", server.HostPath, "create/event")
-    restClient.PostEvent(sub.EndPointURI.String(), event)
+    restClient.PostEvent(pub.EndPointURI.String(), event)
 }
 
 ```
