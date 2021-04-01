@@ -6,6 +6,7 @@ import (
 	"github.com/redhat-cne/cloud-event-proxy/pkg/plugins"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	"log"
+	"os"
 	"sync"
 
 	"github.com/redhat-cne/sdk-go/pkg/channel"
@@ -18,9 +19,9 @@ var (
 	eventInCh      chan *channel.DataChan
 	closeCh        chan bool
 	restPort       int    = 8080
-	apiPath        string = "/api/cnf/"
+	apiPath        string = "/api/ocloudNotifications/v1/"
 	pubSubInstance *v1pubsub.API
-	storePath      string = "../"
+	storePath      string = "."
 	amqpHost       string = "amqp:localhost:5672"
 )
 
@@ -29,24 +30,39 @@ func init() {
 	eventOutCh = make(chan *channel.DataChan, 10)
 	eventInCh = make(chan *channel.DataChan, 10)
 	closeCh = make(chan bool)
+	//Read environment variables
+	if aHost, ok := os.LookupEnv("AMQP_HOST"); ok && aHost != "" {
+		amqpHost = aHost
+	}
+	if sPath, ok := os.LookupEnv("STORE_PATH"); ok && sPath != "" {
+		storePath = sPath
+	}
+	if ePort := common.GetIntEnv("API_PORT"); ePort > 0 {
+		restPort = ePort
+	}
 
 }
 func main() {
-	//plugins := []string{"plugins/amqp_plugin.so", "plugins/rest_api_plugin.so"}
-	pubSubInstance = v1pubsub.GetAPIInstance(".")
+
+	//init
+	pubSubInstance = v1pubsub.GetAPIInstance(storePath)
 	pl := plugins.Handler{Path: "../plugins"}
 	wg := &sync.WaitGroup{}
-	//based on configuration we should be able to build this plugin
-	//TODO:  read metadata from env and configure plugin accordingly
-	err := pl.LoadAMQPPlugin(wg, amqpHost, eventInCh, eventOutCh, closeCh)
-	if err != nil {
-		log.Fatal("error loading amqp plugin")
+
+	//load plugins
+	if common.GetBoolEnv("AMQP_PLUGIN") {
+		err := pl.LoadAMQPPlugin(wg, amqpHost, eventInCh, eventOutCh, closeCh)
+		if err != nil {
+			log.Fatal("error loading amqp plugin")
+		}
 	}
-	_, err = pl.LoadRestPlugin(wg, restPort, apiPath, storePath, eventOutCh, closeCh)
-	if err != nil {
-		log.Fatal("error loading reset service plugin")
+	if common.GetBoolEnv("REST_PLUGIN") {
+		_, err := pl.LoadRestPlugin(wg, restPort, apiPath, storePath, eventOutCh, closeCh)
+		if err != nil {
+			log.Fatal("error loading reset service plugin")
+		}
+		common.EndPointHealthChk(fmt.Sprintf("http://%s:%d%shealth", "localhost", restPort, apiPath))
 	}
-	common.EndPointHealthChk(fmt.Sprintf("http://%s:%d%shealth", "localhost", restPort, apiPath))
 	log.Printf("waiting for events")
 	processOutChannel(wg)
 }
@@ -72,7 +88,7 @@ func processOutChannel(wg *sync.WaitGroup) {
 				}
 				continue
 			}
-			// regular  events
+			// regular events
 			event, err := v1event.GetCloudNativeEvents(*d.Data)
 			if err != nil {
 				log.Printf("Error marshalling event data when reading from amqp %v", err)

@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-event-proxy
+  labels:
+    app: cloud-event-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cloud-event-proxy
+  template:
+    metadata:
+      labels:
+        app: cloud-event-proxy
+    spec:
+      containers:
+        - name: cloud-event-proxy
+          image: cloud-event-proxy
+          env:
+            - name: AMQP_HOST
+              value: "amqp:localhost:5672"
+            - name: API_PORT
+                value: 8080"
+            - name: STORE_PATH
+              value: "/store"
+            - name: AMQP_PLUGIN
+              value: true
+            - name: REST_PLUGIN
+              value: false
+          volumeMounts:
+            - name: store
+              mountPath: /store
+      volumes:
+        - name: store
+          emptyDir: {}
+
+
+
+
