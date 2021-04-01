@@ -32,7 +32,7 @@ Create Publisher Resource: JSON response
   "EndpointUri ": "http://localhost:8080/api/ocloudNotifications/v1/publishers/{publisherid}"
 }
 ```
-###Creating publisher golang example
+### Creating publisher golang example
 ```go
 package main
 import (
@@ -54,7 +54,7 @@ func main(){
 }
 ```
 
-##Creating Subscriptions
+## Creating Subscriptions
 #### Subscription JSON Example
 Create Subscription Resource: JSON request
 ```json
@@ -73,7 +73,7 @@ Example Create Subscription Resource: JSON response
 }
 ```
 
-###Creating subscription golang example  
+### Creating subscription golang example  
 ```go
 package main
 import (
@@ -95,7 +95,7 @@ func main(){
     }
 }
 ```
-####Rest-API to create a Publisher and Subscription.
+#### Rest-API to create a Publisher and Subscription.
 
 Cloud-Event-Proxy container running with rest api plugin will be running a webservice and exposing following end points.
 ```html
@@ -111,7 +111,7 @@ POST /api/ocloudNotifications/v1/log
 POST /api/ocloudNotifications/v1/create/event
 
 ```
-####Code snippet to create pub/sub
+#### Code snippet to create pub/sub
 ```go
 
 //create subscription
@@ -121,8 +121,8 @@ pub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "t
 pub, err := pubSubInstance.CreatePublisher(v1pubsub.NewPubSub(endpointURL, "test/test"))
 
 ```
-###AMQP Objects
-####Create AMQP Sender for Publisher object
+### AMQP Objects
+#### Create AMQP Sender for Publisher object
 ```go
 package main
 
@@ -135,7 +135,7 @@ v1amqp.CreateSender(eventInCh, pub.GetResource())
 
 ```
 
-####Create AMQP listener for subscription object
+#### Create AMQP listener for subscription object
 ```go
 package main
 
@@ -146,7 +146,7 @@ import (
 
 v1amqp.CreateListener(eventInCh, pub.GetResource())
 ```
-###Events
+### Events
 The following example shows a Cloud Native Events serialized as JSON:
 (Following json should be validated with Cloud native events event_spec.json schema)
 
@@ -204,7 +204,7 @@ data.SetVersion("v1")
 event.SetData(data)
 
 ```
-##Publisher event create via go-sdk
+### Publisher event create via go-sdk
 ```go
 cloudEvent, _ := v1event.CreateCloudEvents(event, pub)
 //send event to AMQP (rest API does this action by default)
@@ -212,7 +212,7 @@ v1event.SendNewEventToDataChannel(eventInCh, pub.Resource, cloudEvent)
 
 ```
 
-##Publisher event create via rest-api
+### Publisher event create via rest-api
 ```go
 
 //POST /api/ocloudNotifications/v1/create/event
