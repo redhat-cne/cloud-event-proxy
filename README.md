@@ -1,6 +1,9 @@
 # cloud-event-proxy
  Cloud Native Events  manager
 
+ [![go-doc](https://godoc.org/github.com/redhat-cne/cloud-event-proxy?status.svg)](https://godoc.org/github.com/redhat-cne/cloud-event-proxy)
+ [![Go Report Card](https://goreportcard.com/badge/github.com/redhat-cne/cloud-event-proxy)](https://goreportcard.com/report/github.com/redhat-cne/cloud-event-proxy)
+ [![LICENSE](https://img.shields.io/github/license/redhat-cne/cloud-event-proxy.svg)](https://github.com/redhat-cne/cloud-event-proxy/blob/main/LICENSE)
 ## Contents
 * [Publishers](#creating-publisher)
     * [JSON Example](#publisher-json-example)
