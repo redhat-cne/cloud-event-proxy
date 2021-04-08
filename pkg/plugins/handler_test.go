@@ -36,7 +36,7 @@ func TestLoadAMQPPlugin(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			pLoader = Handler{Path: tc.pgPath}
 			err := pLoader.LoadAMQPPlugin(wg, "badHost", make(chan *channel.DataChan, 1), make(chan *channel.DataChan, 1), make(chan bool))
-			if tc.wantErr != nil {
+			if tc.wantErr != nil && err != nil {
 				assert.EqualError(t, tc.wantErr, err.Error())
 			}
 		})

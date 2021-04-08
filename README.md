@@ -60,7 +60,7 @@ Create Subscription Resource: JSON request
 ```json
 {
   "Resource": "/east-edge-10/vdu3/o-ran-sync/sync-group/sync-status/sync-state",
-  "UriLocation”: “http://localhost:9090/ack/event"
+  "UriLocation”: “http://localhost:9090/event"
 }
 ```
 Example Create Subscription Resource: JSON response

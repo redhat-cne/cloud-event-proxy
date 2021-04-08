@@ -33,8 +33,16 @@ build-rest-plugin:
 
 build-amqp-plugin:
 	go build -mod=readonly -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
+
 run:
 	go run cmd/main.go
+
+run-producer:
+	go run examples/producer/main.go
+
+run-consumer:
+	go run examples/consumer/main.go
+
 test:
 	go test ./...  -coverprofile=cover.out
 

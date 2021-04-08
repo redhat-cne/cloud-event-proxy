@@ -1,7 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
+	"net/http"
 	"os"
 
 	"log"
@@ -22,11 +25,16 @@ import (
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 )
 
+var (
+	restHost string = fmt.Sprintf("%s:%d", "localhost", restPort)
+)
+
 func init() {
 	//amqp channels
 	eventOutCh = make(chan *channel.DataChan, 10)
 	eventInCh = make(chan *channel.DataChan, 10)
 	closeCh = make(chan bool)
+	restPort = 8082
 
 }
 
@@ -34,7 +42,7 @@ func TestSidecar_Main(t *testing.T) {
 	//set env variables
 	os.Setenv("STORE_PATH", "..")
 	os.Setenv("AMQP_PLUGIN", "true")
-	os.Setenv("REST_PLUGIN", "true")
+	os.Setenv("REST_PLUGIN", "false")
 	if sPath, ok := os.LookupEnv("STORE_PATH"); ok && sPath != "" {
 		storePath = sPath
 	}
@@ -47,6 +55,7 @@ func TestSidecar_Main(t *testing.T) {
 
 	//base con configuration we should be able to build this plugin
 	if common.GetBoolEnv("AMQP_PLUGIN") {
+		log.Printf("loading amqp with host %s", amqpHost)
 		err := pl.LoadAMQPPlugin(wg, amqpHost, eventInCh, eventOutCh, closeCh)
 		if err != nil {
 			amqAvailable = false
@@ -60,7 +69,7 @@ func TestSidecar_Main(t *testing.T) {
 		common.EndPointHealthChk(fmt.Sprintf("http://%s:%d%shealth", "localhost", restPort, apiPath))
 	}
 	//create publisher
-	endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8080", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
+	endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: restHost, Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
 	pub, err := pubSubInstance.CreatePublisher(v1pubsub.NewPubSub(endpointURL, "test/test"))
 	//if you are using amqp then need to create sender (note rest api by default creates sender)
 	if err != nil {
@@ -71,7 +80,7 @@ func TestSidecar_Main(t *testing.T) {
 	}
 
 	// CREATE Subscription and listeners
-	endpointURL = &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8080", Path: fmt.Sprintf("%s%s", apiPath, "log")}}
+	endpointURL = &types.URI{URL: url.URL{Scheme: "http", Host: restHost, Path: fmt.Sprintf("%s%s", apiPath, "log")}}
 	sub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "test/test"))
 	if err != nil {
 		log.Printf("failed to create subscription transport")
@@ -91,7 +100,7 @@ func TestSidecar_Main(t *testing.T) {
 			Resource:  "/cluster/node/ptp",
 			DataType:  cneevent.NOTIFICATION,
 			ValueType: cneevent.ENUMERATION,
-			Value:     cneevent.GNSS_ACQUIRING_SYNC,
+			Value:     cneevent.ACQUIRING_SYNC,
 		},
 		},
 	}
@@ -100,7 +109,7 @@ func TestSidecar_Main(t *testing.T) {
 
 	// post this to API
 
-	//or using methods to post here you don't have urilocation data
+	//or using methods to post here you don't have uriLocation data
 	cloudEvent, _ := v1event.CreateCloudEvents(event, pub)
 	if amqAvailable {
 		v1event.SendNewEventToDataChannel(eventInCh, pub.Resource, cloudEvent)
@@ -112,4 +121,72 @@ func TestSidecar_Main(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 	close(closeCh)
+}
+
+func TestSidecar_MainRestApi(t *testing.T) {
+	//set env variables
+	os.Setenv("STORE_PATH", "..")
+	os.Setenv("AMQP_PLUGIN", "false")
+	os.Setenv("REST_PLUGIN", "true")
+	if sPath, ok := os.LookupEnv("STORE_PATH"); ok && sPath != "" {
+		storePath = sPath
+	}
+	wg := &sync.WaitGroup{}
+	pl := plugins.Handler{Path: "../plugins"}
+	go processOutChannel(wg)
+	//plugins := []string{"plugins/amqp_plugin.so", "plugins/rest_api_plugin.so"}
+
+	pubSubInstance = v1pubsub.GetAPIInstance(storePath)
+
+	//base con configuration we should be able to build this plugin
+	if common.GetBoolEnv("AMQP_PLUGIN") {
+		log.Printf("loading amqp with host %s", amqpHost)
+		err := pl.LoadAMQPPlugin(wg, amqpHost, eventInCh, eventOutCh, closeCh)
+		if err != nil {
+			log.Printf("skipping amqp usage, test will be reading dirctly from in channel. reason: %v", err)
+		}
+	}
+	if common.GetBoolEnv("REST_PLUGIN") {
+		_, err := pl.LoadRestPlugin(wg, restPort, apiPath, storePath, eventOutCh, closeCh)
+		assert.Nil(t, err)
+		common.EndPointHealthChk(fmt.Sprintf("http://%s%shealth", restHost, apiPath))
+	}
+	//create publisher
+	publisherURL := &types.URI{URL: url.URL{Scheme: "http", Host: restHost, Path: fmt.Sprintf("%s%s", apiPath, "publishers")}}
+	// this is loopback on server itself. Since current pod does not create any server
+	endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: restHost, Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
+	pub := v1pubsub.NewPubSub(endpointURL, "test/test2")
+	b, err := json.Marshal(pub)
+	assert.Nil(t, err)
+	rc := restclient.New()
+	status, b := rc.PostWithReturn(publisherURL.String(), b)
+	assert.Equal(t, status, http.StatusCreated)
+	assert.NotEmpty(t, b)
+	err = json.Unmarshal(b, &pub)
+	assert.Nil(t, err)
+	assert.NotEmpty(t, pub.ID)
+	assert.NotEmpty(t, pub.Resource)
+	assert.NotEmpty(t, pub.EndPointURI)
+	assert.NotEmpty(t, pub.URILocation)
+	log.Printf("Publisher \n%s:", pub.String())
+
+	//Test subscription
+	//create publisher
+	subscriptionURL := &types.URI{URL: url.URL{Scheme: "http", Host: restHost, Path: fmt.Sprintf("%s%s", apiPath, "subscriptions")}}
+	// this is loopback on server itself. Since current pod does not create any server
+	endpointURL = &types.URI{URL: url.URL{Scheme: "http", Host: restHost, Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
+	sub := v1pubsub.NewPubSub(endpointURL, "test/test2")
+	b, err = json.Marshal(sub)
+	assert.Nil(t, err)
+	status, b = rc.PostWithReturn(subscriptionURL.String(), b)
+	assert.Equal(t, status, http.StatusCreated)
+	assert.NotEmpty(t, b)
+	err = json.Unmarshal(b, &sub)
+	assert.Nil(t, err)
+	assert.NotEmpty(t, sub.ID)
+	assert.NotEmpty(t, sub.Resource)
+	assert.NotEmpty(t, sub.EndPointURI)
+	assert.NotEmpty(t, sub.URILocation)
+	log.Printf("Subscription \n%s:", sub.String())
+
 }

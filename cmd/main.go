@@ -19,7 +19,7 @@ var (
 	eventInCh      chan *channel.DataChan
 	closeCh        chan bool
 	restPort       int    = 8080
-	apiPath        string = "/api/ocloudNotifications/v1/"
+	apiPath        string = "/api/cloudNotifications/v1/"
 	pubSubInstance *v1pubsub.API
 	storePath      string = "."
 	amqpHost       string = "amqp:localhost:5672"
@@ -46,20 +46,20 @@ func main() {
 
 	//init
 	pubSubInstance = v1pubsub.GetAPIInstance(storePath)
-	pl := plugins.Handler{Path: "../plugins"}
+	pl := plugins.Handler{Path: "./plugins"}
 	wg := &sync.WaitGroup{}
 
 	//load plugins
 	if common.GetBoolEnv("AMQP_PLUGIN") {
 		err := pl.LoadAMQPPlugin(wg, amqpHost, eventInCh, eventOutCh, closeCh)
 		if err != nil {
-			log.Fatal("error loading amqp plugin")
+			log.Fatalf("error loading amqp plugin %v", err)
 		}
 	}
 	if common.GetBoolEnv("REST_PLUGIN") {
 		_, err := pl.LoadRestPlugin(wg, restPort, apiPath, storePath, eventOutCh, closeCh)
 		if err != nil {
-			log.Fatal("error loading reset service plugin")
+			log.Fatalf("error loading reset service plugin %v", err)
 		}
 		common.EndPointHealthChk(fmt.Sprintf("http://%s:%d%shealth", "localhost", restPort, apiPath))
 	}
