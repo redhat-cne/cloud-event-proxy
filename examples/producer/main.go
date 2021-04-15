@@ -92,7 +92,7 @@ func publishEvent(e cneevent.Event) {
 	err := rc.PostEvent(url.String(), e)
 	if err != nil {
 		log.Printf("error postign events %v", err)
-	}else{
-		log.Printf("Published event %s" ,e.String())
+	} else {
+		log.Printf("Published event %s", e.String())
 	}
 }

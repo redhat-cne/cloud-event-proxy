@@ -5,6 +5,8 @@ import (
 	"sync"
 	"testing"
 
+	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
+
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"github.com/stretchr/testify/assert"
 )
@@ -35,13 +37,12 @@ func TestLoadAMQPPlugin(t *testing.T) {
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 			pLoader = Handler{Path: tc.pgPath}
-			err := pLoader.LoadAMQPPlugin(wg, "badHost", make(chan *channel.DataChan, 1), make(chan *channel.DataChan, 1), make(chan bool))
+			_, err := pLoader.LoadAMQPPlugin(wg, "badHost", make(chan *channel.DataChan, 1), make(chan *channel.DataChan, 1), make(chan bool))
 			if tc.wantErr != nil && err != nil {
 				assert.EqualError(t, tc.wantErr, err.Error())
 			}
 		})
 	}
-
 }
 
 func TestLoadRestPlugin(t *testing.T) {
@@ -57,14 +58,14 @@ func TestLoadRestPlugin(t *testing.T) {
 			pgPath:    "wrong",
 			port:      8080,
 			storePath: "../../",
-			apiPath:   "/ap/cne",
+			apiPath:   "/ap/cne/",
 			wantErr:   fmt.Errorf("rest plugin not found in the path wrong"),
 		},
 		"valid path": {
 			pgPath:    "../../plugins",
 			port:      8080,
 			storePath: "../../",
-			apiPath:   "/ap/cne",
+			apiPath:   "/ap/cne/",
 		},
 	}
 
@@ -79,5 +80,31 @@ func TestLoadRestPlugin(t *testing.T) {
 			}
 		})
 	}
+}
 
+func TestLoadPTPPlugin(t *testing.T) {
+	wg := &sync.WaitGroup{}
+	testCases := map[string]struct {
+		pgPath  string
+		wantErr error
+	}{
+		"Invalid Plugin Path": {
+			pgPath:  "wrong",
+			wantErr: fmt.Errorf("ptp plugin not found in the path wrong"),
+		},
+		"Valid Plugin Path": {
+			pgPath:  "../../plugins",
+			wantErr: nil,
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			pLoader = Handler{Path: tc.pgPath}
+			err := pLoader.LoadPTPPlugin(wg, v1pubsub.GetAPIInstance("../../", nil), make(chan *channel.DataChan, 1), make(chan bool, 1), nil)
+			if tc.wantErr != nil && err != nil {
+				assert.EqualError(t, tc.wantErr, err.Error())
+			}
+		})
+	}
 }
