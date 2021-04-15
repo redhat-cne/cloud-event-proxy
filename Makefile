@@ -27,12 +27,16 @@ lint:
 build-plugins:
 	go build -mod=readonly -o plugins/rest_api_plugin.so -buildmode=plugin plugins/rest_api/rest_api_plugin.go
 	go build -mod=readonly -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
+	go build -mod=readonly -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 
 build-rest-plugin:
 	go build -mod=readonly -o plugins/rest_api_plugin.so -buildmode=plugin plugins/rest_api/rest_api_plugin.go
 
 build-amqp-plugin:
 	go build -mod=readonly -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
+
+build-ptp-operator-plugin:
+	go build -mod=readonly -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 
 run:
 	go run cmd/main.go

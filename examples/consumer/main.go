@@ -55,7 +55,7 @@ func getEvent(w http.ResponseWriter, req *http.Request) {
 	} else {
 		log.Printf("Recieved event %s", string(bodyBytes))
 	}
-	if string(bodyBytes)==""{ // make sure to return no conent for endPointURI
+	if string(bodyBytes) == "" { // make sure to return no conent for endPointURI
 		w.WriteHeader(http.StatusNoContent)
 	}
 

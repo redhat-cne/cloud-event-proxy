@@ -1,53 +1,45 @@
 package common
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 )
 
-//EndPointHealthChk checks for rest service health
-func EndPointHealthChk(url string) {
+var (
+	healthCheckPause time.Duration = 2 * time.Second
+)
+
+// EndPointHealthChk checks for rest service health
+func EndPointHealthChk(url string) (err error) {
 	log.Printf("health check %s ", url)
-	for {
+	for i := 0; i <= 5; i++ {
 		log.Printf("checking for rest service health")
-		response, err := http.Get(url)
-		if err != nil {
-			log.Printf("retrung health check of the rest service for error  %v", err)
-			time.Sleep(2 * time.Second)
+		response, errResp := http.Get(url)
+		if errResp != nil {
+			log.Printf("try %d, return health check of the rest service for error  %v", i, errResp)
+			time.Sleep(healthCheckPause)
+			err = errResp
 			continue
 		}
 		if response != nil && response.StatusCode == http.StatusOK {
 			response.Body.Close()
 			log.Printf("rest service returned healthy status")
+			time.Sleep(1 * time.Second)
+			err = nil
 			return
 		}
 		response.Body.Close()
-
-		time.Sleep(2 * time.Second)
+		time.Sleep(healthCheckPause)
+		err = fmt.Errorf("error connecting %v ", err)
 	}
+	return
 }
 
-//TrimSuffix ...
-func TrimSuffix(s, suffix string) string {
-	if strings.HasSuffix(s, suffix) { //nolint:gosimple
-		s = s[:len(s)-len(suffix)]
-	}
-	return s
-}
-
-//TrimPrefix ...
-func TrimPrefix(s, prefix string) string {
-	if strings.HasPrefix(s, prefix) { //nolint:gosimple
-		s = s[len(s)-len(prefix):]
-	}
-	return s
-}
-
-//GetIntEnv ...
+// GetIntEnv get int value from env
 func GetIntEnv(key string) int {
 	if val, ok := os.LookupEnv(key); ok && val != "" {
 		if ret, err := strconv.Atoi(val); err == nil {
@@ -57,7 +49,7 @@ func GetIntEnv(key string) int {
 	return 0
 }
 
-//GetBoolEnv ...
+// GetBoolEnv get bool value from env
 func GetBoolEnv(key string) bool {
 	if val, ok := os.LookupEnv(key); ok && val != "" {
 		if ret, err := strconv.ParseBool(val); err == nil {

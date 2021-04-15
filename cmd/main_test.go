@@ -3,9 +3,10 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	"net/http"
 	"os"
+
+	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 
 	"log"
 	"net/url"
@@ -34,8 +35,10 @@ func init() {
 	eventOutCh = make(chan *channel.DataChan, 10)
 	eventInCh = make(chan *channel.DataChan, 10)
 	closeCh = make(chan bool)
-	restPort = 8082
-
+}
+func storeCleanUp() {
+	_ = pubSubInstance.DeleteAllPublishers()
+	_ = pubSubInstance.DeleteAllSubscriptions()
 }
 
 func TestSidecar_Main(t *testing.T) {
@@ -43,20 +46,22 @@ func TestSidecar_Main(t *testing.T) {
 	os.Setenv("STORE_PATH", "..")
 	os.Setenv("AMQP_PLUGIN", "true")
 	os.Setenv("REST_PLUGIN", "false")
+	os.Setenv("PTP_PLUGIN", "false")
 	if sPath, ok := os.LookupEnv("STORE_PATH"); ok && sPath != "" {
 		storePath = sPath
 	}
 	wg := &sync.WaitGroup{}
 	pl := plugins.Handler{Path: "../plugins"}
-	go processOutChannel(wg)
+	go processOutChannel()
 	//plugins := []string{"plugins/amqp_plugin.so", "plugins/rest_api_plugin.so"}
 	amqAvailable := true
-	pubSubInstance = v1pubsub.GetAPIInstance(storePath)
+	baseURL := &types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("%s%d", "localhost", restPort), Path: "/test/"}}
+	pubSubInstance = v1pubsub.GetAPIInstance(storePath, baseURL)
 
 	//base con configuration we should be able to build this plugin
 	if common.GetBoolEnv("AMQP_PLUGIN") {
 		log.Printf("loading amqp with host %s", amqpHost)
-		err := pl.LoadAMQPPlugin(wg, amqpHost, eventInCh, eventOutCh, closeCh)
+		_, err := pl.LoadAMQPPlugin(wg, amqpHost, eventInCh, eventOutCh, closeCh)
 		if err != nil {
 			amqAvailable = false
 			log.Printf("skipping amqp usage, test will be reading dirctly from in channel. reason: %v", err)
@@ -65,9 +70,19 @@ func TestSidecar_Main(t *testing.T) {
 	if common.GetBoolEnv("REST_PLUGIN") {
 		_, err := pl.LoadRestPlugin(wg, restPort, apiPath, storePath, eventOutCh, closeCh)
 		assert.Nil(t, err)
-
-		common.EndPointHealthChk(fmt.Sprintf("http://%s:%d%shealth", "localhost", restPort, apiPath))
+		err = common.EndPointHealthChk(fmt.Sprintf("http://%s%shealth", restHost, apiPath))
+		assert.Nil(t, err)
+		if err != nil {
+			t.Skipf("failed rest service skipping rest of the test %v", err)
+		}
 	}
+	if common.GetBoolEnv("PTP_PLUGIN") {
+		err := pl.LoadPTPPlugin(wg, pubSubInstance, eventInCh, closeCh, nil)
+		if err != nil {
+			log.Fatalf("error loading ptp plugin %v", err)
+		}
+	}
+	defer storeCleanUp()
 	//create publisher
 	endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: restHost, Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
 	pub, err := pubSubInstance.CreatePublisher(v1pubsub.NewPubSub(endpointURL, "test/test"))
@@ -116,15 +131,13 @@ func TestSidecar_Main(t *testing.T) {
 	} else { // skip amqp and send data directly to out channel
 		v1event.SendNewEventToDataChannel(eventOutCh, pub.Resource, cloudEvent)
 	}
-
-	log.Printf("waiting for the data ////")
-
 	time.Sleep(2 * time.Second)
 	close(closeCh)
 }
 
 func TestSidecar_MainRestApi(t *testing.T) {
-	//set env variables
+	defer storeCleanUp()
+	// set env variables
 	os.Setenv("STORE_PATH", "..")
 	os.Setenv("AMQP_PLUGIN", "false")
 	os.Setenv("REST_PLUGIN", "true")
@@ -133,15 +146,16 @@ func TestSidecar_MainRestApi(t *testing.T) {
 	}
 	wg := &sync.WaitGroup{}
 	pl := plugins.Handler{Path: "../plugins"}
-	go processOutChannel(wg)
+	go processOutChannel()
 	//plugins := []string{"plugins/amqp_plugin.so", "plugins/rest_api_plugin.so"}
 
-	pubSubInstance = v1pubsub.GetAPIInstance(storePath)
+	baseURL := &types.URI{URL: url.URL{Scheme: "http", Host: fmt.Sprintf("%s%d", "localhost", restPort), Path: apiPath}}
+	pubSubInstance = v1pubsub.GetAPIInstance(storePath, baseURL)
 
 	//base con configuration we should be able to build this plugin
 	if common.GetBoolEnv("AMQP_PLUGIN") {
 		log.Printf("loading amqp with host %s", amqpHost)
-		err := pl.LoadAMQPPlugin(wg, amqpHost, eventInCh, eventOutCh, closeCh)
+		_, err := pl.LoadAMQPPlugin(wg, amqpHost, eventInCh, eventOutCh, closeCh)
 		if err != nil {
 			log.Printf("skipping amqp usage, test will be reading dirctly from in channel. reason: %v", err)
 		}
@@ -149,7 +163,11 @@ func TestSidecar_MainRestApi(t *testing.T) {
 	if common.GetBoolEnv("REST_PLUGIN") {
 		_, err := pl.LoadRestPlugin(wg, restPort, apiPath, storePath, eventOutCh, closeCh)
 		assert.Nil(t, err)
-		common.EndPointHealthChk(fmt.Sprintf("http://%s%shealth", restHost, apiPath))
+		err = common.EndPointHealthChk(fmt.Sprintf("http://%s%shealth", restHost, apiPath))
+		assert.Nil(t, err)
+		if err != nil {
+			t.Skipf("failed rest service skipping rest of the test %v", err)
+		}
 	}
 	//create publisher
 	publisherURL := &types.URI{URL: url.URL{Scheme: "http", Host: restHost, Path: fmt.Sprintf("%s%s", apiPath, "publishers")}}
@@ -159,8 +177,9 @@ func TestSidecar_MainRestApi(t *testing.T) {
 	b, err := json.Marshal(pub)
 	assert.Nil(t, err)
 	rc := restclient.New()
+	log.Printf("posting event to %s", publisherURL.String())
 	status, b := rc.PostWithReturn(publisherURL.String(), b)
-	assert.Equal(t, status, http.StatusCreated)
+	assert.Equal(t, http.StatusCreated, status)
 	assert.NotEmpty(t, b)
 	err = json.Unmarshal(b, &pub)
 	assert.Nil(t, err)
@@ -179,7 +198,7 @@ func TestSidecar_MainRestApi(t *testing.T) {
 	b, err = json.Marshal(sub)
 	assert.Nil(t, err)
 	status, b = rc.PostWithReturn(subscriptionURL.String(), b)
-	assert.Equal(t, status, http.StatusCreated)
+	assert.Equal(t, http.StatusCreated, status)
 	assert.NotEmpty(t, b)
 	err = json.Unmarshal(b, &sub)
 	assert.Nil(t, err)
@@ -188,5 +207,4 @@ func TestSidecar_MainRestApi(t *testing.T) {
 	assert.NotEmpty(t, sub.EndPointURI)
 	assert.NotEmpty(t, sub.URILocation)
 	log.Printf("Subscription \n%s:", sub.String())
-
 }
