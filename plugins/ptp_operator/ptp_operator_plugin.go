@@ -28,19 +28,23 @@ var (
 	eventInterval   time.Duration = time.Second * 5
 )
 
-// Start amqp  services to process events,metrics and status
+// Start ptp plugin to process events,metrics and status
 func Start(wg *sync.WaitGroup, api *v1pubsub.API, eventInCh chan<- *channel.DataChan, closeCh <-chan bool, fn func(e ceevent.Event) error) error { //nolint:deadcode,unused
 	// 1. Create event Publication
+	var pub pubsub.PubSub
+	var err error
+	var e ceevent.Event
 
-	pub, err := createPublisher(api, resourceAddress, eventInCh, fn)
-	if err != nil {
-		log.Printf("failed to create publisher %v", err)
+	if pub, err = createPublisher(api, resourceAddress, eventInCh, fn); err != nil {
+		log.Printf("failed to create a publisher %v", err)
 		return err
 	}
+
 	// 3. Fire initial Event
 	log.Printf("sending initial events ( probably not needed until consumer asks for it in initial state)")
-	event := createPTPEvent(pub)
-	_ = publishEvent(api, pub, event, eventInCh)
+	e = createPTPEvent(pub)
+	_ = publishEvent(api, pub, e, eventInCh)
+
 	// event handler
 	log.Printf("spinning event loop")
 	wg.Add(1)
@@ -66,11 +70,10 @@ func Start(wg *sync.WaitGroup, api *v1pubsub.API, eventInCh chan<- *channel.Data
 func createPublisher(api *v1pubsub.API, address string, eventInCh chan<- *channel.DataChan, fn func(e ceevent.Event) error) (pub pubsub.PubSub, err error) {
 	// this is loopback on server itself. Since current pod does not create any server
 	publisherURL := fmt.Sprintf("%s%s", api.GetBaseURI().String(), "dummy")
+	pub = v1pubsub.NewPubSub(types.ParseURI(publisherURL), address)
 	if api.GetBaseURI() == nil { // don't have rest api
-		pub = v1pubsub.NewPubSub(types.ParseURI(publisherURL), address)
-		pub, err = api.CreatePublisher(pub)
-		if err != nil {
-			log.Printf("failed to create publisher %v", err)
+		if pub, err = api.CreatePublisher(pub); err != nil {
+			log.Printf("failed to create a publisher %v", err)
 			return
 		}
 		// need to create this since we are not using rest api
@@ -80,11 +83,9 @@ func createPublisher(api *v1pubsub.API, address string, eventInCh chan<- *channe
 		}
 	} else { // using rest api
 		apiURL := fmt.Sprintf("%s%s", api.GetBaseURI().String(), "publishers")
-		// cluster/node should be  value from ENV
-		newPub := v1pubsub.NewPubSub(types.ParseURI(publisherURL), address)
 		var pubB []byte
 		var status int
-		if pubB, err = json.Marshal(newPub); err == nil {
+		if pubB, err = json.Marshal(pub); err == nil {
 			rc := restclient.New()
 			if status, pubB = rc.PostWithReturn(apiURL, pubB); status != http.StatusCreated {
 				err = fmt.Errorf("publisher creation api at %s, returned status %d", apiURL, status)
@@ -100,7 +101,7 @@ func createPublisher(api *v1pubsub.API, address string, eventInCh chan<- *channe
 	// 2.Create Status Listener
 	if api.HasTransportEnabled() {
 		onStatusRequestFn := func(e v2.Event) error {
-			log.Printf("fire events for above publisher")
+			log.Printf("got status check call,fire events for above publisher")
 			event := createPTPEvent(pub)
 			_ = publishEvent(api, pub, event, eventInCh)
 			return nil
@@ -142,15 +143,14 @@ func publishEvent(api *v1pubsub.API, pub pubsub.PubSub, e ceevent.Event, eventIn
 		}
 		v1event.SendNewEventToDataChannel(eventInCh, pub.Resource, ce)
 	} else {
-		url := api.GetBaseURI().String()
-		url = fmt.Sprintf("%s%s", url, "create/event")
+		url := fmt.Sprintf("%s%s", api.GetBaseURI().String(), "create/event")
 		rc := restclient.New()
 		err := rc.PostEvent(url, e)
 		if err != nil {
-			log.Printf("error postign events %v", err)
+			log.Printf("error posting ptp events %v", err)
 			return err
 		}
-		log.Printf("Published event %s", e.String())
+		log.Printf("published ptp event %s", e.String())
 	}
 	return nil
 }

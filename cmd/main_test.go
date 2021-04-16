@@ -28,6 +28,7 @@ import (
 
 var (
 	restHost string = fmt.Sprintf("%s:%d", "localhost", restPort)
+	pl       plugins.Handler
 )
 
 func init() {
@@ -35,6 +36,7 @@ func init() {
 	eventOutCh = make(chan *channel.DataChan, 10)
 	eventInCh = make(chan *channel.DataChan, 10)
 	closeCh = make(chan bool)
+	pl = plugins.Handler{Path: "../plugins"}
 }
 func storeCleanUp() {
 	_ = pubSubInstance.DeleteAllPublishers()

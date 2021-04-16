@@ -3,6 +3,7 @@ package main_test
 import (
 	"fmt"
 	"log"
+	"net/url"
 	"os"
 	"testing"
 
@@ -135,7 +136,8 @@ func Test_StartWithAMQPAndRest(t *testing.T) {
 	log.Printf("%v\n", event1)
 
 	//ping for status
-	sub := v1pubsub.NewPubSub(nil, "/cluster/node/ptp")
+	endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
+	sub := v1pubsub.NewPubSub(endpointURL, "/cluster/node/ptp")
 	sub, _ = pubSubAPI.CreateSubscription(sub)
 	e := v1event.CloudNativeEvent()
 	ce, _ := v1event.CreateCloudEvents(e, sub)
@@ -155,7 +157,7 @@ func Test_StartWithAMQPAndRest(t *testing.T) {
 
 //Test_StartWithAMQP this is integration test skips if QDR is not connected
 func Test_StartWithAMQP(t *testing.T) {
-
+	defer cleanUP()
 	pubSubAPI.EnableTransport()
 	pubSubAPI.SetBaseURI(nil)
 	log.Printf("loading amqp with host %s", amqpHost)
@@ -179,7 +181,8 @@ func Test_StartWithAMQP(t *testing.T) {
 	log.Printf("%v\n", event1)
 
 	//ping for status
-	sub := v1pubsub.NewPubSub(nil, "/cluster/node/ptp")
+	endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
+	sub := v1pubsub.NewPubSub(endpointURL, "/cluster/node/ptp")
 	sub, _ = pubSubAPI.CreateSubscription(sub)
 	e := v1event.CloudNativeEvent()
 	ce, _ := v1event.CreateCloudEvents(e, sub)
