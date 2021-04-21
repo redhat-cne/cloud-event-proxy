@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-native-producer-deployment
+  labels:
+    app: producer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: producer
+  template:
+    metadata:
+      labels:
+        app: producer
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - local
+      containers:
+        - name: cloud-nativer-event-producer
+          image: vdu
+          command: [ "./cne-producer" ]
+          env:
+            - name: MY_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: API_PATH
+                value: "/api/cloudNotifications/v1/"
+            - name: API_HOST
+              value: ":8080"
+            - name: LOCAL_HOST
+              value: ":8089"
+        - name: cloud-native-event-sidecar
+          image: cloud-native-event-sidecar
+          env:
+            - name: MY_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: MY_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: MY_POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: MY_POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: API_PATH
+              value: "/api/cloudNotifications/v1/"
+            - name: AMQP_HOST
+              value: "amqp-dispatch-service"
+            - name: API_PORT
+              value: "8080"
+            - name: STORE_PATH
+              value: "/store"
+          volumeMounts:
+            - name: pubsubstore
+              mountPath: /store
+      volumes:
+        - name: pubsubstore
+          emptyDir: {}

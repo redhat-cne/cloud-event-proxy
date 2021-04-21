@@ -16,13 +16,22 @@ import (
 )
 
 var (
-	apiHost string = "localhost:8080"
-	apiPath string = "/api/cloudNotifications/v1/"
+	apiHost                string = ":8080"
+	apiPath                string = "/api/cloudNotifications/v1/"
+	resourceAddressSports  string = "/news-service/sports"
+	resourceAddressFinance string = "/news-service/finance"
+	localAPIHost           string = ":9089"
 )
 
 func init() {
-	if sPath, ok := os.LookupEnv("API_HOST"); ok && sPath != "" {
-		apiHost = sPath
+	if envAPIPath, ok := os.LookupEnv("API_PATH"); ok && envAPIPath != "" {
+		apiPath = envAPIPath
+	}
+	if sAPIHost, ok := os.LookupEnv("API_HOST"); ok && sAPIHost != "" {
+		apiHost = sAPIHost
+	}
+	if envLocalAPIHost, ok := os.LookupEnv("LOCAL_HOST"); ok && envLocalAPIHost != "" {
+		localAPIHost = envLocalAPIHost
 	}
 }
 func main() {
@@ -30,21 +39,28 @@ func main() {
 	wg.Add(1)
 	go server()
 
-	var sub pubsub.PubSub
-	result := createSubscription()
-	if result != nil {
-		if err := json.Unmarshal(result, &sub); err != nil {
-			log.Printf("Failed to create poublisher object %v", err)
+	subs := []*pubsub.PubSub{&pubsub.PubSub{
+		Resource: resourceAddressSports,
+	}, &pubsub.PubSub{
+		Resource: resourceAddressFinance,
+	}}
+	for _, sub := range subs {
+		result := createSubscription(sub.Resource)
+		if result != nil {
+			if err := json.Unmarshal(result, sub); err != nil {
+				log.Printf("failed to create a publisher object %#v\n", err)
+			}
 		}
+		log.Printf("created publisher : %#v\n", sub)
 	}
-	log.Printf("subsripton done %v", sub)
+
 	log.Printf("waiting for events")
 	wg.Wait()
 }
 
 func server() {
 	http.HandleFunc("/event", getEvent)
-	http.ListenAndServe(":8090", nil)
+	http.ListenAndServe(localAPIHost, nil)
 }
 
 func getEvent(w http.ResponseWriter, req *http.Request) {
@@ -52,24 +68,24 @@ func getEvent(w http.ResponseWriter, req *http.Request) {
 	bodyBytes, err := ioutil.ReadAll(req.Body)
 	if err != nil {
 		log.Printf("error reading event %v", err)
-	} else {
-		log.Printf("Recieved event %s", string(bodyBytes))
 	}
-	if string(bodyBytes) == "" { // make sure to return no conent for endPointURI
+	e := string(bodyBytes)
+	if e != "" {
+		log.Printf("recieved event %s", string(bodyBytes))
+	} else {
 		w.WriteHeader(http.StatusNoContent)
 	}
-
 }
 
-func createSubscription() []byte {
+func createSubscription(resourceAddress string) []byte {
 	//create publisher
 	subURL := &types.URI{URL: url.URL{Scheme: "http", Host: apiHost, Path: fmt.Sprintf("%s%s", apiPath, "subscriptions")}}
 	// this is loopback on server itself. Since current pod does not create any server
-	endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8090", Path: fmt.Sprintf("%s", "event")}}
-	pub := v1pubsub.NewPubSub(endpointURL, "test/test/test")
-	if b, err := json.Marshal(pub); err == nil {
+	endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: localAPIHost, Path: fmt.Sprintf("%s", "event")}}
+	pub := v1pubsub.NewPubSub(endpointURL, resourceAddress)
+	if b, err := json.Marshal(&pub); err == nil {
 		rc := restclient.New()
-		if status, b := rc.PostWithReturn(subURL.String(), b); status == 201 {
+		if status, b := rc.PostWithReturn(subURL, b); status == 201 {
 			return b
 		}
 	} else {
