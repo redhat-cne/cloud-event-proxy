@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/redhat-cne/sdk-go/pkg/types"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -32,24 +33,24 @@ func New() *Rest {
 }
 
 // PostEvent post an event to the give url and check for error
-func (r *Rest) PostEvent(url string, e event.Event) error {
+func (r *Rest) PostEvent(url *types.URI, e event.Event) error {
 	b, err := json.Marshal(e)
 	if err != nil {
 		log.Printf("error marshalling event %v", e)
 		return err
 	}
 	if status := r.Post(url, b); status == http.StatusBadRequest {
-		return fmt.Errorf("error posting event")
+		return fmt.Errorf("post returned status %d", status)
 	}
 	return nil
 }
 
 // Post post with data
-func (r *Rest) Post(url string, data []byte) int {
+func (r *Rest) Post(url *types.URI, data []byte) int {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	request, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(data))
+	request, err := http.NewRequestWithContext(ctx, "POST", url.String(), bytes.NewBuffer(data))
 	if err != nil {
 		log.Printf("error creating post request %v", err)
 		return http.StatusBadRequest
@@ -67,11 +68,11 @@ func (r *Rest) Post(url string, data []byte) int {
 }
 
 // PostWithReturn post with data and return data
-func (r *Rest) PostWithReturn(url string, data []byte) (int, []byte) {
+func (r *Rest) PostWithReturn(url *types.URI, data []byte) (int, []byte) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	request, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(data))
+	request, err := http.NewRequestWithContext(ctx, "POST", url.String(), bytes.NewBuffer(data))
 	if err != nil {
 		log.Printf("error creating post request %v", err)
 		return http.StatusBadRequest, nil
@@ -79,7 +80,7 @@ func (r *Rest) PostWithReturn(url string, data []byte) (int, []byte) {
 	request.Header.Set("content-type", "application/json")
 	res, err := r.client.Do(request)
 	if err != nil {
-		log.Printf("error in post response %v", err)
+		log.Printf("error in post response %v to %s ", err, url)
 		return http.StatusBadRequest, nil
 	}
 	if res.Body != nil {

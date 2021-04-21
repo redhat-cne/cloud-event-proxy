@@ -2,6 +2,6 @@
 
 set -eu
 
-make build-rest-plugin
+make build-ptp-operator-plugin
 make build-amqp-plugin
 make build-only

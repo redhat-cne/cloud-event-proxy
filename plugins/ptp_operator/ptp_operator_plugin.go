@@ -1,15 +1,11 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"net/http"
-	"time"
-
 	v2 "github.com/cloudevents/sdk-go/v2"
-	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
-	"github.com/redhat-cne/sdk-go/pkg/channel"
+	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
+	"time"
 
 	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
 
@@ -18,32 +14,41 @@ import (
 
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
-	v1event "github.com/redhat-cne/sdk-go/v1/event"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 )
 
 var (
 	resourceAddress string        = "/cluster/node/ptp"
-	ptpEventType    string        = "ptp_status_type"
 	eventInterval   time.Duration = time.Second * 5
+	config          *common.SCConfiguration
 )
 
-// Start ptp plugin to process events,metrics and status
-func Start(wg *sync.WaitGroup, api *v1pubsub.API, eventInCh chan<- *channel.DataChan, closeCh <-chan bool, fn func(e ceevent.Event) error) error { //nolint:deadcode,unused
+// Start ptp plugin to process events,metrics and status, ecpects rest api availble to create publisher and subscriptions
+func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e ceevent.Event) error) error { //nolint:deadcode,unused
 	// 1. Create event Publication
 	var pub pubsub.PubSub
 	var err error
 	var e ceevent.Event
+	config = configuration
 
-	if pub, err = createPublisher(api, resourceAddress, eventInCh, fn); err != nil {
+	if pub, err = createPublisher(resourceAddress); err != nil {
 		log.Printf("failed to create a publisher %v", err)
 		return err
 	}
+	log.Printf("Created publisher %v", pub)
+	// 2.Create Status Listener
+	onStatusRequestFn := func(e v2.Event) error {
+		log.Printf("got status check call,fire events for above publisher")
+		event, _ := createPTPEvent(pub)
+		_ = common.PublishEvent(config, event)
+		return nil
+	}
+	v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pub.Resource, "status"), onStatusRequestFn, fn)
 
 	// 3. Fire initial Event
 	log.Printf("sending initial events ( probably not needed until consumer asks for it in initial state)")
-	e = createPTPEvent(pub)
-	_ = publishEvent(api, pub, e, eventInCh)
+	e, _ = createPTPEvent(pub)
+	_ = common.PublishEvent(config, e)
 
 	// event handler
 	log.Printf("spinning event loop")
@@ -56,9 +61,9 @@ func Start(wg *sync.WaitGroup, api *v1pubsub.API, eventInCh chan<- *channel.Data
 			select {
 			case <-ticker.C:
 				log.Printf("sending events")
-				event := createPTPEvent(pub)
-				_ = publishEvent(api, pub, event, eventInCh)
-			case <-closeCh:
+				e, _ := createPTPEvent(pub)
+				_ = common.PublishEvent(config, e)
+			case <-config.CloseCh:
 				fmt.Println("done")
 				return
 			}
@@ -67,57 +72,19 @@ func Start(wg *sync.WaitGroup, api *v1pubsub.API, eventInCh chan<- *channel.Data
 	return nil
 }
 
-func createPublisher(api *v1pubsub.API, address string, eventInCh chan<- *channel.DataChan, fn func(e ceevent.Event) error) (pub pubsub.PubSub, err error) {
+func createPublisher(address string) (pub pubsub.PubSub, err error) {
 	// this is loopback on server itself. Since current pod does not create any server
-	publisherURL := fmt.Sprintf("%s%s", api.GetBaseURI().String(), "dummy")
-	pub = v1pubsub.NewPubSub(types.ParseURI(publisherURL), address)
-	if api.GetBaseURI() == nil { // don't have rest api
-		if pub, err = api.CreatePublisher(pub); err != nil {
-			log.Printf("failed to create a publisher %v", err)
-			return
-		}
-		// need to create this since we are not using rest api
-		if api.HasTransportEnabled() {
-			log.Printf("creating sender for resource %s\n", pub.Resource)
-			v1amqp.CreateSender(eventInCh, pub.Resource)
-		}
-	} else { // using rest api
-		apiURL := fmt.Sprintf("%s%s", api.GetBaseURI().String(), "publishers")
-		var pubB []byte
-		var status int
-		if pubB, err = json.Marshal(pub); err == nil {
-			rc := restclient.New()
-			if status, pubB = rc.PostWithReturn(apiURL, pubB); status != http.StatusCreated {
-				err = fmt.Errorf("publisher creation api at %s, returned status %d", apiURL, status)
-				return
-			}
-		} else {
-			log.Printf("failed to marshal publisher ")
-		}
-		if err = json.Unmarshal(pubB, &pub); err != nil {
-			return
-		}
-	}
-	// 2.Create Status Listener
-	if api.HasTransportEnabled() {
-		onStatusRequestFn := func(e v2.Event) error {
-			log.Printf("got status check call,fire events for above publisher")
-			event := createPTPEvent(pub)
-			_ = publishEvent(api, pub, event, eventInCh)
-			return nil
-		}
-		v1amqp.CreateNewStatusListener(eventInCh, fmt.Sprintf("%s/%s", pub.Resource, "status"), onStatusRequestFn, fn)
+	returnURL := fmt.Sprintf("%s%s", config.BaseURL, "dummy")
+	pubToCreate := v1pubsub.NewPubSub(types.ParseURI(returnURL), address)
+	pub, err = common.CreatePublisher(config, pubToCreate)
+	if err != nil {
+		log.Printf("failed to create publisher %v", pub)
 	}
 	return pub, err
 }
 
-func createPTPEvent(pub pubsub.PubSub) ceevent.Event {
+func createPTPEvent(pub pubsub.PubSub) (ceevent.Event, error) {
 	// create an event
-	event := v1event.CloudNativeEvent()
-	event.ID = pub.ID
-	event.Type = ptpEventType
-	event.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
-	event.SetDataContentType(ceevent.ApplicationJSON)
 	data := ceevent.Data{
 		Version: "v1",
 		Values: []ceevent.DataValue{{
@@ -128,29 +95,6 @@ func createPTPEvent(pub pubsub.PubSub) ceevent.Event {
 		},
 		},
 	}
-	event.SetData(data)
-	return event
-}
-
-// publish events
-func publishEvent(api *v1pubsub.API, pub pubsub.PubSub, e ceevent.Event, eventInCh chan<- *channel.DataChan) error {
-	//create publisher
-	if api.GetBaseURI() == nil { // don't have rest api
-		ce, err := v1event.CreateCloudEvents(e, pub)
-		if err != nil {
-			log.Printf("failed to publish events %v", err)
-			return err
-		}
-		v1event.SendNewEventToDataChannel(eventInCh, pub.Resource, ce)
-	} else {
-		url := fmt.Sprintf("%s%s", api.GetBaseURI().String(), "create/event")
-		rc := restclient.New()
-		err := rc.PostEvent(url, e)
-		if err != nil {
-			log.Printf("error posting ptp events %v", err)
-			return err
-		}
-		log.Printf("published ptp event %s", e.String())
-	}
-	return nil
+	e, err := common.CreateEvent(pub.ID, "PTP_EVENT", data)
+	return e, err
 }

@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qpid-dispatcher-deployment
+  labels:
+    app: qpid-dispatcher
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: qpid-dispatcher
+  template:
+    metadata:
+      labels:
+        app: qpid-dispatcher
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: local-app
+                    operator: In
+                    values:
+                      - local
+      containers:
+        - name: qpid-dispatcher
+          image: quay.io/interconnectedcloud/qdrouterd:1.14.0
+          resources:
+            requests:
+              cpu: "50m"
+            limits:
+              cpu: "50m"
+          volumeMounts:
+            - name: qpidrouter-config-a
+              mountPath: /etc/qpid-dispatch/
+      volumes:
+        - name: qpidrouter-config
+          configMap:
+            name: qpidrouter-config
+            items:
+              - key: qdrouterd.conf
+                path: qdrouterd.conf

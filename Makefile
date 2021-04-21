@@ -12,7 +12,7 @@ else
   GOBIN=$(shell go env GOBIN)
 endif
 
-build:test
+build:build-plugins test
 	go fmt ./...
 	make lint
 	go build -o cloud-event-proxy cmd/main.go
@@ -20,17 +20,18 @@ build:test
 build-only:
 	go build -mod=readonly -o cloud-event-proxy cmd/main.go
 
+build-examples:
+	go build -mod=readonly -o cloud-native-event-consumer ./examples/consumer/main.go
+	go build -mod=readonly -o cloud-native-event-producer ./examples/producer/main.go
+
 lint:
 	golint `go list ./... | grep -v vendor`
 	golangci-lint run
 
 build-plugins:
-	go build -mod=readonly -o plugins/rest_api_plugin.so -buildmode=plugin plugins/rest_api/rest_api_plugin.go
 	go build -mod=readonly -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 	go build -mod=readonly -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 
-build-rest-plugin:
-	go build -mod=readonly -o plugins/rest_api_plugin.so -buildmode=plugin plugins/rest_api/rest_api_plugin.go
 
 build-amqp-plugin:
 	go build -mod=readonly -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
