@@ -15,6 +15,6 @@ images:
   - name: cloud-nativer-event-producer
     newName: quay.io/aneeshkp/cloud-nativer-event-consumer
     newTag: "latest"
-  - name: cloud-native-event-sidecar
-    newName: cloud-nativer-event-sidecar
+  - name: cloud-event-proxy
+    newName: quay.io/aneeshkp/cloud-event-proxy
     newTag: "latest"

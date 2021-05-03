@@ -63,7 +63,13 @@ func (r *Rest) Post(url *types.URI, data []byte) int {
 	}
 	if response.Body != nil {
 		defer response.Body.Close()
+		// read any content and print
+		body, readErr := ioutil.ReadAll(response.Body)
+		if readErr == nil && len(body) > 0 {
+			log.Printf("return body %s\n", string(body))
+		}
 	}
+
 	return response.StatusCode
 }
 

@@ -87,7 +87,6 @@ func TestSidecar_MainWithAMQP(t *testing.T) {
 
 	close(scConfig.CloseCh)
 	server.Shutdown()
-
 }
 
 func TestSidecar_MainWithOutAMQP(t *testing.T) {

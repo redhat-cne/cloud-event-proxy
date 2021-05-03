@@ -71,7 +71,6 @@ func TestLoadAMQPPlugin(t *testing.T) {
 }
 
 func TestLoadPTPPlugin(t *testing.T) {
-
 	scConfig.CloseCh = make(chan bool)
 	wg := &sync.WaitGroup{}
 	_, err := common.StartPubSubService(wg, scConfig)
@@ -100,7 +99,6 @@ func TestLoadPTPPlugin(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func Test_End(t *testing.T) {

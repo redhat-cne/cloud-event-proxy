@@ -125,6 +125,21 @@ sub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "t
 
 
 ```
+#### Create Status Listener
+```go
+// 1.Create Status Listener Fn (onStatusRequestFn is action to be performed on status ping received)
+onStatusRequestFn := func(e v2.Event) error {
+log.Printf("got status check call,fire events for above publisher")
+event, _ := createPTPEvent(pub)
+_ = common.PublishEvent(config, event)
+return nil
+}
+// 2. Create Listener object  
+v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pub.Resource, "status"), onStatusRequestFn, nil)
+
+```
+
+
 ### AMQP Objects
 #### Create AMQP Sender for Publisher object
 ```go
