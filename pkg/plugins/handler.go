@@ -46,7 +46,7 @@ func (pl Handler) LoadAMQPPlugin(wg *sync.WaitGroup, scConfig *common.SCConfigur
 	}
 	amqpInstance, err := startFunc(wg, scConfig)
 	if err != nil {
-		log.Printf("error starting amqp.%v", err)
+		log.Printf("error starting amqp at %s error: %v", scConfig.AMQPHost, err)
 		return amqpInstance, err
 	}
 	return amqpInstance, nil

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	cneevent "github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
@@ -19,22 +20,24 @@ import (
 )
 
 var (
-	apiHost                string = ":8080"
+	apiPort                int    = 8080
 	apiPath                string = "/api/cloudNotifications/v1/"
 	resourceAddressSports  string = "/news-service/sports"
 	resourceAddressFinance string = "/news-service/finance"
-	localAPIHost           string = ":9087"
+	localAPIPort           int    = 9087
 )
 
 func init() {
 	if envAPIPath, ok := os.LookupEnv("API_PATH"); ok && envAPIPath != "" {
 		apiPath = envAPIPath
 	}
-	if envAPIHost, ok := os.LookupEnv("API_HOST"); ok && envAPIHost != "" {
-		apiHost = envAPIHost
+
+	if envAPIPort := common.GetIntEnv("API_PORT"); envAPIPort > 0 {
+		apiPort = envAPIPort
 	}
-	if envLocalAPIHost, ok := os.LookupEnv("LOCAL_HOST"); ok && envLocalAPIHost != "" {
-		localAPIHost = envLocalAPIHost
+
+	if envLocalAPIPort := common.GetIntEnv("LOCAL_API_PORT"); envLocalAPIPort > 0 {
+		localAPIPort = envLocalAPIPort
 	}
 }
 
@@ -48,21 +51,28 @@ func main() {
 	}, &pubsub.PubSub{
 		Resource: resourceAddressFinance,
 	}}
+	healthURL := &types.URI{URL: url.URL{Scheme: "http",
+		Host: fmt.Sprintf("%s:%d", "localhost", apiPort),
+		Path: fmt.Sprintf("%s%s", apiPath, "health")}}
+RETRY:
+	if ok, _ := common.APIHealthCheck(healthURL, 2*time.Second); !ok {
+		goto RETRY
+	}
 	for _, pub := range pubs {
 		result := createPublisher(pub.Resource)
 		if result != nil {
 			if err := json.Unmarshal(result, pub); err != nil {
-				log.Printf("failed to create a publisher object %#v\n", err)
+				log.Printf("failed to create a publisher object %v\n", err)
 			}
 		}
-		log.Printf("created publisher : %#v\n", pub)
+		log.Printf("created publisher : %s\n", pub.String())
 	}
 
 	// create events periodically
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for range time.Tick(2 * time.Second) {
+		for range time.Tick(5 * time.Second) {
 			// create an event
 			for _, pub := range pubs {
 				event := v1event.CloudNativeEvent()
@@ -84,7 +94,6 @@ func main() {
 				event.SetData(data)
 				publishEvent(event)
 			}
-
 		}
 	}()
 	wg.Wait()
@@ -92,8 +101,13 @@ func main() {
 
 func createPublisher(resourceAddress string) []byte {
 	//create publisher
-	publisherURL := &types.URI{URL: url.URL{Scheme: "http", Host: apiHost, Path: fmt.Sprintf("%s%s", apiPath, "publishers")}}
-	endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: localAPIHost, Path: fmt.Sprintf("%s", "ack/event")}}
+	publisherURL := &types.URI{URL: url.URL{Scheme: "http",
+		Host: fmt.Sprintf("%s:%d", "localhost", apiPort),
+		Path: fmt.Sprintf("%s%s", apiPath, "publishers")}}
+	endpointURL := &types.URI{URL: url.URL{Scheme: "http",
+		Host: fmt.Sprintf("%s:%d", "localhost", localAPIPort),
+		Path: fmt.Sprintf("%s", "ack/event")}}
+
 	pub := v1pubsub.NewPubSub(endpointURL, resourceAddress)
 	if b, err := json.Marshal(&pub); err == nil {
 		rc := restclient.New()
@@ -108,11 +122,13 @@ func createPublisher(resourceAddress string) []byte {
 
 func publishEvent(e cneevent.Event) {
 	//create publisher
-	url := &types.URI{URL: url.URL{Scheme: "http", Host: apiHost, Path: fmt.Sprintf("%s%s", apiPath, "create/event")}}
+	url := &types.URI{URL: url.URL{Scheme: "http",
+		Host: fmt.Sprintf("%s:%d", "localhost", apiPort),
+		Path: fmt.Sprintf("%s%s", apiPath, "create/event")}}
 	rc := restclient.New()
 	err := rc.PostEvent(url, e)
 	if err != nil {
-		log.Printf("error publishing events %v", err)
+		log.Printf("error publishing events %v to url %s", err, url.String())
 	} else {
 		log.Printf("Published event %s", e.String())
 	}
@@ -120,7 +136,7 @@ func publishEvent(e cneevent.Event) {
 
 func server() {
 	http.HandleFunc("/ack/event", ackEvent)
-	http.ListenAndServe(localAPIHost, nil)
+	http.ListenAndServe(fmt.Sprintf("localhost:%d", localAPIPort), nil)
 }
 
 func ackEvent(w http.ResponseWriter, req *http.Request) {

@@ -23,14 +23,13 @@ var (
 	config          *common.SCConfiguration
 )
 
-// Start ptp plugin to process events,metrics and status, ecpects rest api availble to create publisher and subscriptions
+// Start ptp plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
 func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e ceevent.Event) error) error { //nolint:deadcode,unused
 	// 1. Create event Publication
 	var pub pubsub.PubSub
 	var err error
 	var e ceevent.Event
 	config = configuration
-
 	if pub, err = createPublisher(resourceAddress); err != nil {
 		log.Printf("failed to create a publisher %v", err)
 		return err
@@ -44,34 +43,33 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		return nil
 	}
 	v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pub.Resource, "status"), onStatusRequestFn, fn)
-
 	// 3. Fire initial Event
 	log.Printf("sending initial events ( probably not needed until consumer asks for it in initial state)")
 	e, _ = createPTPEvent(pub)
 	_ = common.PublishEvent(config, e)
-
 	// event handler
 	log.Printf("spinning event loop")
 	wg.Add(1)
-	go func(wg *sync.WaitGroup, pub pubsub.PubSub) {
-		ticker := time.NewTicker(eventInterval)
-		defer ticker.Stop()
-		defer wg.Done()
-		for {
-			select {
-			case <-ticker.C:
-				log.Printf("sending events")
-				e, _ := createPTPEvent(pub)
-				_ = common.PublishEvent(config, e)
-			case <-config.CloseCh:
-				fmt.Println("done")
-				return
-			}
-		}
-	}(wg, pub)
+	go sendEvents(wg,pub)
 	return nil
 }
 
+func sendEvents(wg *sync.WaitGroup, pub pubsub.PubSub){
+	ticker := time.NewTicker(eventInterval)
+	defer ticker.Stop()
+	defer wg.Done()
+	for {
+		select {
+		case <-ticker.C:
+			log.Printf("sending events")
+			e, _ := createPTPEvent(pub)
+			_ = common.PublishEvent(config, e)
+		case <-config.CloseCh:
+			fmt.Println("done")
+			return
+		}
+	}
+}
 func createPublisher(address string) (pub pubsub.PubSub, err error) {
 	// this is loopback on server itself. Since current pod does not create any server
 	returnURL := fmt.Sprintf("%s%s", config.BaseURL, "dummy")

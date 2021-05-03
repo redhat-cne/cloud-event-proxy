@@ -26,7 +26,6 @@ spec:
       containers:
         - name:  cne-consumer
           image: cloud-nativer-event-consumer
-          command: [ "./cne-consumer" ]
           env:
             - name: MY_NODE_NAME
               valueFrom:
@@ -46,10 +45,10 @@ spec:
                   fieldPath: status.podIP
             - name: API_PATH
                 value: "/api/cloudNotifications/v1/"
-            - name: API_HOST
-              value: ":8080"
-            - name: LOCAL_HOST
-              value: ":8089"
+            - name: API_PORT
+              value: "8080"
+            - name: LOCAL_API_PORT
+              value: "8089"
         - name: cloud-native-event-sidecar
           image: cloud-native-event-sidecar
           env:
@@ -72,7 +71,7 @@ spec:
             - name: API_PATH
               value: "/api/cloudNotifications/v1/"
             - name: AMQP_HOST
-              value: "amqp-dispatch-service"
+              value: "amqp://amqp-dispatch-service"
             - name: API_PORT
               value: "8080"
             - name: STORE_PATH

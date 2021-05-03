@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	restapi "github.com/redhat-cne/rest-api"
+	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	"log"
 	"os"
 	"os/signal"
@@ -22,6 +25,7 @@ var (
 	apiPort           int    = 8080
 	channelBufferSize int    = 10
 	scConfig          *common.SCConfiguration
+	pubSubAPI         *restapi.Server
 )
 
 func init() {
@@ -52,23 +56,20 @@ func init() {
 func main() {
 	// init
 	wg := sync.WaitGroup{}
-	server, err := common.StartPubSubService(&wg, scConfig)
+	var err error
+	pubSubAPI, err = common.StartPubSubService(&wg, scConfig)
 	if err != nil {
-		log.Fatal("PubSub service failed to start")
+		log.Fatal("pub/sub service API failed to start.")
 	}
-
 	pl := plugins.Handler{Path: "./plugins"}
-
-	_ = scConfig.PubSubAPI.DeleteAllPublishers()
-	_ = scConfig.PubSubAPI.DeleteAllSubscriptions()
-
 	// load amqp
 	_, err = pl.LoadAMQPPlugin(&wg, scConfig)
 	if err != nil {
 		log.Printf("requires Qpid router installed to function fully %s", err.Error())
 		scConfig.PubSubAPI.DisableTransport()
 	}
-
+	// load all senders and listeners from the existing store files.
+	loadAllSendersAndListeners()
 	// assume this depends on rest plugin or you can use api to create subscriptions
 	if common.GetBoolEnv("PTP_PLUGIN") {
 		err := pl.LoadPTPPlugin(&wg, scConfig, nil)
@@ -76,14 +77,14 @@ func main() {
 			log.Fatalf("error loading ptp plugin %v", err)
 		}
 	}
-	log.Printf("ready")
+	log.Printf("ready...")
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
 		//clean up
 		scConfig.CloseCh <- true
-		server.Shutdown()
+		pubSubAPI.Shutdown()
 		os.Exit(1)
 	}()
 	if !scConfig.PubSubAPI.HasTransportEnabled() {
@@ -124,8 +125,16 @@ func ProcessOutChannel() {
 						log.Printf("subscription not found posting event %#v to log for address %s\n", event, d.Address)
 					}
 				} else if d.Status == channel.SUCCEED || d.Status == channel.FAILED { // send back to publisher
-					//TODO:
-					log.Printf("send a acknowlegment to the address in uriLocation ")
+					//Send back the acknowledgement to publisher
+					if pub, ok := scConfig.PubSubAPI.HasPublisher(d.Address); ok {
+						if pub.EndPointURI != nil {
+							log.Printf("posting event status %s to publisher %s", channel.Status(d.Status), pub.Resource)
+							_ = restClient.Post(pub.EndPointURI,
+								[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, d.Status)))
+						}
+					} else {
+						log.Printf("could not send ack to publisher ,`publisher` for address %s not found", d.Address)
+					}
 				}
 			}
 		case <-scConfig.CloseCh:
@@ -141,11 +150,15 @@ func ProcessInChannel(wg *sync.WaitGroup) {
 		select {
 		case d := <-scConfig.EventInCh:
 			if d.Type == channel.LISTENER {
-				log.Printf("amqp disabled,no action taken: request to create listener  address %s was called,but transport is not enabled", d.Address)
+				log.Printf("amqp disabled,no action taken: request to create listener address %s was called,but transport is not enabled", d.Address)
 			} else if d.Type == channel.SENDER {
 				log.Printf("no action taken: request to create sender for address %s was called,but transport is not enabled", d.Address)
 			} else if d.Type == channel.EVENT && d.Status == channel.NEW {
-				log.Printf("amqp disabled,no action taken(can't send to a desitination): logging new event %#v\n", d.Data)
+				if e, err := v1event.GetCloudNativeEvents(*d.Data); err != nil {
+					log.Printf("error marshalling event data")
+				} else {
+					log.Printf("amqp disabled,no action taken(can't send to a desitination): logging new event %s\n", e.String())
+				}
 				out := channel.DataChan{
 					Address:        d.Address,
 					Data:           d.Data,
@@ -165,5 +178,14 @@ func ProcessInChannel(wg *sync.WaitGroup) {
 		case <-scConfig.CloseCh:
 			return
 		}
+	}
+}
+
+func loadAllSendersAndListeners() {
+	for _, pub := range scConfig.PubSubAPI.GetPublishers() {
+		v1amqp.CreateSender(scConfig.EventInCh, pub.Resource)
+	}
+	for _, sub := range scConfig.PubSubAPI.GetSubscriptions() {
+		v1amqp.CreateListener(scConfig.EventInCh, sub.Resource)
 	}
 }

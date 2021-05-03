@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-//SCConfiguration simple configuration to initialize variables
+// SCConfiguration simple configuration to initialize variables
 type SCConfiguration struct {
 	EventInCh  chan *channel.DataChan
 	EventOutCh chan *channel.DataChan
@@ -52,7 +52,7 @@ func GetBoolEnv(key string) bool {
 	return false
 }
 
-//StartPubSubService starts rest api service to manage events publishers and subscriptions
+// StartPubSubService starts rest api service to manage events publishers and subscriptions
 func StartPubSubService(wg *sync.WaitGroup, scConfig *SCConfiguration) (*restapi.Server, error) {
 	// init
 	server := restapi.InitServer(scConfig.APIPort, scConfig.APIPath, scConfig.StorePath, scConfig.EventInCh, scConfig.CloseCh)
@@ -67,7 +67,7 @@ func StartPubSubService(wg *sync.WaitGroup, scConfig *SCConfiguration) (*restapi
 	return server, err
 }
 
-//CreatePublisher creates a publisher objects
+// CreatePublisher creates a publisher objects
 func CreatePublisher(config *SCConfiguration, publisher pubsub.PubSub) (pub pubsub.PubSub, err error) {
 	apiURL := fmt.Sprintf("%s%s", config.BaseURL.String(), "publishers")
 	var pubB []byte
@@ -108,7 +108,7 @@ func CreateSubscription(config *SCConfiguration, subscription pubsub.PubSub) (su
 }
 
 //CreateEvent create an event
-func CreateEvent(pubSubID string, eventType string, data ceevent.Data) (ceevent.Event, error) {
+func CreateEvent(pubSubID, eventType string, data ceevent.Data) (ceevent.Event, error) {
 	// create an event
 	if pubSubID == "" {
 		return ceevent.Event{}, fmt.Errorf("id is a required field")
@@ -138,4 +138,32 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 	log.Printf("published ptp event %s", e.String())
 
 	return nil
+}
+
+//APIHealthCheck .. rest api should be ready before starting to consume api
+func APIHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
+	log.Printf("checking for rest service health\n")
+	for i := 0; i <= 5; i++ {
+		log.Printf("health check %s ", uri.String())
+		response, errResp := http.Get(uri.String())
+		if errResp != nil {
+			log.Printf("try %d, return health check of the rest service for error  %v", i, errResp)
+			time.Sleep(delay)
+			err = errResp
+			continue
+		}
+		if response != nil && response.StatusCode == http.StatusOK {
+			response.Body.Close()
+			log.Printf("rest service returned healthy status")
+			time.Sleep(delay)
+			err = nil
+			ok = true
+			return
+		}
+		response.Body.Close()
+	}
+	if err != nil {
+		err = fmt.Errorf("error connecting to rest api %s", err.Error())
+	}
+	return
 }

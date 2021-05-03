@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
@@ -13,25 +14,28 @@ import (
 	"net/url"
 	"os"
 	"sync"
+	"time"
 )
 
 var (
-	apiHost                string = ":8080"
+	apiPort                int    = 8080
 	apiPath                string = "/api/cloudNotifications/v1/"
 	resourceAddressSports  string = "/news-service/sports"
 	resourceAddressFinance string = "/news-service/finance"
-	localAPIHost           string = ":9089"
+	localAPIPort           int    = 9089
 )
 
 func init() {
 	if envAPIPath, ok := os.LookupEnv("API_PATH"); ok && envAPIPath != "" {
 		apiPath = envAPIPath
 	}
-	if sAPIHost, ok := os.LookupEnv("API_HOST"); ok && sAPIHost != "" {
-		apiHost = sAPIHost
+
+	if envAPIPort := common.GetIntEnv("API_PORT"); envAPIPort > 0 {
+		apiPort = envAPIPort
 	}
-	if envLocalAPIHost, ok := os.LookupEnv("LOCAL_HOST"); ok && envLocalAPIHost != "" {
-		localAPIHost = envLocalAPIHost
+
+	if envLocalAPIPort := common.GetIntEnv("LOCAL_API_PORT"); envLocalAPIPort > 0 {
+		localAPIPort = envLocalAPIPort
 	}
 }
 func main() {
@@ -44,23 +48,31 @@ func main() {
 	}, &pubsub.PubSub{
 		Resource: resourceAddressFinance,
 	}}
+	healthURL := &types.URI{URL: url.URL{Scheme: "http",
+		Host: fmt.Sprintf("%s:%d", "localhost", apiPort),
+		Path: fmt.Sprintf("%s%s", apiPath, "health")}}
+RETRY:
+	if ok, _ := common.APIHealthCheck(healthURL, 2*time.Second); !ok {
+		goto RETRY
+	}
 	for _, sub := range subs {
 		result := createSubscription(sub.Resource)
 		if result != nil {
 			if err := json.Unmarshal(result, sub); err != nil {
-				log.Printf("failed to create a publisher object %#v\n", err)
+				log.Printf("failed to create a subscription object %v\n", err)
 			}
 		}
-		log.Printf("created publisher : %#v\n", sub)
+		log.Printf("created subscription : %s\n", sub.String())
 	}
 
 	log.Printf("waiting for events")
 	wg.Wait()
+
 }
 
 func server() {
 	http.HandleFunc("/event", getEvent)
-	http.ListenAndServe(localAPIHost, nil)
+	http.ListenAndServe(fmt.Sprintf("localhost:%d", localAPIPort), nil)
 }
 
 func getEvent(w http.ResponseWriter, req *http.Request) {
@@ -78,10 +90,13 @@ func getEvent(w http.ResponseWriter, req *http.Request) {
 }
 
 func createSubscription(resourceAddress string) []byte {
-	//create publisher
-	subURL := &types.URI{URL: url.URL{Scheme: "http", Host: apiHost, Path: fmt.Sprintf("%s%s", apiPath, "subscriptions")}}
-	// this is loopback on server itself. Since current pod does not create any server
-	endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: localAPIHost, Path: fmt.Sprintf("%s", "event")}}
+	subURL := &types.URI{URL: url.URL{Scheme: "http",
+		Host: fmt.Sprintf("%s:%d", "localhost", apiPort),
+		Path: fmt.Sprintf("%s%s", apiPath, "subscriptions")}}
+	endpointURL := &types.URI{URL: url.URL{Scheme: "http",
+		Host: fmt.Sprintf("%s:%d", "localhost", localAPIPort),
+		Path: fmt.Sprintf("%s", "event")}}
+
 	pub := v1pubsub.NewPubSub(endpointURL, resourceAddress)
 	if b, err := json.Marshal(&pub); err == nil {
 		rc := restclient.New()

@@ -93,7 +93,7 @@ func Test_StartWithAMQP(t *testing.T) {
 	log.Printf("got events from channel statusEvent 1%#v\n", statusEvent)
 
 	event2 := <-scConfig.EventOutCh // after 5 secs
-	assert.Equal(t, channel.NEW, event2.Status)
+	assert.Equal(t, channel.SUCCEED, event2.Status)
 	log.Printf("got events from channel event 2%#v\n", event2)
 	log.Printf("Closing the channels")
 	scConfig.CloseCh <- true // close the channel
@@ -158,7 +158,6 @@ func ProcessInChannel() {
 			} else if d.Type == channel.SENDER {
 				log.Printf("no action taken: request to create sender for address %s was called,but transport is not enabled", d.Address)
 			} else if d.Type == channel.EVENT && d.Status == channel.NEW {
-				log.Printf("amqp disabled,no action taken: logging new event %#v\n", d.Data)
 				out := channel.DataChan{
 					Address:        d.Address,
 					Data:           d.Data,

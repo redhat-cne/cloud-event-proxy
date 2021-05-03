@@ -4,15 +4,15 @@ ENV CGO_ENABLED=1
 ENV COMMON_GO_ARGS=-race
 ENV GOOS=linux
 ENV GOPATH=/go
-WORKDIR /go/src/github.com/redhat-cne/cloud-event-proxy
-COPY . .
 
-RUN git clone https://github.com/redhat-cne/sdk-go.git /go/src/github.com/redhat-cne/sdk-go
-RUN git clone https://github.com/redhat-cne/rest-api.git /go/src/github.com/redhat-cne/rest-api
+WORKDIR /go/src/github.com/redhat-cne/cloud-event-proxy
+COPY ../ .
 
 RUN hack/build-go.sh
 
 FROM openshift/origin-base AS bin
+COPY ./plugins/*.so /plugins/
+COPY ./cloud-event-proxy /
 COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/cloud-event-proxy /
 COPY --from=builder go/src/github.com/redhat-cne/cloud-event-proxy/plugins/*.so /plugins/
 
