@@ -17,4 +17,4 @@ LABEL io.k8s.display-name="Cloud Event Proxy Sample Consumer" \
       io.openshift.tags="openshift" \
       maintainer="Aneesh Puttur <aputtur@redhat.com>"
 
-CMD ["./cloud-native-event-consumer"]
+ENTRYPOINT ["./cloud-native-event-consumer"]

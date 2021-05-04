@@ -9,7 +9,7 @@ import (
 
 	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
 
-	"log"
+	log "github.com/sirupsen/logrus"
 	"sync"
 
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
@@ -31,41 +31,41 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	var e ceevent.Event
 	config = configuration
 	if pub, err = createPublisher(resourceAddress); err != nil {
-		log.Printf("failed to create a publisher %v", err)
+		log.Errorf("failed to create a publisher %v", err)
 		return err
 	}
 	log.Printf("Created publisher %v", pub)
 	// 2.Create Status Listener
 	onStatusRequestFn := func(e v2.Event) error {
-		log.Printf("got status check call,fire events for above publisher")
+		log.Info("got status check call,fire events for above publisher")
 		event, _ := createPTPEvent(pub)
 		_ = common.PublishEvent(config, event)
 		return nil
 	}
 	v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pub.Resource, "status"), onStatusRequestFn, fn)
 	// 3. Fire initial Event
-	log.Printf("sending initial events ( probably not needed until consumer asks for it in initial state)")
+	log.Info("sending initial events ( probably not needed until consumer asks for it in initial state)")
 	e, _ = createPTPEvent(pub)
 	_ = common.PublishEvent(config, e)
 	// event handler
-	log.Printf("spinning event loop")
+	log.Info("spinning event loop")
 	wg.Add(1)
-	go sendEvents(wg,pub)
+	go sendEvents(wg, pub)
 	return nil
 }
 
-func sendEvents(wg *sync.WaitGroup, pub pubsub.PubSub){
+func sendEvents(wg *sync.WaitGroup, pub pubsub.PubSub) {
 	ticker := time.NewTicker(eventInterval)
 	defer ticker.Stop()
 	defer wg.Done()
 	for {
 		select {
 		case <-ticker.C:
-			log.Printf("sending events")
+			log.Info("sending events")
 			e, _ := createPTPEvent(pub)
 			_ = common.PublishEvent(config, e)
 		case <-config.CloseCh:
-			fmt.Println("done")
+			log.Info("done")
 			return
 		}
 	}
@@ -76,7 +76,7 @@ func createPublisher(address string) (pub pubsub.PubSub, err error) {
 	pubToCreate := v1pubsub.NewPubSub(types.ParseURI(returnURL), address)
 	pub, err = common.CreatePublisher(config, pubToCreate)
 	if err != nil {
-		log.Printf("failed to create publisher %v", pub)
+		log.Errorf("failed to create publisher %v", pub)
 	}
 	return pub, err
 }

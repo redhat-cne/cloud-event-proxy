@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/redhat-cne/sdk-go/pkg/types"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"time"
 
@@ -36,7 +36,7 @@ func New() *Rest {
 func (r *Rest) PostEvent(url *types.URI, e event.Event) error {
 	b, err := json.Marshal(e)
 	if err != nil {
-		log.Printf("error marshalling event %v", e)
+		log.Errorf("error marshalling event %v", e)
 		return err
 	}
 	if status := r.Post(url, b); status == http.StatusBadRequest {
@@ -52,13 +52,13 @@ func (r *Rest) Post(url *types.URI, data []byte) int {
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, "POST", url.String(), bytes.NewBuffer(data))
 	if err != nil {
-		log.Printf("error creating post request %v", err)
+		log.Errorf("error creating post request %v", err)
 		return http.StatusBadRequest
 	}
 	request.Header.Set("content-type", "application/json")
 	response, err := r.client.Do(request)
 	if err != nil {
-		log.Printf("error in post response %v", err)
+		log.Errorf("error in post response %v", err)
 		return http.StatusBadRequest
 	}
 	if response.Body != nil {
@@ -66,10 +66,9 @@ func (r *Rest) Post(url *types.URI, data []byte) int {
 		// read any content and print
 		body, readErr := ioutil.ReadAll(response.Body)
 		if readErr == nil && len(body) > 0 {
-			log.Printf("return body %s\n", string(body))
+			log.Debugf("%s return response %s\n", url.String(), string(body))
 		}
 	}
-
 	return response.StatusCode
 }
 
@@ -80,13 +79,13 @@ func (r *Rest) PostWithReturn(url *types.URI, data []byte) (int, []byte) {
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, "POST", url.String(), bytes.NewBuffer(data))
 	if err != nil {
-		log.Printf("error creating post request %v", err)
+		log.Errorf("error creating post request %v", err)
 		return http.StatusBadRequest, nil
 	}
 	request.Header.Set("content-type", "application/json")
 	res, err := r.client.Do(request)
 	if err != nil {
-		log.Printf("error in post response %v to %s ", err, url)
+		log.Errorf("error in post response %v to %s ", err, url)
 		return http.StatusBadRequest, nil
 	}
 	if res.Body != nil {
@@ -97,6 +96,5 @@ func (r *Rest) PostWithReturn(url *types.URI, data []byte) (int, []byte) {
 	if readErr != nil {
 		return http.StatusBadRequest, nil
 	}
-
 	return res.StatusCode, body
 }

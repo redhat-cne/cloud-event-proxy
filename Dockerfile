@@ -21,4 +21,4 @@ LABEL io.k8s.display-name="Cloud Event Proxy" \
       io.openshift.tags="openshift" \
       maintainer="Aneesh Puttur <aputtur@redhat.com>"
 
-CMD ["./cloud-event-proxy"]
+ENTRYPOINT ["./cloud-event-proxy"]
