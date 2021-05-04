@@ -9,10 +9,10 @@ replicas:
   - count: 1
     name: cloud-nativer-producer-deployment
 images:
-  - name: cloud-nativer-event-consumer
+  - name: cloud-native-event-consumer
     newName: quay.io/aneeshkp/cloud-nativer-event-consumer
     newTag: "latest"
-  - name: cloud-nativer-event-producer
+  - name: cloud-native-event-producer
     newName: quay.io/aneeshkp/cloud-nativer-event-consumer
     newTag: "latest"
   - name: cloud-event-proxy

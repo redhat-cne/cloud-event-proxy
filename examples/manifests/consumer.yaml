@@ -24,8 +24,12 @@ spec:
                     values:
                       - local
       containers:
-        - name:  cne-consumer
-          image: cloud-nativer-event-consumer
+        - name: cloud-native-event-consumer
+          image: cloud-native-event-consumer
+          args:
+            - "--local-api-addr=127.0.0.1:9089"
+            - "--api-path=/api/cloudNotifications/v1/"
+            - "--api-addr=127.0.0.1:8080"
           env:
             - name: MY_NODE_NAME
               valueFrom:
@@ -43,14 +47,13 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            - name: API_PATH
-                value: "/api/cloudNotifications/v1/"
-            - name: API_PORT
-              value: "8080"
-            - name: LOCAL_API_PORT
-              value: "8089"
         - name: cloud-native-event-sidecar
-          image: cloud-native-event-sidecar
+          image: cloud-event-proxy
+          args:
+            - "--metrics-addr=127.0.0.1:8443"
+            - "--store-path=/store"
+            - "--transport-host=amqp://amq-interconnect"
+            - "--api-port=8080"
           env:
             - name: MY_NODE_NAME
               valueFrom:
@@ -68,14 +71,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-            - name: API_PATH
-              value: "/api/cloudNotifications/v1/"
-            - name: AMQP_HOST
-              value: "amqp://amqp-dispatch-service"
-            - name: API_PORT
-              value: "8080"
-            - name: STORE_PATH
-              value: "/store"
           volumeMounts:
             - name: pubsubstore
               mountPath: /store

@@ -9,8 +9,8 @@ import (
 	main "github.com/redhat-cne/cloud-event-proxy/cmd"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/plugins"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"log"
 	"sync"
 	"testing"
 
@@ -48,16 +48,17 @@ func TestSidecar_MainWithAMQP(t *testing.T) {
 		StorePath:  storePath,
 		AMQPHost:   "amqp:localhost:5672",
 	}
-	log.Printf("Configuration set to %#v", scConfig)
+	log.Infof("Configuration set to %#v", scConfig)
 
 	//start rest service
 	server, err := common.StartPubSubService(wg, scConfig)
 	assert.Nil(t, err)
 
 	// imitate main process
-	go main.ProcessOutChannel()
+	wg.Add(1)
+	go main.ProcessOutChannel(wg, scConfig)
 
-	log.Printf("loading amqp with host %s", scConfig.AMQPHost)
+	log.Infof("loading amqp with host %s", scConfig.AMQPHost)
 	_, err = pl.LoadAMQPPlugin(wg, scConfig)
 	if err != nil {
 		t.Skipf("skipping amqp usage, test will be reading dirctly from in channel. reason: %v", err)
@@ -73,7 +74,7 @@ func TestSidecar_MainWithAMQP(t *testing.T) {
 	assert.NotEmpty(t, pub.Resource)
 	assert.NotEmpty(t, pub.EndPointURI)
 	assert.NotEmpty(t, pub.URILocation)
-	log.Printf("Publisher \n%s:", pub.String())
+	log.Infof("Publisher \n%s:", pub.String())
 
 	//Test subscription
 	createSub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), resourceAddress)
@@ -108,7 +109,7 @@ func TestSidecar_MainWithOutAMQP(t *testing.T) {
 		StorePath:  storePath,
 		AMQPHost:   "amqp:localhost:5672",
 	}
-	log.Printf("Configuration set to %#v", scConfig)
+	log.Infof("Configuration set to %#v", scConfig)
 
 	//disable AMQP
 	scConfig.PubSubAPI.DisableTransport()
@@ -118,8 +119,10 @@ func TestSidecar_MainWithOutAMQP(t *testing.T) {
 	assert.Nil(t, err)
 
 	// imitate main process
-	go main.ProcessOutChannel()
-	go main.ProcessInChannel(wg)
+	wg.Add(1)
+	go main.ProcessOutChannel(wg, scConfig)
+	wg.Add(1)
+	go main.ProcessInChannel(wg, scConfig)
 
 	//create publisher
 	// this is loopback on server itself. Since current pod does not create any server
@@ -131,7 +134,7 @@ func TestSidecar_MainWithOutAMQP(t *testing.T) {
 	assert.NotEmpty(t, pub.Resource)
 	assert.NotEmpty(t, pub.EndPointURI)
 	assert.NotEmpty(t, pub.URILocation)
-	log.Printf("Publisher \n%s:", pub.String())
+	log.Infof("Publisher \n%s:", pub.String())
 
 	//Test subscription
 	createSub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), resourceAddress)

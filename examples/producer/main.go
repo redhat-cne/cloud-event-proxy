@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
@@ -10,38 +11,29 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"sync"
 	"time"
 )
 
 var (
-	apiPort                int    = 8080
+	apiAddr                string = "localhost:8080"
 	apiPath                string = "/api/cloudNotifications/v1/"
 	resourceAddressSports  string = "/news-service/sports"
 	resourceAddressFinance string = "/news-service/finance"
-	localAPIPort           int    = 9087
+	localAPIAddr           string = "localhost:9088"
 )
 
-func init() {
-	if envAPIPath, ok := os.LookupEnv("API_PATH"); ok && envAPIPath != "" {
-		apiPath = envAPIPath
-	}
-
-	if envAPIPort := common.GetIntEnv("API_PORT"); envAPIPort > 0 {
-		apiPort = envAPIPort
-	}
-
-	if envLocalAPIPort := common.GetIntEnv("LOCAL_API_PORT"); envLocalAPIPort > 0 {
-		localAPIPort = envLocalAPIPort
-	}
-}
-
 func main() {
+	common.InitLogger()
+	flag.StringVar(&localAPIAddr, "local-api-addr", "localhost:9088", "The address the local api binds to .")
+	flag.StringVar(&apiPath, "api-path", "/api/cloudNotifications/v1/", "The rest api path.")
+	flag.StringVar(&apiAddr, "api-addr", "localhost:8080", "The address the framework api endpoint binds to.")
+	flag.Parse()
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go server()
@@ -52,7 +44,7 @@ func main() {
 		Resource: resourceAddressFinance,
 	}}
 	healthURL := &types.URI{URL: url.URL{Scheme: "http",
-		Host: fmt.Sprintf("%s:%d", "localhost", apiPort),
+		Host: apiAddr,
 		Path: fmt.Sprintf("%s%s", apiPath, "health")}}
 RETRY:
 	if ok, _ := common.APIHealthCheck(healthURL, 2*time.Second); !ok {
@@ -62,10 +54,10 @@ RETRY:
 		result := createPublisher(pub.Resource)
 		if result != nil {
 			if err := json.Unmarshal(result, pub); err != nil {
-				log.Printf("failed to create a publisher object %v\n", err)
+				log.Errorf("failed to create a publisher object %v\n", err)
 			}
 		}
-		log.Printf("created publisher : %s\n", pub.String())
+		log.Infof("created publisher : %s\n", pub.String())
 	}
 
 	// create events periodically
@@ -102,20 +94,22 @@ RETRY:
 func createPublisher(resourceAddress string) []byte {
 	//create publisher
 	publisherURL := &types.URI{URL: url.URL{Scheme: "http",
-		Host: fmt.Sprintf("%s:%d", "localhost", apiPort),
+		Host: apiAddr,
 		Path: fmt.Sprintf("%s%s", apiPath, "publishers")}}
 	endpointURL := &types.URI{URL: url.URL{Scheme: "http",
-		Host: fmt.Sprintf("%s:%d", "localhost", localAPIPort),
+		Host: localAPIAddr,
 		Path: fmt.Sprintf("%s", "ack/event")}}
-
+	log.Infof("ednpo %s", endpointURL.String())
 	pub := v1pubsub.NewPubSub(endpointURL, resourceAddress)
 	if b, err := json.Marshal(&pub); err == nil {
 		rc := restclient.New()
 		if status, b := rc.PostWithReturn(publisherURL, b); status == http.StatusCreated {
+			log.Infof("sdss%s", string(b))
 			return b
 		}
+		log.Errorf("publisher create returned error %s", string(b))
 	} else {
-		log.Printf("failed to create publisher ")
+		log.Errorf("failed to create publisher ")
 	}
 	return nil
 }
@@ -123,31 +117,31 @@ func createPublisher(resourceAddress string) []byte {
 func publishEvent(e cneevent.Event) {
 	//create publisher
 	url := &types.URI{URL: url.URL{Scheme: "http",
-		Host: fmt.Sprintf("%s:%d", "localhost", apiPort),
+		Host: apiAddr,
 		Path: fmt.Sprintf("%s%s", apiPath, "create/event")}}
 	rc := restclient.New()
 	err := rc.PostEvent(url, e)
 	if err != nil {
-		log.Printf("error publishing events %v to url %s", err, url.String())
+		log.Errorf("error publishing events %v to url %s", err, url.String())
 	} else {
-		log.Printf("Published event %s", e.String())
+		log.Debugf("published event %s", e.ID)
 	}
 }
 
 func server() {
 	http.HandleFunc("/ack/event", ackEvent)
-	http.ListenAndServe(fmt.Sprintf("localhost:%d", localAPIPort), nil)
+	http.ListenAndServe(localAPIAddr, nil)
 }
 
 func ackEvent(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
 	bodyBytes, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		log.Printf("error reading acknowledgment  %v", err)
+		log.Errorf("error reading acknowledgment  %v", err)
 	}
 	e := string(bodyBytes)
 	if e != "" {
-		log.Printf("recieved ack %s", string(bodyBytes))
+		log.Debugf("received ack %s", string(bodyBytes))
 	} else {
 		w.WriteHeader(http.StatusNoContent)
 	}

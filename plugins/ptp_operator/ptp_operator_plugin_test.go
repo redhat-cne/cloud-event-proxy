@@ -89,11 +89,11 @@ func Test_StartWithAMQP(t *testing.T) {
 	v1event.SendNewEventToDataChannel(scConfig.EventInCh, resourceStatusAddress, ce)
 
 	statusEvent := <-scConfig.EventOutCh // status updated
-	assert.Equal(t, channel.SUCCEED, statusEvent.Status)
+	assert.Equal(t, channel.SUCCESS, statusEvent.Status)
 	log.Printf("got events from channel statusEvent 1%#v\n", statusEvent)
 
 	event2 := <-scConfig.EventOutCh // after 5 secs
-	assert.Equal(t, channel.SUCCEED, event2.Status)
+	assert.Equal(t, channel.SUCCESS, event2.Status)
 	log.Printf("got events from channel event 2%#v\n", event2)
 	log.Printf("Closing the channels")
 	scConfig.CloseCh <- true // close the channel
@@ -161,7 +161,7 @@ func ProcessInChannel() {
 				out := channel.DataChan{
 					Address:        d.Address,
 					Data:           d.Data,
-					Status:         channel.SUCCEED,
+					Status:         channel.SUCCESS,
 					Type:           channel.EVENT,
 					ProcessEventFn: d.ProcessEventFn,
 				}
@@ -169,7 +169,7 @@ func ProcessInChannel() {
 					if err := d.OnReceiveOverrideFn(*d.Data); err != nil {
 						out.Status = channel.FAILED
 					} else {
-						out.Status = channel.SUCCEED
+						out.Status = channel.SUCCESS
 					}
 				}
 				scConfig.EventOutCh <- &out

@@ -2,11 +2,12 @@ package plugins
 
 import (
 	"fmt"
-	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
-	"log"
 	"path/filepath"
 	"plugin"
 	"sync"
+
+	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
+	log "github.com/sirupsen/logrus"
 
 	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"

@@ -11,7 +11,7 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"net/http"
 	"os"
 	"strconv"
@@ -79,7 +79,7 @@ func CreatePublisher(config *SCConfiguration, publisher pubsub.PubSub) (pub pubs
 			return
 		}
 	} else {
-		log.Printf("failed to marshal publisher ")
+		log.Error("failed to marshal publisher ")
 	}
 	if err = json.Unmarshal(pubB, &pub); err != nil {
 		return
@@ -99,7 +99,7 @@ func CreateSubscription(config *SCConfiguration, subscription pubsub.PubSub) (su
 			return
 		}
 	} else {
-		log.Printf("failed to marshal subscription ")
+		log.Error("failed to marshal subscription ")
 	}
 	if err = json.Unmarshal(subB, &sub); err != nil {
 		return
@@ -132,10 +132,10 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 	rc := restclient.New()
 	err := rc.PostEvent(types.ParseURI(url), e)
 	if err != nil {
-		log.Printf("error posting ptp events %v", err)
+		log.Errorf("error posting ptp events %v", err)
 		return err
 	}
-	log.Printf("published ptp event %s", e.String())
+	log.Errorf("published ptp event %s", e.String())
 
 	return nil
 }
@@ -144,17 +144,17 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 func APIHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
 	log.Printf("checking for rest service health\n")
 	for i := 0; i <= 5; i++ {
-		log.Printf("health check %s ", uri.String())
+		log.Infof("health check %s ", uri.String())
 		response, errResp := http.Get(uri.String())
 		if errResp != nil {
-			log.Printf("try %d, return health check of the rest service for error  %v", i, errResp)
+			log.Warnf("try %d, return health check of the rest service for error  %v", i, errResp)
 			time.Sleep(delay)
 			err = errResp
 			continue
 		}
 		if response != nil && response.StatusCode == http.StatusOK {
 			response.Body.Close()
-			log.Printf("rest service returned healthy status")
+			log.Info("rest service returned healthy status")
 			time.Sleep(delay)
 			err = nil
 			ok = true
@@ -166,4 +166,21 @@ func APIHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
 		err = fmt.Errorf("error connecting to rest api %s", err.Error())
 	}
 	return
+}
+
+// InitLogger initilaize logger
+func InitLogger() {
+	lvl, ok := os.LookupEnv("LOG_LEVEL")
+	// LOG_LEVEL not set, let's default to debug
+	if !ok {
+		lvl = "debug"
+	}
+	// parse string, this is built-in feature of logrus
+	ll, err := log.ParseLevel(lvl)
+	if err != nil {
+		ll = log.DebugLevel
+	}
+	// set global log level
+	log.SetLevel(ll)
+	log.SetLevel(log.DebugLevel)
 }
