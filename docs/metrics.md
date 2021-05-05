@@ -2,11 +2,12 @@
 Title: Metrics
 ---
 
-SDK-GO populates [Prometheus][prometheus]  collectors for metrics reporting. The metrics can be used for real-time monitoring and debugging. Network attachment definition admission controller does not persist its metrics; if a member restarts, the metrics will be reset.
+SDK-GO populates [Prometheus][prometheus]  collectors for metrics reporting. The metrics can be used for real-time monitoring and debugging.
+cloud event proxy metrics collector does not persist its metrics; if a member restarts, the metrics will be reset.
 
 The simplest way to see the available metrics is to cURL the metrics endpoint `/metrics`. The format is described [here](http://prometheus.io/docs/instrumenting/exposition_formats/).
 
-Follow the [Prometheus getting started doc](http://prometheus.io/docs/introduction/getting_started/) to spin up a Prometheus server to collect Network attachment definition admission controller metrics.
+Follow the [Prometheus getting started doc](http://prometheus.io/docs/introduction/getting_started/) to spin up a Prometheus server to collect metrics.
 
 The naming of metrics follows the suggested [Prometheus best practices](http://prometheus.io/docs/practices/naming/).
 
