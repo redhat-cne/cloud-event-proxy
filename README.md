@@ -242,9 +242,9 @@ if pub,err:=pubSubInstance.GetPublisher(publisherID);err==nil {
 
 ```
 
-##Metrics
+## Metrics
 
-###sdk-go metrics
+### sdk-go metrics
 Cloud native events sdk-go comes with following metrics collectors .
 1. Number of events received  by the transport
 2. Number of events published by the transport.
@@ -252,13 +252,13 @@ Cloud native events sdk-go comes with following metrics collectors .
 4. Number of sender created
 5. Number of receiver created
 
-###rest-api metrics
+### rest-api metrics
 Cloud native events rest API comes with following metrics collectors .
 1. Number of events published by the rest api.
 2. Number of active subscriptions.
 3. Number of active publishers.
 
-###cloud-event-proxy metrics
+### cloud-event-proxy metrics
 1. Number of events produced.
 1. Number of events received.
 
