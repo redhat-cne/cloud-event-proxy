@@ -6,14 +6,12 @@ ENV GOOS=linux
 ENV GOPATH=/go
 
 WORKDIR /go/src/github.com/redhat-cne/cloud-event-proxy
-COPY ../ .
+COPY . .
 
 RUN hack/build-go.sh
 
 FROM openshift/origin-base AS bin
-COPY ./plugins/*.so /plugins/
-COPY ./cloud-event-proxy /
-COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/cloud-event-proxy /
+COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/build/cloud-event-proxy /
 COPY --from=builder go/src/github.com/redhat-cne/cloud-event-proxy/plugins/*.so /plugins/
 
 LABEL io.k8s.display-name="Cloud Event Proxy" \
