@@ -2,7 +2,7 @@
 Title: Metrics
 ---
 
-SDK-GO populates [Prometheus][prometheus]  collectors for metrics reporting. The metrics can be used for real-time monitoring and debugging.
+cloud event proxy uses  [Prometheus][prometheus] for metrics reporting. The metrics can be used for real-time monitoring and debugging.
 cloud event proxy metrics collector does not persist its metrics; if a member restarts, the metrics will be reset.
 
 The simplest way to see the available metrics is to cURL the metrics endpoint `/metrics`. The format is described [here](http://prometheus.io/docs/instrumenting/exposition_formats/).
@@ -16,11 +16,13 @@ A metric name has an `cne`  prefix as its namespace, and a subsystem prefix .
 ###Registering sdk and rest api collector in your application
 The sdk and api collector are registered in cloud-event-proxy application along with its own metrics
 
+```go
+// Register metrics
+localmetrics.RegisterMetrics()
+apimetrics.RegisterMetrics()
+sdkmetrics.RegisterMetrics()
 
-## cne namespace metrics
-
-The metrics under the `cne` prefix are for monitoring .  If there is any change of these metrics, it will be included in release notes.
-
+```
 
 ### Metrics
 skd-go and rest-api that are registered by this application can be found here.
