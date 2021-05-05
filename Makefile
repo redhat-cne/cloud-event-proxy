@@ -16,14 +16,14 @@ endif
 build:build-plugins test
 	go fmt ./...
 	make lint
-	go build -o cloud-event-proxy cmd/main.go
+	go build -o ./build/cloud-event-proxy cmd/main.go
 
 build-only:
-	go build -mod=readonly -o cloud-event-proxy cmd/main.go
+	go build -mod=readonly -o ./build/cloud-event-proxy cmd/main.go
 
 build-examples:
-	go build -mod=readonly -o cloud-native-event-consumer ./examples/consumer/main.go
-	go build -mod=readonly -o cloud-native-event-producer ./examples/producer/main.go
+	go build -mod=readonly -o ./build/cloud-native-event-consumer ./examples/consumer/main.go
+	go build -mod=readonly -o ./build/cloud-native-event-producer ./examples/producer/main.go
 
 lint:
 	golint `go list ./... | grep -v vendor`
