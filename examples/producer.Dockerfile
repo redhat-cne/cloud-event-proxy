@@ -10,7 +10,7 @@ COPY . .
 RUN hack/build-example-go.sh
 
 FROM openshift/origin-base AS bin
-COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/cloud-native-event-producer /
+COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/build/cloud-native-event-producer /
 
 LABEL io.k8s.display-name="Cloud Event Proxy Sample Producer " \
       io.k8s.description="This is a component of OpenShift Container Platform and provides a producer sample to produce events." \
