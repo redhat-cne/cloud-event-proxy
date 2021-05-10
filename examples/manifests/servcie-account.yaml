@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sidecar-producer-sa
+  namespace: cloud-native-events
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sidecar-consumer-sa
+  namespace: cloud-native-events
