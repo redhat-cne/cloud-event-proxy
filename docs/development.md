@@ -35,17 +35,30 @@ Make sure you update the image path.
 ### Deploying examples using kustomize
 
 Install Kustomize
-``` 
-$ curl -s "https://raw.githubusercontent.com/\
+```shell
+curl -s "https://raw.githubusercontent.com/\
 kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"  | bash
  
-$mv kustomize /usr/loca/bin/
+mv kustomize /usr/loca/bin/
 
 ```
-$make deploy-examples
+### Set Env variables
+```shell
+export version = latest 
+export SIDECAR_IMG = quay.io/aneeshkp/cloud-event-proxy
+export  PRODUCER_IMG = quay.io/aneeshkp/cloud-native-event-producer
+export  CONSUMER_IMG = quay.io/aneeshkp/cloud-native-event-consumer
+```
 
-### Delete deployment 
-$make undeploy-examples
+```shell
+make deploy-examples
+```
+
+
+### Delete deployment
+```shell
+make undeploy-examples
+```
 
 ### AMQ Interconnect Operator installation
 

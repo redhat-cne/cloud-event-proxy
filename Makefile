@@ -25,14 +25,14 @@ endif
 
 kustomize:
 ifeq (, $(shell which kustomize))
-	@{ \
-	set -e ;\
-	KUSTOMIZE_GEN_TMP_DIR=$$(mktemp -d) ;\
-	cd $$KUSTOMIZE_GEN_TMP_DIR ;\
-	go mod init tmp ;\
-	go get sigs.k8s.io/kustomize/kustomize/v3@v3.5.4 ;\
-	rm -rf $$KUSTOMIZE_GEN_TMP_DIR ;\
-	}
+		@{ \
+		set -e ;\
+		KUSTOMIZE_GEN_TMP_DIR=$$(mktemp -d) ;\
+		cd $$KUSTOMIZE_GEN_TMP_DIR ;\
+		go mod init tmp ;\
+		go get sigs.k8s.io/kustomize/kustomize/v3@v3.5.4 ;\
+		rm -rf $$KUSTOMIZE_GEN_TMP_DIR ;\
+		}
 KUSTOMIZE=$(GOBIN)/kustomize
 else
 KUSTOMIZE=$(shell which kustomize)
@@ -78,11 +78,11 @@ test:
 	go test ./...  -coverprofile=cover.out
 
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
-deploy-example: kustomize
-	cd ./manifests && $(KUSTOMIZE) edit set image cloud-event-proxy=${SIDECAR_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-producer=${PRODUCER_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-consumer=${CONSUMER_IMG}
-	$(KUSTOMIZE) build ./manifests | kubectl apply -f -
+deploy-examples:kustomize
+	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-proxy=${SIDECAR_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-producer=${PRODUCER_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-consumer=${CONSUMER_IMG}
+	$(KUSTOMIZE) build ./examples/manifests | kubectl apply -f -
 
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
-undeploy-example: kustomize
-	cd ./manifests && $(KUSTOMIZE) edit set image cloud-event-proxy=${SIDECAR_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-producer=${PRODUCER_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-consumer=${CONSUMER_IMG}
-	$(KUSTOMIZE) build ./manifests | kubectl delete -f -
+undeploy-examples:kustomize
+	cd ./examples/manifests  && $(KUSTOMIZE) edit set image cloud-event-proxy=${SIDECAR_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-producer=${PRODUCER_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-consumer=${CONSUMER_IMG}
+	$(KUSTOMIZE) build ./examples/manifests | kubectl delete -f -
