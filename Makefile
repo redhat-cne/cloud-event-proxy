@@ -1,5 +1,15 @@
 .PHONY: build
 
+#for examples
+# Current  version
+VERSION ?=latest
+# Default image tag
+
+SIDECAR_IMG ?= quay.io/aneeshkp/cloud-event-proxy:$(VERSION)
+PRODUCER_IMG ?= quay.io/aneeshkp/cloud-native-event-producer:$(VERSION)
+CONSUMER_IMG ?= quay.io/aneeshkp/cloud-native-event-consumer:$(VERSION)
+
+
 # Export GO111MODULE=on to enable project to be built from within GOPATH/src
 export GO111MODULE=on
 export CGO_ENABLED=1
@@ -11,6 +21,21 @@ ifeq (,$(shell go env GOBIN))
   GOBIN=$(shell go env GOPATH)/bin
 else
   GOBIN=$(shell go env GOBIN)
+endif
+
+kustomize:
+ifeq (, $(shell which kustomize))
+		@{ \
+		set -e ;\
+		KUSTOMIZE_GEN_TMP_DIR=$$(mktemp -d) ;\
+		cd $$KUSTOMIZE_GEN_TMP_DIR ;\
+		go mod init tmp ;\
+		go get sigs.k8s.io/kustomize/kustomize/v3@v3.5.4 ;\
+		rm -rf $$KUSTOMIZE_GEN_TMP_DIR ;\
+		}
+KUSTOMIZE=$(GOBIN)/kustomize
+else
+KUSTOMIZE=$(shell which kustomize)
 endif
 
 build:build-plugins test
@@ -52,4 +77,12 @@ run-consumer:
 test:
 	go test ./...  -coverprofile=cover.out
 
+# Deploy all in the configured Kubernetes cluster in ~/.kube/config
+deploy-example:kustomize
+	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-proxy=${SIDECAR_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-producer=${PRODUCER_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-consumer=${CONSUMER_IMG}
+	$(KUSTOMIZE) build ./examples/manifests | kubectl apply -f -
 
+# Deploy all in the configured Kubernetes cluster in ~/.kube/config
+undeploy-example:kustomize
+	cd ./examples/manifests  && $(KUSTOMIZE) edit set image cloud-event-proxy=${SIDECAR_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-producer=${PRODUCER_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-consumer=${CONSUMER_IMG}
+	$(KUSTOMIZE) build ./examples/manifests | kubectl delete -f -

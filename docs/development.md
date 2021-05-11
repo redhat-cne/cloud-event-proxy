@@ -32,7 +32,33 @@ Use producer.yaml,consumer.yaml and service.yaml from examples/manifests folder 
 Make sure you update the image path.
 
 
+### Deploying examples using kustomize
+
+Install Kustomize
+```shell
+curl -s "https://raw.githubusercontent.com/\
+kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"  | bash
+ 
+mv kustomize /usr/local/bin/
+
+```
+### Set Env variables
+```shell
+export version = latest 
+export SIDECAR_IMG = quay.io/aneeshkp/cloud-event-proxy
+export  PRODUCER_IMG = quay.io/aneeshkp/cloud-native-event-producer
+export  CONSUMER_IMG = quay.io/aneeshkp/cloud-native-event-consumer
+```
+
+```shell
+make deploy-example
+```
 
 
+### Delete deployment
+```shell
+make undeploy-example
+```
 
+### AMQ Interconnect Operator installation
 

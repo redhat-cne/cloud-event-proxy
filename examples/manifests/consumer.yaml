@@ -26,7 +26,7 @@ spec:
       serviceAccountName: sidecar-producer-sa
       containers:
         - name: cloud-native-event-consumer
-          image: quay.io/aneeshkp/cloud-native-event-consumer:latest
+          image: cloud-native-event-consumer
           args:
             - "--local-api-addr=127.0.0.1:9089"
             - "--api-path=/api/cloudNotifications/v1/"
@@ -49,7 +49,7 @@ spec:
                 fieldRef:
                   fieldPath: status.podIP
         - name: cloud-native-event-sidecar
-          image: quay.io/aneeshkp/cloud-event-proxy:latest
+          image: cloud-event-proxy
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
