@@ -5,6 +5,7 @@ metadata:
     prometheus.io/scrape: "true"
     service.alpha.openshift.io/serving-cert-secret-name: sidecar-producer-secret
   name: producer-sidecar-service
+  namespace: cloud-native-events
   labels:
     app: producer-service
 spec:
@@ -23,6 +24,7 @@ metadata:
     prometheus.io/scrape: "true"
     service.alpha.openshift.io/serving-cert-secret-name: sidecar-consumer-secret
   name: consumer-sidecar-service
+  namespace: cloud-native-events
   labels:
     app: consumer-service
 spec:
