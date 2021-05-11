@@ -43,20 +43,20 @@ import (
 
 var (
 	//defaults
-	storePath         string = "."
-	amqpHost          string = "amqp:localhost:5672"
-	apiPort           int    = 8080
-	channelBufferSize int    = 10
+	storePath         string
+	amqpHost          string
+	apiPort           int
+	channelBufferSize int = 10
 	scConfig          *common.SCConfiguration
 	pubSubAPI         *restapi.Server
-	metricsAddr       string = ":9292"
+	metricsAddr       string
 	apiPath           string = "/api/cloudNotifications/v1/"
 )
 
 func main() {
 	// init
 	common.InitLogger()
-	flag.StringVar(&metricsAddr, "metrics-addr", ":9433", "The address the metric endpoint binds to.")
+	flag.StringVar(&metricsAddr, "metrics-addr", ":9091", "The address the metric endpoint binds to.")
 	flag.StringVar(&storePath, "store-path", ".", "The path to store publisher and subscription info.")
 	flag.StringVar(&amqpHost, "transport-host", "amqp:localhost:5672", "The transport bus hostname or service name.")
 	flag.IntVar(&apiPort, "api-port", 8080, "The address the rest api endpoint binds to.")

@@ -79,7 +79,7 @@ cne_events_received{status="success",type="/news-service/finance"} 3
 cne_events_received{status="success",type="/news-service/sports"} 3
 ```
 
-####Full metrics
+#### Full Metrics
 ```json
 # HELP cne_amqp_connections_resets Metric to get number of connection resets
 # TYPE cne_amqp_connections_resets gauge

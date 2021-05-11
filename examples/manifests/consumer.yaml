@@ -23,9 +23,10 @@ spec:
                     operator: In
                     values:
                       - local
+      serviceAccountName: sidecar-producer-sa
       containers:
         - name: cloud-native-event-consumer
-          image: cloud-native-event-consumer
+          image: quay.io/aneeshkp/cloud-native-event-consumer:latest
           args:
             - "--local-api-addr=127.0.0.1:9089"
             - "--api-path=/api/cloudNotifications/v1/"
@@ -48,9 +49,9 @@ spec:
                 fieldRef:
                   fieldPath: status.podIP
         - name: cloud-native-event-sidecar
-          image: cloud-event-proxy
+          image: quay.io/aneeshkp/cloud-event-proxy:latest
           args:
-            - "--metrics-addr=127.0.0.1:8443"
+            - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
             - "--transport-host=amqp://amq-interconnect"
             - "--api-port=8080"
@@ -74,6 +75,31 @@ spec:
           volumeMounts:
             - name: pubsubstore
               mountPath: /store
+          ports:
+            - name: metrics-port
+              containerPort: 9091
+        - name: kube-rbac-proxy
+          image: quay.io/coreos/kube-rbac-proxy:v0.5.0
+          args:
+            - --logtostderr
+            - --secure-listen-address=:8443
+            - --tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_RSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
+            - --upstream=http://127.0.0.1:9091/
+            - --tls-private-key-file=/etc/metrics/tls.key
+            - --tls-cert-file=/etc/metrics/tls.crt
+          ports:
+            - containerPort: 8443
+              name: https
+          resources:
+            requests:
+              cpu: 10m
+              memory: 20Mi
+          volumeMounts:
+            - name: sidecar-certs
+              mountPath: /etc/metrics
       volumes:
         - name: pubsubstore
           emptyDir: {}
+        - name: sidecar-certs
+          secret:
+            secretName: sidecar-consumer-secret

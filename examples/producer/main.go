@@ -34,11 +34,11 @@ import (
 )
 
 var (
-	apiAddr                string = "localhost:8080"
-	apiPath                string = "/api/cloudNotifications/v1/"
+	apiAddr                string
+	apiPath                string
+	localAPIAddr           string
 	resourceAddressSports  string = "/news-service/sports"
 	resourceAddressFinance string = "/news-service/finance"
-	localAPIAddr           string = "localhost:9088"
 )
 
 func main() {
