@@ -32,7 +32,20 @@ Use producer.yaml,consumer.yaml and service.yaml from examples/manifests folder 
 Make sure you update the image path.
 
 
+### Deploying examples using kustomize
 
+Install Kustomize
+``` 
+$ curl -s "https://raw.githubusercontent.com/\
+kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"  | bash
+ 
+$mv kustomize /usr/loca/bin/
 
+```
+$make deploy-examples
 
+### Delete deployment 
+$make undeploy-examples
+
+### AMQ Interconnect Operator installation
 
