@@ -78,11 +78,11 @@ test:
 	go test ./...  -coverprofile=cover.out
 
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
-deploy-examples:kustomize
+deploy-example:kustomize
 	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-proxy=${SIDECAR_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-producer=${PRODUCER_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl apply -f -
 
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
-undeploy-examples:kustomize
+undeploy-example:kustomize
 	cd ./examples/manifests  && $(KUSTOMIZE) edit set image cloud-event-proxy=${SIDECAR_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-producer=${PRODUCER_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl delete -f -

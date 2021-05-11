@@ -51,13 +51,13 @@ export  CONSUMER_IMG = quay.io/aneeshkp/cloud-native-event-consumer
 ```
 
 ```shell
-make deploy-examples
+make deploy-example
 ```
 
 
 ### Delete deployment
 ```shell
-make undeploy-examples
+make undeploy-example
 ```
 
 ### AMQ Interconnect Operator installation
