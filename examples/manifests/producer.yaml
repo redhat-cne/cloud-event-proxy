@@ -25,7 +25,7 @@ spec:
                       - local
       serviceAccountName: sidecar-producer-sa
       containers:
-        - name: cloud-nativer-event-producer
+        - name: cloud-native-event-producer
           image: quay.io/aneeshkp/cloud-native-event-producer:latest
           args:
             - "--local-api-addr=127.0.0.1:9089"
