@@ -1,4 +1,4 @@
-## Running examples
+## Running examples locally
 
 ### Side car
 ```shell
@@ -32,9 +32,9 @@ Use producer.yaml,consumer.yaml and service.yaml from examples/manifests folder 
 Make sure you update the image path.
 
 
-### Deploying examples using kustomize
+## Deploying examples using kustomize
 
-Install Kustomize
+### Install Kustomize
 ```shell
 curl -s "https://raw.githubusercontent.com/\
 kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"  | bash
@@ -44,21 +44,30 @@ mv kustomize /usr/local/bin/
 ```
 ### Set Env variables
 ```shell
-export version = latest 
-export SIDECAR_IMG = quay.io/aneeshkp/cloud-event-proxy
-export  PRODUCER_IMG = quay.io/aneeshkp/cloud-native-event-producer
-export  CONSUMER_IMG = quay.io/aneeshkp/cloud-native-event-consumer
+export version=latest 
+export SIDECAR_IMG=quay.io/aneeshkp/cloud-event-proxy
+export  PRODUCER_IMG=quay.io/aneeshkp/cloud-native-event-producer
+export  CONSUMER_IMG=quay.io/aneeshkp/cloud-native-event-consumer
 ```
 
+### Setup AMQ Interconnect
+
+Install the `Red Hat Integration - AMQ Interconnect` operator in the `cloud-native-events` namespace from the OpenShift Web Console.
+
+Open the `Red Hat Integration - AMQ Interconnect` operator, click `Create Interconnect` from the `Red Hat Integration - AMQ Interconnect` tab. Use default values and make sure the name is `amq-interconnect`.
+
+Make sure amq-interconnect pods are running before the next step.
+```shell
+oc get pods -n cloud-native-events
+```
+
+### Deploy examples
 ```shell
 make deploy-example
 ```
 
-
-### Delete deployment
+### Undeploy examples
 ```shell
 make undeploy-example
 ```
-
-### AMQ Interconnect Operator installation
 
