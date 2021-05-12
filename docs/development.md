@@ -66,7 +66,7 @@ oc get pods -n cloud-native-events
 make deploy-example
 ```
 
-### Undelete examples
+### Undeploy examples
 ```shell
 make undeploy-example
 ```
