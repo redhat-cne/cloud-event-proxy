@@ -1,7 +1,8 @@
 language: go
 
 go:
-  - 1.7.x
+  # go.mod requires 1.13
+  - 1.13.x
   - master
 
 script:
