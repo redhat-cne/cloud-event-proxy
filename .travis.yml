@@ -1,2 +1,8 @@
 language: go
-make build
+
+go:
+  - 1.7.x
+  - master
+
+script:
+  - make build
