@@ -15,14 +15,14 @@
 package plugins
 
 import (
-	"fmt"
+	"sync"
+	"testing"
+
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"github.com/redhat-cne/sdk-go/pkg/errorhandler"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 	"github.com/stretchr/testify/assert"
-	"sync"
-	"testing"
 )
 
 var (
@@ -51,17 +51,17 @@ func TestLoadAMQPPlugin(t *testing.T) {
 	testCases := map[string]struct {
 		pgPath  string
 		amqHost string
-		wantErr error
+		wantErr string
 	}{
 		"Invalid Plugin Path": {
 			pgPath:  "wrong",
 			amqHost: "",
-			wantErr: fmt.Errorf("amqp plugin not found in the path wrong"),
+			wantErr: "amqp plugin not found in the path wrong",
 		},
 		"Invalid amqp host": {
 			pgPath:  "../../plugins",
 			amqHost: "",
-			wantErr: fmt.Errorf("error connecting to amqp"),
+			wantErr: "error connecting to amqp",
 		},
 	}
 
@@ -74,8 +74,8 @@ func TestLoadAMQPPlugin(t *testing.T) {
 				case errorhandler.AMQPConnectionError:
 					t.Skipf("skipping amqp for this test %s", e.Error())
 				default:
-					if tc.wantErr != nil && err != nil {
-						assert.EqualError(t, tc.wantErr, e.Error())
+					if tc.wantErr != "" && err != nil {
+						assert.EqualError(t, err, tc.wantErr)
 					}
 				}
 			}
@@ -92,15 +92,15 @@ func TestLoadPTPPlugin(t *testing.T) {
 
 	testCases := map[string]struct {
 		pgPath  string
-		wantErr error
+		wantErr string
 	}{
 		"Invalid Plugin Path": {
 			pgPath:  "wrong",
-			wantErr: fmt.Errorf("ptp plugin not found in the path wrong"),
+			wantErr: "ptp plugin not found in the path wrong",
 		},
 		"Valid Plugin Path": {
 			pgPath:  "../../plugins",
-			wantErr: nil,
+			wantErr: "",
 		},
 	}
 
@@ -108,8 +108,8 @@ func TestLoadPTPPlugin(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			pLoader = Handler{Path: tc.pgPath}
 			err := pLoader.LoadPTPPlugin(wg, scConfig, nil)
-			if tc.wantErr != nil && err != nil {
-				assert.EqualError(t, tc.wantErr, err.Error())
+			if tc.wantErr != "" && err != nil {
+				assert.EqualError(t, err, tc.wantErr)
 			}
 		})
 	}
