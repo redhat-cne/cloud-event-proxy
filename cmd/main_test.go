@@ -2,17 +2,19 @@ package main_test
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/sdk-go/pkg/types"
-	"os"
+
+	"sync"
+	"testing"
 
 	main "github.com/redhat-cne/cloud-event-proxy/cmd"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/plugins"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"sync"
-	"testing"
 
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 )
@@ -21,6 +23,7 @@ var (
 	channelBufferSize int = 10
 	scConfig          *common.SCConfiguration
 	resourceAddress   string = "/test/main"
+	apiPort           int    = 8989
 )
 
 func storeCleanUp() {
@@ -41,8 +44,8 @@ func TestSidecar_MainWithAMQP(t *testing.T) {
 	scConfig = &common.SCConfiguration{
 		EventInCh:  make(chan *channel.DataChan, channelBufferSize),
 		EventOutCh: make(chan *channel.DataChan, channelBufferSize),
-		CloseCh:    make(chan bool),
-		APIPort:    0,
+		CloseCh:    make(chan struct{}),
+		APIPort:    apiPort,
 		APIPath:    "/api/cloudNotifications/v1/",
 		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
 		StorePath:  storePath,
@@ -51,7 +54,7 @@ func TestSidecar_MainWithAMQP(t *testing.T) {
 	log.Infof("Configuration set to %#v", scConfig)
 
 	//start rest service
-	server, err := common.StartPubSubService(wg, scConfig)
+	_, err := common.StartPubSubService(wg, scConfig)
 	assert.Nil(t, err)
 
 	// imitate main process
@@ -85,9 +88,7 @@ func TestSidecar_MainWithAMQP(t *testing.T) {
 	assert.NotEmpty(t, sub.EndPointURI)
 	assert.NotEmpty(t, sub.URILocation)
 	log.Printf("Subscription \n%s:", sub.String())
-
 	close(scConfig.CloseCh)
-	server.Shutdown()
 }
 
 func TestSidecar_MainWithOutAMQP(t *testing.T) {
@@ -102,8 +103,8 @@ func TestSidecar_MainWithOutAMQP(t *testing.T) {
 	scConfig = &common.SCConfiguration{
 		EventInCh:  make(chan *channel.DataChan, channelBufferSize),
 		EventOutCh: make(chan *channel.DataChan, channelBufferSize),
-		CloseCh:    make(chan bool),
-		APIPort:    0,
+		CloseCh:    make(chan struct{}),
+		APIPort:    apiPort,
 		APIPath:    "/api/cloudNotifications/v1/",
 		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
 		StorePath:  storePath,
@@ -115,7 +116,7 @@ func TestSidecar_MainWithOutAMQP(t *testing.T) {
 	scConfig.PubSubAPI.DisableTransport()
 
 	//start rest service
-	server, err := common.StartPubSubService(wg, scConfig)
+	_, err := common.StartPubSubService(wg, scConfig)
 	assert.Nil(t, err)
 
 	// imitate main process
@@ -145,8 +146,5 @@ func TestSidecar_MainWithOutAMQP(t *testing.T) {
 	assert.NotEmpty(t, sub.EndPointURI)
 	assert.NotEmpty(t, sub.URILocation)
 	log.Printf("Subscription \n%s:", sub.String())
-
 	close(scConfig.CloseCh)
-	server.Shutdown()
-
 }

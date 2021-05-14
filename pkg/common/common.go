@@ -37,7 +37,7 @@ import (
 type SCConfiguration struct {
 	EventInCh  chan *channel.DataChan
 	EventOutCh chan *channel.DataChan
-	CloseCh    chan bool
+	CloseCh    chan struct{}
 	APIPort    int
 	APIPath    string
 	PubSubAPI  *v1pubsub.API
@@ -70,9 +70,7 @@ func GetBoolEnv(key string) bool {
 func StartPubSubService(wg *sync.WaitGroup, scConfig *SCConfiguration) (*restapi.Server, error) {
 	// init
 	server := restapi.InitServer(scConfig.APIPort, scConfig.APIPath, scConfig.StorePath, scConfig.EventInCh, scConfig.CloseCh)
-	defer wg.Done()
-	wg.Add(1)
-	go server.Start(wg)
+	server.Start()
 	err := server.EndPointHealthChk()
 	if err == nil {
 		scConfig.BaseURL = server.GetHostPath()
