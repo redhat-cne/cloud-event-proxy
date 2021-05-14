@@ -36,8 +36,8 @@ func init() {
 	scConfig = &common.SCConfiguration{
 		EventInCh:  make(chan *channel.DataChan, channelBufferSize),
 		EventOutCh: make(chan *channel.DataChan, channelBufferSize),
-		CloseCh:    make(chan bool),
-		APIPort:    0,
+		CloseCh:    make(chan struct{}),
+		APIPort:    8989,
 		APIPath:    "/api/cne/",
 		PubSubAPI:  v1pubsub.GetAPIInstance("../.."),
 		StorePath:  "../..",
@@ -85,7 +85,7 @@ func TestLoadAMQPPlugin(t *testing.T) {
 }
 
 func TestLoadPTPPlugin(t *testing.T) {
-	scConfig.CloseCh = make(chan bool)
+	scConfig.CloseCh = make(chan struct{})
 	wg := &sync.WaitGroup{}
 	_, err := common.StartPubSubService(wg, scConfig)
 	assert.Nil(t, err)

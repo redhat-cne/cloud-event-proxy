@@ -22,12 +22,14 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
+
+	"github.com/redhat-cne/sdk-go/pkg/util/wait"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/localmetrics"
 	log "github.com/sirupsen/logrus"
 
-	restapi "github.com/redhat-cne/rest-api"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 
@@ -48,7 +50,6 @@ var (
 	apiPort           int
 	channelBufferSize int = 10
 	scConfig          *common.SCConfiguration
-	pubSubAPI         *restapi.Server
 	metricsAddr       string
 	apiPath           string = "/api/cloudNotifications/v1/"
 )
@@ -74,7 +75,7 @@ func main() {
 	scConfig = &common.SCConfiguration{
 		EventInCh:  make(chan *channel.DataChan, channelBufferSize),
 		EventOutCh: make(chan *channel.DataChan, channelBufferSize),
-		CloseCh:    make(chan bool),
+		CloseCh:    make(chan struct{}),
 		APIPort:    apiPort,
 		APIPath:    apiPath,
 		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
@@ -85,10 +86,10 @@ func main() {
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
-	go metricServer(metricsAddr)
+	metricServer(metricsAddr)
 
 	var err error
-	pubSubAPI, err = common.StartPubSubService(&wg, scConfig)
+	_, err = common.StartPubSubService(&wg, scConfig)
 	if err != nil {
 		log.Fatal("pub/sub service API failed to start.")
 	}
@@ -118,8 +119,7 @@ func main() {
 	go func() {
 		<-c
 		//clean up
-		scConfig.CloseCh <- true
-		pubSubAPI.Shutdown()
+		close(scConfig.CloseCh)
 		os.Exit(1)
 	}()
 
@@ -132,12 +132,15 @@ func main() {
 
 func metricServer(address string) {
 	log.Info("starting metrics")
-	http.Handle("/metrics", promhttp.Handler())
-	// always returns error. ErrServerClosed on graceful close
-	if err := http.ListenAndServe(address, nil); err != http.ErrServerClosed {
-		// unexpected error. port in use?
-		log.Errorf("metrics server error: %v", err)
-	}
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+
+	go wait.Until(func() {
+		err := http.ListenAndServe(address, mux)
+		if err != nil {
+			log.Errorf("error with metrics server %s\n, will retry to establish", err.Error())
+		}
+	}, 5*time.Second, scConfig.CloseCh)
 }
 
 //ProcessOutChannel this process the out channel;data put out by amqp

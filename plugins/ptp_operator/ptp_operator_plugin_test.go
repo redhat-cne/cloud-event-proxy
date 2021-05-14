@@ -41,14 +41,15 @@ var (
 	storePath                    = "../../.."
 	resourceAddress       string = "/cluster/node/ptp"
 	resourceStatusAddress string = "/cluster/node/ptp/status"
+	apiPort               int    = 8990
 )
 
 func TestMain(m *testing.M) {
 	scConfig = &common.SCConfiguration{
 		EventInCh:  make(chan *channel.DataChan, channelBufferSize),
 		EventOutCh: make(chan *channel.DataChan, channelBufferSize),
-		CloseCh:    make(chan bool),
-		APIPort:    0,
+		CloseCh:    make(chan struct{}),
+		APIPort:    apiPort,
 		APIPath:    "/api/test-cloud/",
 		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
 		StorePath:  storePath,
@@ -70,7 +71,7 @@ func cleanUP() {
 //Test_StartWithAMQP this is integration test skips if QDR is not connected
 func Test_StartWithAMQP(t *testing.T) {
 	defer cleanUP()
-	scConfig.CloseCh = make(chan bool, 1)
+	scConfig.CloseCh = make(chan struct{})
 	scConfig.PubSubAPI.EnableTransport()
 	log.Printf("loading amqp with host %s", scConfig.AMQPHost)
 	amqpInstance, err := v1amqp.GetAMQPInstance(scConfig.AMQPHost, scConfig.EventInCh, scConfig.EventOutCh, scConfig.CloseCh)
@@ -110,14 +111,14 @@ func Test_StartWithAMQP(t *testing.T) {
 	assert.Equal(t, channel.SUCCESS, event2.Status)
 	log.Printf("got events from channel event 2%#v\n", event2)
 	log.Printf("Closing the channels")
-	scConfig.CloseCh <- true // close the channel
+	close(scConfig.CloseCh) // close the channel
 	pubs := scConfig.PubSubAPI.GetPublishers()
 	assert.Equal(t, len(pubs), 1)
 }
 
 func Test_StartWithOutAMQP(t *testing.T) {
 	defer cleanUP()
-	scConfig.CloseCh = make(chan bool, 1)
+	scConfig.CloseCh = make(chan struct{})
 	scConfig.PubSubAPI.DisableTransport()
 	log.Printf("loading amqp with host %s", scConfig.AMQPHost)
 	go ProcessInChannel()
@@ -151,18 +152,13 @@ func Test_StartWithOutAMQP(t *testing.T) {
 	assert.Equal(t, channel.EVENT, EventData.Type)
 	log.Printf("got events from channel event 2%v\n", EventData)
 	log.Printf("Closing the channels")
-	scConfig.CloseCh <- true // close the channel
+	close(scConfig.CloseCh) // close the channel
 	pubs := scConfig.PubSubAPI.GetPublishers()
 	assert.Equal(t, len(pubs), 1)
 
 }
 
-func Test_CleanUp(t *testing.T) {
-	scConfig.CloseCh <- true // close the channel
-	server.Shutdown()
-}
-
-//ProcessInChannel will be  called if Transport is disabled
+// ProcessInChannel will be  called if Transport is disabled
 func ProcessInChannel() {
 	for { //nolint:gosimple
 		select {
