@@ -23,7 +23,7 @@ var (
 	channelBufferSize int = 10
 	scConfig          *common.SCConfiguration
 	resourceAddress   string = "/test/main"
-	apiPort           int    = 8989
+	apiPort           int    = 8990
 )
 
 func storeCleanUp() {

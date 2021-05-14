@@ -16,13 +16,14 @@ package plugins
 
 import (
 	"fmt"
+	"sync"
+	"testing"
+
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"github.com/redhat-cne/sdk-go/pkg/errorhandler"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 	"github.com/stretchr/testify/assert"
-	"sync"
-	"testing"
 )
 
 var (
@@ -75,7 +76,7 @@ func TestLoadAMQPPlugin(t *testing.T) {
 					t.Skipf("skipping amqp for this test %s", e.Error())
 				default:
 					if tc.wantErr != nil && err != nil {
-						assert.EqualError(t, tc.wantErr, e.Error())
+						assert.EqualError(t, err, tc.wantErr.Error())
 					}
 				}
 			}
@@ -109,7 +110,7 @@ func TestLoadPTPPlugin(t *testing.T) {
 			pLoader = Handler{Path: tc.pgPath}
 			err := pLoader.LoadPTPPlugin(wg, scConfig, nil)
 			if tc.wantErr != nil && err != nil {
-				assert.EqualError(t, tc.wantErr, err.Error())
+				assert.EqualError(t, err, tc.wantErr.Error())
 			}
 		})
 	}
