@@ -15,6 +15,7 @@
 package plugins
 
 import (
+	"fmt"
 	"sync"
 	"testing"
 
@@ -51,17 +52,17 @@ func TestLoadAMQPPlugin(t *testing.T) {
 	testCases := map[string]struct {
 		pgPath  string
 		amqHost string
-		wantErr string
+		wantErr error
 	}{
 		"Invalid Plugin Path": {
 			pgPath:  "wrong",
 			amqHost: "",
-			wantErr: "amqp plugin not found in the path wrong",
+			wantErr: fmt.Errorf("amqp plugin not found in the path wrong"),
 		},
 		"Invalid amqp host": {
 			pgPath:  "../../plugins",
 			amqHost: "",
-			wantErr: "error connecting to amqp",
+			wantErr: fmt.Errorf("error connecting to amqp"),
 		},
 	}
 
@@ -74,8 +75,8 @@ func TestLoadAMQPPlugin(t *testing.T) {
 				case errorhandler.AMQPConnectionError:
 					t.Skipf("skipping amqp for this test %s", e.Error())
 				default:
-					if tc.wantErr != "" && err != nil {
-						assert.EqualError(t, err, tc.wantErr)
+					if tc.wantErr != nil && err != nil {
+						assert.EqualError(t, err, tc.wantErr.Error())
 					}
 				}
 			}
@@ -92,15 +93,15 @@ func TestLoadPTPPlugin(t *testing.T) {
 
 	testCases := map[string]struct {
 		pgPath  string
-		wantErr string
+		wantErr error
 	}{
 		"Invalid Plugin Path": {
 			pgPath:  "wrong",
-			wantErr: "ptp plugin not found in the path wrong",
+			wantErr: fmt.Errorf("ptp plugin not found in the path wrong"),
 		},
 		"Valid Plugin Path": {
 			pgPath:  "../../plugins",
-			wantErr: "",
+			wantErr: nil,
 		},
 	}
 
@@ -108,8 +109,8 @@ func TestLoadPTPPlugin(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			pLoader = Handler{Path: tc.pgPath}
 			err := pLoader.LoadPTPPlugin(wg, scConfig, nil)
-			if tc.wantErr != "" && err != nil {
-				assert.EqualError(t, err, tc.wantErr)
+			if tc.wantErr != nil && err != nil {
+				assert.EqualError(t, err, tc.wantErr.Error())
 			}
 		})
 	}
