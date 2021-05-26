@@ -93,3 +93,30 @@ func (pl Handler) LoadPTPPlugin(wg *sync.WaitGroup, scConfig *common.SCConfigura
 	}
 	return startFunc(wg, scConfig, fn)
 }
+
+// LoadHwEventPlugin loads hw event plugin
+func (pl Handler) LoadHwEventPlugin(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e ceevent.Event) error) error {
+	restPlugin, err := filepath.Glob(fmt.Sprintf("%s/hw_event_plugin.so", pl.Path))
+	if err != nil {
+		log.Fatalf("cannot load hw event plugin %v", err)
+	}
+	if len(restPlugin) == 0 {
+		return fmt.Errorf("hw event plugin not found in the path %s", pl.Path)
+	}
+	p, err := plugin.Open(restPlugin[0])
+	if err != nil {
+		log.Fatalf("cannot open hw event plugin %v", err)
+		return err
+	}
+
+	symbol, err := p.Lookup("Start")
+	if err != nil {
+		log.Fatalf("cannot open hw event plugin start method %v", err)
+		return err
+	}
+	startFunc, ok := symbol.(func(*sync.WaitGroup, *common.SCConfiguration, func(e ceevent.Event) error) error)
+	if !ok {
+		log.Fatalf("Plugin has no 'Start(*sync.WaitGroup, *common.SCConfiguration, func(e ceevent.Event) error)(error)' function")
+	}
+	return startFunc(wg, scConfig, fn)
+}

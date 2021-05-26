@@ -17,6 +17,12 @@ package common
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"os"
+	"strconv"
+	"sync"
+	"time"
+
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	restapi "github.com/redhat-cne/rest-api"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
@@ -26,24 +32,20 @@ import (
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 	log "github.com/sirupsen/logrus"
-	"net/http"
-	"os"
-	"strconv"
-	"sync"
-	"time"
 )
 
 // SCConfiguration simple configuration to initialize variables
 type SCConfiguration struct {
-	EventInCh  chan *channel.DataChan
-	EventOutCh chan *channel.DataChan
-	CloseCh    chan struct{}
-	APIPort    int
-	APIPath    string
-	PubSubAPI  *v1pubsub.API
-	StorePath  string
-	AMQPHost   string
-	BaseURL    *types.URI
+	EventInCh        chan *channel.DataChan
+	EventOutCh       chan *channel.DataChan
+	CloseCh          chan struct{}
+	APIPort          int
+	APIPath          string
+	PubSubAPI        *v1pubsub.API
+	StorePath        string
+	AMQPHost         string
+	BaseURL          *types.URI
+	WebhookTargetPub *pubsub.PubSub
 }
 
 // GetIntEnv get int value from env
@@ -144,10 +146,10 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 	rc := restclient.New()
 	err := rc.PostEvent(types.ParseURI(url), e)
 	if err != nil {
-		log.Errorf("error posting ptp events %v", err)
+		log.Errorf("error posting events %v", err)
 		return err
 	}
-	log.Errorf("published ptp event %s", e.String())
+	log.Errorf("published event %s", e.String())
 
 	return nil
 }

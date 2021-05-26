@@ -112,6 +112,13 @@ func main() {
 		}
 	}
 
+	if common.GetBoolEnv("HW_PLUGIN") {
+		err := pl.LoadHwEventPlugin(&wg, scConfig, nil)
+		if err != nil {
+			log.Fatalf("error loading hw plugin %v", err)
+		}
+	}
+
 	log.Info("ready...")
 	c := make(chan os.Signal)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)

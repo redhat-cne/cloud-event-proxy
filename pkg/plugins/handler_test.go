@@ -35,15 +35,16 @@ var (
 
 func init() {
 	scConfig = &common.SCConfiguration{
-		EventInCh:  make(chan *channel.DataChan, channelBufferSize),
-		EventOutCh: make(chan *channel.DataChan, channelBufferSize),
-		CloseCh:    make(chan struct{}),
-		APIPort:    8989,
-		APIPath:    "/api/cne/",
-		PubSubAPI:  v1pubsub.GetAPIInstance("../.."),
-		StorePath:  "../..",
-		AMQPHost:   "amqp:localhost:5672",
-		BaseURL:    nil,
+		EventInCh:        make(chan *channel.DataChan, channelBufferSize),
+		EventOutCh:       make(chan *channel.DataChan, channelBufferSize),
+		CloseCh:          make(chan struct{}),
+		APIPort:          8989,
+		APIPath:          "/api/cne/",
+		PubSubAPI:        v1pubsub.GetAPIInstance("../.."),
+		StorePath:        "../..",
+		AMQPHost:         "amqp:localhost:5672",
+		BaseURL:          nil,
+		WebhookTargetPub: nil,
 	}
 }
 
