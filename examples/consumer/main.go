@@ -37,6 +37,7 @@ var (
 	apiPath                string = "/api/cloudNotifications/v1/"
 	resourceAddressSports  string = "/news-service/sports"
 	resourceAddressFinance string = "/news-service/finance"
+	resourceAddressHwCpu   string = "/hw-event/cpu"
 	localAPIAddr           string = "localhost:9089"
 )
 
@@ -55,6 +56,8 @@ func main() {
 		Resource: resourceAddressSports,
 	}, &pubsub.PubSub{
 		Resource: resourceAddressFinance,
+	}, &pubsub.PubSub{
+		Resource: resourceAddressHwCpu,
 	}}
 	healthURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
