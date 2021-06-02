@@ -66,7 +66,7 @@ build-amqp-plugin:
 build-ptp-operator-plugin:
 	go build -mod=readonly -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 
-build-hw-operator-plugin:
+build-hw-event-plugin:
 	go build -mod=readonly -o plugins/hw_event_plugin.so -buildmode=plugin plugins/hw_event/hw_event_plugin.go
 
 run:

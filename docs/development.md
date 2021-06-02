@@ -23,9 +23,9 @@ make run-producer
 #### Push images to a repo
 
 ```shell
-podman push localhost/cloud-event-proxy:edf2bcfd-dirty quay.io/aneeshkp/cloud-event-proxy:latest
-podman push localhost/cloud-native-event-consumer:edf2bcfd-dirty quay.io/aneeshkp/cloud-native-event-consumer:latest
-podman push localhost/cloud-native-event-producer:edf2bcfd-dirty quay.io/aneeshkp/cloud-native-event-producer:latest
+podman push localhost/cloud-event-proxy:75fa2432-dirty quay.io/jacding/cloud-event-proxy:latest
+podman push localhost/cloud-native-event-consumer:75fa2432-dirty quay.io/jacding/cloud-native-event-consumer:latest
+podman push localhost/cloud-native-event-producer:75fa2432-dirty quay.io/jacding/cloud-native-event-producer:latest
 ```
 
 Use producer.yaml,consumer.yaml and service.yaml from examples/manifests folder to deploy to a cluster.
@@ -45,9 +45,9 @@ mv kustomize /usr/local/bin/
 ### Set Env variables
 ```shell
 export version=latest 
-export SIDECAR_IMG=quay.io/aneeshkp/cloud-event-proxy
-export  PRODUCER_IMG=quay.io/aneeshkp/cloud-native-event-producer
-export  CONSUMER_IMG=quay.io/aneeshkp/cloud-native-event-consumer
+export SIDECAR_IMG=quay.io/jacding/cloud-event-proxy
+export PRODUCER_IMG=quay.io/jacding/cloud-native-event-producer
+export CONSUMER_IMG=quay.io/jacding/cloud-native-event-consumer
 ```
 
 ### Setup AMQ Interconnect

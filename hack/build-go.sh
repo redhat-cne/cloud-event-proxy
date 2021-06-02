@@ -2,6 +2,5 @@
 
 set -eu
 
-make build-ptp-operator-plugin
-make build-amqp-plugin
+make build-plugins
 make build-only

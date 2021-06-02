@@ -39,12 +39,13 @@ import (
 var (
 	resourceAddress string        = "/hw-event/cpu"
 	eventInterval   time.Duration = time.Second * 5
-	apiPath         string        = "/api/cloudNotifications/v1/"
-	apiAddr         string        = "localhost:8080"
-	localAPIAddr    string        = "localhost:9088"
-	localAPIPath    string        = "ack/event"
-	hwSubUrl        string        = "https://10.19.109.249/redfish/v1/EventService/Subscriptions/"
-	hwEventTypes    []string      = []string{"StatusChange", "ResourceUpdated", "ResourceAdded", "ResourceRemoved", "Alert"}
+
+	// TODO : pass these from flag.StringVar in main.go
+	apiPath      string   = "/api/cloudNotifications/v1/"
+	apiAddr      string   = "localhost:8080"
+	localAPIAddr string   = "localhost:9087"
+	hwSubUrl     string   = "https://10.19.109.249/redfish/v1/EventService/Subscriptions/"
+	hwEventTypes []string = []string{"StatusChange", "ResourceUpdated", "ResourceAdded", "ResourceRemoved", "Alert"}
 )
 
 type HttpHeader struct {
@@ -62,7 +63,6 @@ type HwSubPayload struct {
 
 // Start hw event plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
 func Start(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e cneevent.Event) error) error { //nolint:deadcode,unused
-
 	status, _ := createHwEventSubscription(hwEventTypes)
 	if status != http.StatusCreated {
 		err := fmt.Errorf("hw event subscription creation api at %s, returned status %d", hwSubUrl, status)
@@ -72,7 +72,7 @@ func Start(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e cneev
 	//channel for the transport handler subscribed to get and set events
 	//eventInCh := make(chan *channel.DataChan, 10)
 	pubSubInstance := v1pubsub.GetAPIInstance(".")
-	endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: localAPIAddr, Path: localAPIPath}}
+	endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: apiAddr, Path: apiPath}}
 	// create publisher
 	pub, err := pubSubInstance.CreatePublisher(v1pubsub.NewPubSub(endpointURL, resourceAddress))
 
@@ -84,12 +84,12 @@ func Start(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e cneev
 
 	// once the publisher response is received, create a transport sender object to send events.
 	v1amqp.CreateSender(scConfig.EventInCh, pub.GetResource())
+	log.Printf("Created sender %v", pub.GetResource())
 
-	// serve ack/event event response
 	go server()
 
-	log.Printf("Created sender %v", pub.GetResource())
-	go createTestEvents(pub)
+	// go createTestEvents(pub)
+
 	return nil
 }
 
@@ -101,7 +101,7 @@ func createHwEventSubscription(eventTypes []string) (int, []byte) {
 		Protocol: "Redfish",
 		Context:  "any string is valid",
 		// must be https
-		Destination: "https://localhost:8080/api/cloudNotifications/v1/create/event",
+		Destination: "https://hw-event-proxy-service-cloud-native-events.apps.cnfde7.ptp.lab.eng.bos.redhat.com/webhook",
 		EventTypes:  eventTypes,
 		HttpHeaders: []HttpHeader{header},
 	}
@@ -177,7 +177,7 @@ func publishEvent(e cneevent.Event) {
 	//create publisher
 	url := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
-		Path: fmt.Sprintf("%s%s", apiPath, "create/event")}}
+		Path: fmt.Sprintf("%s%s", apiPath, "webhook")}}
 	rc := restclient.New()
 	err := rc.PostEvent(url, e)
 	if err != nil {
@@ -189,6 +189,7 @@ func publishEvent(e cneevent.Event) {
 
 func server() {
 	http.HandleFunc("/ack/event", ackEvent)
+	http.HandleFunc("/webhook", publishHwEvent)
 	http.ListenAndServe(localAPIAddr, nil)
 }
 
@@ -196,7 +197,7 @@ func ackEvent(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
 	bodyBytes, err := ioutil.ReadAll(req.Body)
 	if err != nil {
-		log.Errorf("error reading acknowledgment  %v", err)
+		log.Errorf("error reading acknowledgment %v", err)
 	}
 	e := string(bodyBytes)
 	if e != "" {
@@ -204,4 +205,22 @@ func ackEvent(w http.ResponseWriter, req *http.Request) {
 	} else {
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+// publishHwEvent gets redfish HW events and converts it to cloud native event and publishes to the hw publisher
+func publishHwEvent(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+	bodyBytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Errorf("error reading hw event %v", err)
+		return
+	}
+
+	data := string(bodyBytes)
+	if err = json.Unmarshal(bodyBytes, &data); err != nil {
+		log.Errorf("error decoding hw event data %v", err)
+		return
+	}
+
+	log.Printf("Received Webhook event data %v", data)
 }

@@ -61,6 +61,7 @@ func main() {
 	flag.StringVar(&storePath, "store-path", ".", "The path to store publisher and subscription info.")
 	flag.StringVar(&amqpHost, "transport-host", "amqp:localhost:5672", "The transport bus hostname or service name.")
 	flag.IntVar(&apiPort, "api-port", 8080, "The address the rest api endpoint binds to.")
+
 	flag.Parse()
 
 	// Register metrics
