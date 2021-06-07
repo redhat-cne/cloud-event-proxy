@@ -51,7 +51,7 @@ build-examples:
 	go build -mod=readonly -o ./build/cloud-native-event-producer ./examples/producer/main.go
 
 lint:
-	golint `go list ./... | grep -v vendor`
+	golint -set_exit_status `go list ./... | grep -v vendor`
 	golangci-lint run
 
 build-plugins:

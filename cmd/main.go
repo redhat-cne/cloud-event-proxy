@@ -62,7 +62,6 @@ func main() {
 	flag.StringVar(&storePath, "store-path", ".", "The path to store publisher and subscription info.")
 	flag.StringVar(&amqpHost, "transport-host", "amqp:localhost:5672", "The transport bus hostname or service name.")
 	flag.IntVar(&apiPort, "api-port", 8080, "The address the rest api endpoint binds to.")
-	flag.IntVar(&hwEventPort, "hw-event-port", 9087, "The address the hw event webhook binds to.")
 
 	flag.Parse()
 
@@ -76,16 +75,15 @@ func main() {
 	prometheus.Unregister(prometheus.NewGoCollector())
 
 	scConfig = &common.SCConfiguration{
-		EventInCh:   make(chan *channel.DataChan, channelBufferSize),
-		EventOutCh:  make(chan *channel.DataChan, channelBufferSize),
-		CloseCh:     make(chan struct{}),
-		APIPort:     apiPort,
-		APIPath:     apiPath,
-		PubSubAPI:   v1pubsub.GetAPIInstance(storePath),
-		StorePath:   storePath,
-		AMQPHost:    amqpHost,
-		BaseURL:     nil,
-		HwEventPort: hwEventPort,
+		EventInCh:  make(chan *channel.DataChan, channelBufferSize),
+		EventOutCh: make(chan *channel.DataChan, channelBufferSize),
+		CloseCh:    make(chan struct{}),
+		APIPort:    apiPort,
+		APIPath:    apiPath,
+		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
+		StorePath:  storePath,
+		AMQPHost:   amqpHost,
+		BaseURL:    nil,
 	}
 
 	wg := sync.WaitGroup{}

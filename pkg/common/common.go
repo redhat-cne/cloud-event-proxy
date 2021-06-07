@@ -36,16 +36,15 @@ import (
 
 // SCConfiguration simple configuration to initialize variables
 type SCConfiguration struct {
-	EventInCh   chan *channel.DataChan
-	EventOutCh  chan *channel.DataChan
-	CloseCh     chan struct{}
-	APIPort     int
-	APIPath     string
-	PubSubAPI   *v1pubsub.API
-	StorePath   string
-	AMQPHost    string
-	BaseURL     *types.URI
-	HwEventPort int
+	EventInCh  chan *channel.DataChan
+	EventOutCh chan *channel.DataChan
+	CloseCh    chan struct{}
+	APIPort    int
+	APIPath    string
+	PubSubAPI  *v1pubsub.API
+	StorePath  string
+	AMQPHost   string
+	BaseURL    *types.URI
 }
 
 // GetIntEnv get int value from env

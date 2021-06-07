@@ -26,18 +26,19 @@ spec:
             - "--store-path=/store"
             - "--transport-host=amqp://amq-interconnect.amqp.svc.cluster.local"
             - "--api-port=8080"
-            - "--hw-event-port=9087"
           volumeMounts:
             - name: pubsubstore
               mountPath: /store
           ports:
-            - name: metrics-port
-              containerPort: 9091
             - name: hw-event-port
               containerPort: 9087
+            - name: metrics-port
+              containerPort: 9091
           env:
             - name: HW_PLUGIN
               value: "true"
+            - name: HW_EVENT_PORT
+              value: "9087"
             - name: MY_NODE_NAME
               valueFrom:
                 fieldRef:

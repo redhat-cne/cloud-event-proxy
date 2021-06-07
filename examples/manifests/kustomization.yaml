@@ -6,6 +6,7 @@ resources:
 - roles.yaml
 - service.yaml
 - consumer.yaml
+- producer.yaml
 - route.yaml
 - hw-event-proxy.yaml
 replicas:

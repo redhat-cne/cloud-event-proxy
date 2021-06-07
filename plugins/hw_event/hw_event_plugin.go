@@ -21,45 +21,39 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"net/url"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	cneevent "github.com/redhat-cne/sdk-go/pkg/event"
-	"github.com/redhat-cne/sdk-go/pkg/pubsub"
-	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 	log "github.com/sirupsen/logrus"
 )
 
 var (
-	resourceAddress string        = "/hw-event"
-	eventInterval   time.Duration = time.Second * 5
-
-	// TODO : pass these from flag.StringVar in main.go
-	apiPath      string   = "/api/cloudNotifications/v1/"
-	apiAddr      string   = "localhost:8080"
-	hwSubUrl     string   = "https://10.19.109.249/redfish/v1/EventService/Subscriptions/"
-	hwEventTypes []string = []string{"StatusChange", "ResourceUpdated", "ResourceAdded", "ResourceRemoved", "Alert"}
-	pub          pubsub.PubSub
+	resourceAddress string   = "/hw-event"
+	hwSubURL        string   = "https://10.19.109.249/redfish/v1/EventService/Subscriptions/"
+	hwEventTypes    []string = []string{"StatusChange", "ResourceUpdated", "ResourceAdded", "ResourceRemoved", "Alert"}
 )
 
-type HttpHeader struct {
+// HTTPHeader temporary code for redfish subscription
+type HTTPHeader struct {
 	ContentType     string `json:"Content-Type" example:"application/json"`
 	ContentLanguage string `json:"Content-Language" example:"en-US"`
 }
 
+// HwSubPayload temporary code for redfish subscription
 type HwSubPayload struct {
 	Protocol    string       `json:"Protocol" example:"Redfish"`
 	Context     string       `json:"Context"`
 	Destination string       `json:"Destination" example:"https://www.hw-event-proxy-host.com/webhook"`
 	EventTypes  []string     `json:"EventTypes" example:["StatusChange", "ResourceUpdated", "ResourceAdded", "ResourceRemoved", "Alert"]`
-	HttpHeaders []HttpHeader `json:"HttpHeaders"`
+	HTTPHeaders []HTTPHeader `json:"HttpHeaders"`
 }
 
+// RedfishEvent to be replaced by a complete schema
 type RedfishEvent struct {
 	OdataContext string `json:"@odata.context"`
 	OdataType    string `json:"@odata.type"`
@@ -87,19 +81,15 @@ type RedfishEvent struct {
 // Start hw event plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
 func Start(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e cneevent.Event) error) error { //nolint:deadcode,unused
 
-	webhookUrl := getWebhookAddr()
-	status, _ := createHwEventSubscription(hwEventTypes, webhookUrl)
+	webhookURL := getWebhookAddr()
+	status, _ := createHwEventSubscription(hwEventTypes, webhookURL)
 	if status != http.StatusCreated {
-		err := fmt.Errorf("hw event subscription creation api at %s, returned status %d", hwSubUrl, status)
-		return err
+		log.Errorf("hw event subscription creation api at %s, returned status %d", hwSubURL, status)
+		// if failed, create a subsciption manually
 	}
 
-	//channel for the transport handler subscribed to get and set events
-	//eventInCh := make(chan *channel.DataChan, 10)
-	pubSubInstance := v1pubsub.GetAPIInstance(".")
-	endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: apiAddr, Path: apiPath}}
 	// create publisher
-	pub, err := pubSubInstance.CreatePublisher(v1pubsub.NewPubSub(endpointURL, resourceAddress))
+	pub, err := scConfig.PubSubAPI.CreatePublisher(v1pubsub.NewPubSub(scConfig.BaseURL, resourceAddress))
 
 	if err != nil {
 		log.Errorf("failed to create a publisher %v", err)
@@ -111,7 +101,7 @@ func Start(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e cneev
 	v1amqp.CreateSender(scConfig.EventInCh, pub.GetResource())
 	log.Printf("Created sender %v", pub.GetResource())
 
-	startWebhook(scConfig)
+	startWebhook()
 
 	return nil
 }
@@ -128,17 +118,17 @@ func getWebhookAddr() string {
 	return fmt.Sprintf("https://%s/webhook", myHost)
 }
 
-// createHwEventSubscription creates a subscription for Redfish HW events
-func createHwEventSubscription(eventTypes []string, webhookUrl string) (int, []byte) {
+// createHwEventSubscription temporary code for redfish subscription
+func createHwEventSubscription(eventTypes []string, webhookURL string) (int, []byte) {
 
-	header := HttpHeader{ContentType: "application/json", ContentLanguage: "en-US"}
+	header := HTTPHeader{ContentType: "application/json", ContentLanguage: "en-US"}
 	data := HwSubPayload{
 		Protocol: "Redfish",
 		Context:  "any string is valid",
 		// must be https
-		Destination: webhookUrl,
+		Destination: webhookURL,
 		EventTypes:  eventTypes,
-		HttpHeaders: []HttpHeader{header},
+		HTTPHeaders: []HTTPHeader{header},
 	}
 
 	tr := &http.Transport{
@@ -155,7 +145,7 @@ func createHwEventSubscription(eventTypes []string, webhookUrl string) (int, []b
 	}
 	body := bytes.NewReader(payloadBytes)
 
-	req, err := http.NewRequest("POST", hwSubUrl, body)
+	req, err := http.NewRequest("POST", hwSubURL, body)
 	if err != nil {
 		log.Errorf("error creating post request %v", err)
 		return http.StatusBadRequest, nil
@@ -165,7 +155,7 @@ func createHwEventSubscription(eventTypes []string, webhookUrl string) (int, []b
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Errorf("error in post response %v to %s ", err, hwSubUrl)
+		log.Errorf("error in post response %v to %s ", err, hwSubURL)
 		return http.StatusBadRequest, nil
 	}
 	if resp.Body != nil {
@@ -182,10 +172,10 @@ func createHwEventSubscription(eventTypes []string, webhookUrl string) (int, []b
 
 }
 
-func startWebhook(scConfig *common.SCConfiguration) {
+func startWebhook() {
 	http.HandleFunc("/ack/event", ackEvent)
 	http.HandleFunc("/webhook", publishHwEvent)
-	go http.ListenAndServe(fmt.Sprintf(":%d", scConfig.HwEventPort), nil)
+	go http.ListenAndServe(fmt.Sprintf(":%d", common.GetIntEnv("HW_EVENT_PORT")), nil)
 }
 
 func ackEvent(w http.ResponseWriter, req *http.Request) {
