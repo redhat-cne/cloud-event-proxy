@@ -1,62 +1,44 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cloud-native-producer-deployment
+  name: hw-event-proxy
   namespace: cloud-native-events
   labels:
-    app: producer
+    app: hw-event-proxy
+  annotations:
+    release.openshift.io/version: "{{.ReleaseVersion}}"
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: producer
+      app: hw-event-proxy
   template:
     metadata:
       labels:
-        app: producer
+        app: hw-event-proxy
     spec:
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: app
-                    operator: In
-                    values:
-                      - local
-      serviceAccountName: sidecar-producer-sa
+      serviceAccountName: hw-event-proxy-sa
       containers:
-        - name: cloud-native-event-producer
-          image: cloud-native-event-producer
-          args:
-            - "--local-api-addr=127.0.0.1:9089"
-            - "--api-path=/api/cloudNotifications/v1/"
-            - "--api-addr=127.0.0.1:8080"
-          env:
-            - name: MY_NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-            - name: MY_POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: MY_POD_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-            - name: MY_POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-        - name: cloud-native-event-sidecar
-          image: cloud-event-proxy
+        - name: cloud-native-event-handler
+          image: quay.io/jacding/cloud-event-proxy:latest
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
             - "--transport-host=amqp://amq-interconnect.amqp.svc.cluster.local"
             - "--api-port=8080"
+          volumeMounts:
+            - name: pubsubstore
+              mountPath: /store
+          ports:
+            - name: hw-event-port
+              containerPort: 9087
+            - name: metrics-port
+              containerPort: 9091
           env:
+            - name: HW_PLUGIN
+              value: "true"
+            - name: HW_EVENT_PORT
+              value: "9087"
             - name: MY_NODE_NAME
               valueFrom:
                 fieldRef:
@@ -73,14 +55,9 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: status.podIP
-          volumeMounts:
-            - name: pubsubstore
-              mountPath: /store
-          ports:
-            - name: metrics-port
-              containerPort: 9091
         - name: kube-rbac-proxy
           image: quay.io/coreos/kube-rbac-proxy:v0.5.0
+          imagePullPolicy: Always
           args:
             - --logtostderr
             - --secure-listen-address=:8443
@@ -95,12 +72,14 @@ spec:
             requests:
               cpu: 10m
               memory: 20Mi
+          terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
-            - name: sidecar-certs
+            - name: hw-event-plugin-certs
               mountPath: /etc/metrics
+              readOnly: True
       volumes:
         - name: pubsubstore
           emptyDir: {}
-        - name: sidecar-certs
+        - name: hw-event-plugin-certs
           secret:
-            secretName: sidecar-producer-secret
+            secretName: hw-event-plugin-secret

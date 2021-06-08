@@ -7,11 +7,13 @@ resources:
 - service.yaml
 - consumer.yaml
 - producer.yaml
+- route.yaml
+- hw-event-proxy.yaml
 replicas:
 - count: 1
   name: cloud-native-consumer-deployment
 - count: 1
-  name: cloud-native-producer-deployment
+  name: hw-event-proxy
 images:
 - name: cloud-event-proxy
   newName: quay.io/aneeshkp/cloud-event-proxy

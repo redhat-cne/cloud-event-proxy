@@ -51,12 +51,13 @@ build-examples:
 	go build -mod=readonly -o ./build/cloud-native-event-producer ./examples/producer/main.go
 
 lint:
-	golint `go list ./... | grep -v vendor`
+	golint -set_exit_status `go list ./... | grep -v vendor`
 	golangci-lint run
 
 build-plugins:
 	go build -mod=readonly -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 	go build -mod=readonly -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
+	go build -mod=readonly -o plugins/hw_event_plugin.so -buildmode=plugin plugins/hw_event/hw_event_plugin.go
 
 
 build-amqp-plugin:
@@ -64,6 +65,9 @@ build-amqp-plugin:
 
 build-ptp-operator-plugin:
 	go build -mod=readonly -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
+
+build-hw-event-plugin:
+	go build -mod=readonly -o plugins/hw_event_plugin.so -buildmode=plugin plugins/hw_event/hw_event_plugin.go
 
 run:
 	go run cmd/main.go
@@ -92,4 +96,5 @@ travis:
 	make lint
 	go build -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 	go build -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
+	go build -o plugins/hw_event_plugin.so -buildmode=plugin plugins/hw_event/hw_event_plugin.go
 	go test ./...  -coverprofile=cover.out
