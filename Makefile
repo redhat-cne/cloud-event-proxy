@@ -91,9 +91,8 @@ undeploy-example:kustomize
 	cd ./examples/manifests  && $(KUSTOMIZE) edit set image cloud-event-proxy=${SIDECAR_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-producer=${PRODUCER_IMG} && $(KUSTOMIZE) edit set image  cloud-native-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl delete -f -
 
-# For Github CI
-travis:
-	make lint
+# For GitHub Actions CI
+gha:
 	go build -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 	go build -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 	go build -o plugins/hw_event_plugin.so -buildmode=plugin plugins/hw_event/hw_event_plugin.go
