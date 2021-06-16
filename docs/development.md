@@ -1,5 +1,9 @@
 ## Running examples locally
 
+### Install and run Apache Qpid Dispach Router
+sudo dnf install qpid-dispatch-router
+qdrouterd &
+
 ### Side car
 ```shell
 make build-plugins

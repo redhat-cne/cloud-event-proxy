@@ -41,8 +41,11 @@ import (
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	apimetrics "github.com/redhat-cne/rest-api/pkg/localmetrics"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
+	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
+	hwevent "github.com/redhat-cne/sdk-go/pkg/hwevent"
 	sdkmetrics "github.com/redhat-cne/sdk-go/pkg/localmetrics"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
+	v1hwevent "github.com/redhat-cne/sdk-go/v1/hwevent"
 )
 
 var (
@@ -159,7 +162,14 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 		select { //nolint:gosimple
 		case d := <-scConfig.EventOutCh: // do something that is put out by QDR
 			// regular events
-			event, err := v1event.GetCloudNativeEvents(*d.Data)
+			etype := d.Data.Type()
+			var event interface{}
+			var err error
+			if etype == "HW_EVENT" {
+				event, err = v1hwevent.GetCloudNativeEvents(*d.Data)
+			} else {
+				event, err = v1event.GetCloudNativeEvents(*d.Data)
+			}
 			if err != nil {
 				log.Errorf("error marshalling event data when reading from amqp %v\n %#v", err, d)
 				log.Infof("data %#v", d.Data)
@@ -172,12 +182,30 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 						}
 					} else if sub, ok := scConfig.PubSubAPI.HasSubscription(d.Address); ok {
 						if sub.EndPointURI != nil {
-							event.ID = sub.ID // set ID to the subscriptionID
-							if err := restClient.PostEvent(sub.EndPointURI, event); err != nil {
-								log.Errorf("error posting request at %s : %s", sub.EndPointURI, err)
-								localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
+							if etype == "HW_EVENT" {
+								event, ok := event.(hwevent.Event)
+								if !ok {
+									log.Errorf("got data of type %T but wanted hwevent.Event", event)
+								}
+								event.ID = sub.ID // set ID to the subscriptionID
+								if err := restClient.PostHwEvent(sub.EndPointURI, event); err != nil {
+									log.Errorf("error posting request at %s", sub.EndPointURI)
+									localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
+								} else {
+									localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
+								}
 							} else {
-								localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
+								event, ok := event.(ceevent.Event)
+								if !ok {
+									log.Errorf("got data of type %T but wanted ceevent.Event", event)
+								}
+								event.ID = sub.ID // set ID to the subscriptionID
+								if err := restClient.PostEvent(sub.EndPointURI, event); err != nil {
+									log.Errorf("error posting request at %s", sub.EndPointURI)
+									localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
+								} else {
+									localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
+								}
 							}
 						} else {
 							log.Warnf("endpoint uri not given, posting event to log %#v for address %s\n", event, d.Address)
@@ -223,10 +251,19 @@ func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 			} else if d.Type == channel.SENDER {
 				log.Warnf("no action taken: request to create sender for address %s was called,but transport is not enabled", d.Address)
 			} else if d.Type == channel.EVENT && d.Status == channel.NEW {
-				if e, err := v1event.GetCloudNativeEvents(*d.Data); err != nil {
+				etype := d.Data.Type()
+				log.Debugf("InChannle received event type %v", etype)
+				var event interface{}
+				var err error
+				if etype == "HW_EVENT" {
+					event, err = v1hwevent.GetCloudNativeEvents(*d.Data)
+				} else {
+					event, err = v1event.GetCloudNativeEvents(*d.Data)
+				}
+				if err != nil {
 					log.Warnf("error marshalling event data")
 				} else {
-					log.Warnf("amqp disabled,no action taken(can't send to a desitination): logging new event %s\n", e.String())
+					log.Warnf("amqp disabled,no action taken(can't send to a desitination): logging new event %v\n", event)
 				}
 				out := channel.DataChan{
 					Address:        d.Address,
