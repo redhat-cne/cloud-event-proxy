@@ -120,7 +120,6 @@ func (pl Handler) LoadHwEventPlugin(wg *sync.WaitGroup, scConfig *common.SCConfi
 	return startFunc(wg, scConfig, fn)
 }
 
-
 // LoadMockPlugin loads mock test  plugin
 func (pl Handler) LoadMockPlugin(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e interface{}) error) error {
 	mockPlugin, err := filepath.Glob(fmt.Sprintf("%s/mock_plugin.so", pl.Path))

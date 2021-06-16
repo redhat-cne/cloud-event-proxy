@@ -23,9 +23,13 @@ import (
 	"net/http"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
+	hwevent "github.com/redhat-cne/sdk-go/pkg/hwevent"
+
+	"github.com/redhat-cne/sdk-go/pkg/pubsub"
+	"github.com/redhat-cne/sdk-go/pkg/types"
+
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 	log "github.com/sirupsen/logrus"
@@ -35,6 +39,10 @@ var (
 	resourceAddress string   = "/hw-event"
 	hwSubURL        string   = "https://10.19.109.249/redfish/v1/EventService/Subscriptions/"
 	hwEventTypes    []string = []string{"StatusChange", "ResourceUpdated", "ResourceAdded", "ResourceRemoved", "Alert"}
+
+	// used by the webhook handlers
+	scConfig *common.SCConfiguration
+	pub      pubsub.PubSub
 )
 
 // HTTPHeader temporary code for redfish subscription
@@ -52,43 +60,22 @@ type HwSubPayload struct {
 	HTTPHeaders []HTTPHeader `json:"HttpHeaders"`
 }
 
-// RedfishEvent to be replaced by a complete schema
-type RedfishEvent struct {
-	OdataContext string `json:"@odata.context"`
-	OdataType    string `json:"@odata.type"`
-	Events       []struct {
-		Eventid        string    `json:"EventId"`
-		Eventtimestamp time.Time `json:"EventTimestamp"`
-		Eventtype      string    `json:"EventType"`
-		Memberid       string    `json:"MemberId"`
-		Message        string    `json:"Message"`
-		Messageargs    []string  `json:"MessageArgs"`
-		Messageid      string    `json:"MessageId"`
-		Oem            struct {
-			Hpe struct {
-				OdataContext string `json:"@odata.context"`
-				OdataType    string `json:"@odata.type"`
-				Resource     string `json:"Resource"`
-			} `json:"Hpe"`
-		} `json:"Oem"`
-		Originofcondition string `json:"OriginOfCondition"`
-		Severity          string `json:"Severity"`
-	} `json:"Events"`
-	Name string `json:"Name"`
-}
-
 // Start hw event plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
-func Start(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e interface{}) error) error { //nolint:deadcode,unused
-
+func Start(wg *sync.WaitGroup, config *common.SCConfiguration, fn func(e interface{}) error) error { //nolint:deadcode,unused
 	webhookURL := getWebhookAddr()
 	status, _ := createHwEventSubscription(hwEventTypes, webhookURL)
 	if status != http.StatusCreated {
 		log.Errorf("hw event subscription creation api at %s, returned status %d", hwSubURL, status)
 		// if failed, create a subsciption manually
 	}
+	scConfig = config
 
 	// create publisher
-	pub, err := scConfig.PubSubAPI.CreatePublisher(v1pubsub.NewPubSub(scConfig.BaseURL, resourceAddress))
+	var err error
+
+	returnURL := fmt.Sprintf("%s%s", config.BaseURL, "dummy")
+	//	pub, err = scConfig.PubSubAPI.CreatePublisher(v1pubsub.NewPubSub(scConfig.BaseURL, resourceAddress))
+	pub, err = scConfig.PubSubAPI.CreatePublisher(v1pubsub.NewPubSub(types.ParseURI(returnURL), resourceAddress))
 
 	if err != nil {
 		log.Errorf("failed to create a publisher %v", err)
@@ -204,12 +191,10 @@ func publishHwEvent(w http.ResponseWriter, r *http.Request) {
 		log.Errorf("error reading hw event %v", err)
 		return
 	}
-
-	data := RedfishEvent{}
-	if err = json.Unmarshal(bodyBytes, &data); err != nil {
-		log.Errorf("error decoding hw event data %v", err)
-		return
+	data := hwevent.Data{
+		Version: "v1",
+		Data:    bodyBytes,
 	}
-	out, _ := json.Marshal(data)
-	log.Printf("Received Webhook event:\n%s\n", out)
+	event, _ := common.CreateHwEvent(pub.ID, "HW_EVENT", data)
+	_ = common.PublishHwEvent(scConfig, event)
 }

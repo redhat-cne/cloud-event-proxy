@@ -8,4 +8,4 @@ if [ -z ${VERSION+a} ]; then
 fi
 NAME=${REPO}:${VERSION}
 
-${BUILDCMD} --squash  -f Dockerfile.local -t "${NAME}" $(dirname $0)/..
+${BUILDCMD} --squash  -f Dockerfile -t "${NAME}" $(dirname $0)/..

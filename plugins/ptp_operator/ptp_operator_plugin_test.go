@@ -175,7 +175,7 @@ func ProcessInChannel() {
 					ProcessEventFn: d.ProcessEventFn,
 				}
 				if d.OnReceiveOverrideFn != nil {
-					if err := d.OnReceiveOverrideFn(*d.Data,&out); err != nil {
+					if err := d.OnReceiveOverrideFn(*d.Data, &out); err != nil {
 						out.Status = channel.FAILED
 					} else {
 						out.Status = channel.SUCCESS

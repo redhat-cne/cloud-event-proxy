@@ -73,4 +73,3 @@ func UpdateStatusAckCount(pubType string, status MetricStatus) {
 	cneStatusCheckReceivedCount.With(
 		prometheus.Labels{"type": pubType, "status": string(status)}).Inc()
 }
-
