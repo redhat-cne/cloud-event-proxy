@@ -52,7 +52,6 @@ var (
 	scConfig          *common.SCConfiguration
 	metricsAddr       string
 	apiPath           string = "/api/cloudNotifications/v1/"
-	hwEventPort       int
 )
 
 func main() {
@@ -122,7 +121,7 @@ func main() {
 	}
 
 	log.Info("ready...")
-	c := make(chan os.Signal)
+	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
 	go func() {

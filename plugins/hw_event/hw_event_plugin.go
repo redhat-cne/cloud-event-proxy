@@ -49,7 +49,7 @@ type HwSubPayload struct {
 	Protocol    string       `json:"Protocol" example:"Redfish"`
 	Context     string       `json:"Context"`
 	Destination string       `json:"Destination" example:"https://www.hw-event-proxy-host.com/webhook"`
-	EventTypes  []string     `json:"EventTypes" example:["StatusChange", "ResourceUpdated", "ResourceAdded", "ResourceRemoved", "Alert"]`
+	EventTypes  []string     `json:"EventTypes"`
 	HTTPHeaders []HTTPHeader `json:"HttpHeaders"`
 }
 
@@ -175,7 +175,12 @@ func createHwEventSubscription(eventTypes []string, webhookURL string) (int, []b
 func startWebhook() {
 	http.HandleFunc("/ack/event", ackEvent)
 	http.HandleFunc("/webhook", publishHwEvent)
-	go http.ListenAndServe(fmt.Sprintf(":%d", common.GetIntEnv("HW_EVENT_PORT")), nil)
+	go func() {
+		err := http.ListenAndServe(fmt.Sprintf(":%d", common.GetIntEnv("HW_EVENT_PORT")), nil)
+		if err != nil {
+			log.Errorf("error with webhook server %s\n", err.Error())
+		}
+	}()
 }
 
 func ackEvent(w http.ResponseWriter, req *http.Request) {
