@@ -85,9 +85,18 @@ func main() {
 		BaseURL:    nil,
 	}
 
-	wg := sync.WaitGroup{}
-	wg.Add(1)
 	metricServer(metricsAddr)
+	wg := sync.WaitGroup{}
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-c
+		log.Info("exiting...")
+		close(scConfig.CloseCh)
+		wg.Wait()
+		os.Exit(1)
+	}()
 
 	var err error
 	_, err = common.StartPubSubService(&wg, scConfig)
@@ -119,17 +128,6 @@ func main() {
 			log.Fatalf("error loading hw plugin %v", err)
 		}
 	}
-
-	log.Info("ready...")
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		<-c
-		//clean up
-		close(scConfig.CloseCh)
-		os.Exit(1)
-	}()
 
 	if !scConfig.PubSubAPI.HasTransportEnabled() {
 		wg.Add(1)

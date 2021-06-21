@@ -148,7 +148,7 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 		log.Errorf("error posting ptp events %v", err)
 		return err
 	}
-	log.Errorf("published ptp event %s", e.String())
+	log.Infof("published ptp event %s", e.String())
 
 	return nil
 }

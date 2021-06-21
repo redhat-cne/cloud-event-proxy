@@ -11,14 +11,14 @@ import (
 const (
 	ptpNamespace = "openshift"
 	ptpSubsystem = "ptp"
-
-	ptp4lProcessName   = "ptp4l"
-	phc2sysProcessName = "phc2sys"
+	phc2sysProcessName          = "phc2sys"
 )
 
 var (
+	// NodeName from the env
 	NodeName = ""
 
+	// OffsetFromMaster metrics for offset from the master
 	OffsetFromMaster = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: ptpNamespace,
@@ -27,6 +27,7 @@ var (
 			Help:      "",
 		}, []string{"process", "node", "iface"})
 
+	// MaxOffsetFromMaster  metrics for max offset from the master
 	MaxOffsetFromMaster = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: ptpNamespace,
@@ -35,6 +36,7 @@ var (
 			Help:      "",
 		}, []string{"process", "node", "iface"})
 
+	// FrequencyAdjustment metrics to show frequency adjustment
 	FrequencyAdjustment = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: ptpNamespace,
@@ -43,6 +45,7 @@ var (
 			Help:      "",
 		}, []string{"process", "node", "iface"})
 
+	// DelayFromMaster metrics to show delay from the master
 	DelayFromMaster = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: ptpNamespace,
@@ -61,6 +64,7 @@ type Metrics struct {
 	Output string `json:"output"`
 }
 
+// RegisterMetrics ... register metrics for all side car plugins
 func RegisterMetrics(nodeName string) {
 	registerMetrics.Do(func() {
 		prometheus.MustRegister(OffsetFromMaster)
@@ -76,8 +80,8 @@ func RegisterMetrics(nodeName string) {
 	})
 }
 
-// updatePTPMetrics ...
-func updatePTPMetrics(process, iface string, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster float64) {
+// UpdatePTPMetrics ...
+func UpdatePTPMetrics(process, iface string, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster float64) {
 	OffsetFromMaster.With(prometheus.Labels{
 		"process": process, "node": NodeName, "iface": iface}).Set(offsetFromMaster)
 
@@ -93,12 +97,12 @@ func updatePTPMetrics(process, iface string, offsetFromMaster, maxOffsetFromMast
 
 // ExtractMetrics ...
 func ExtractMetrics(processName, iface, output string) {
-	if strings.Contains(output, " max ") {
+	if strings.Contains(output, " max ") { // this get genrated in case -u is passed an option to phy2sys opts
 		offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster := extractSummaryMetrics(processName, output)
-		updatePTPMetrics(processName, iface, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
-	} else if strings.Contains(output, " offset ") {
+		UpdatePTPMetrics(processName, iface, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
+	} else if strings.Contains(output, " offset ")  && phc2sysProcessName!=processName{ // dispatcher calls metrics for phy2sys
 		offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster := extractRegularMetrics(processName, output)
-		updatePTPMetrics(processName, iface, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
+		UpdatePTPMetrics(processName, iface, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
 	}
 }
 

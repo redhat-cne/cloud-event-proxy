@@ -16,11 +16,6 @@ package main_test
 
 import (
 	"fmt"
-	"log"
-	"os"
-	"sync"
-	"testing"
-
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	restapi "github.com/redhat-cne/rest-api"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
@@ -28,6 +23,11 @@ import (
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
 	"github.com/stretchr/testify/assert"
+	"log"
+	"os"
+	"sync"
+	"testing"
+	"time"
 
 	ptpPlugin "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
@@ -42,6 +42,7 @@ var (
 	resourceAddress       string = "/cluster/node/ptp"
 	resourceStatusAddress string = "/cluster/node/ptp/status"
 	apiPort               int    = 8990
+	c                     chan os.Signal
 )
 
 func TestMain(m *testing.M) {
@@ -57,6 +58,7 @@ func TestMain(m *testing.M) {
 		BaseURL:    nil,
 	}
 
+	c = make(chan os.Signal)
 	server, _ = common.StartPubSubService(&wg, scConfig)
 	scConfig.APIPort = server.Port()
 	scConfig.BaseURL = server.GetHostPath()
@@ -70,6 +72,7 @@ func cleanUP() {
 
 //Test_StartWithAMQP this is integration test skips if QDR is not connected
 func Test_StartWithAMQP(t *testing.T) {
+	os.Setenv("NODE_NAME", "test_node")
 	defer cleanUP()
 	scConfig.CloseCh = make(chan struct{})
 	scConfig.PubSubAPI.EnableTransport()
@@ -85,16 +88,14 @@ func Test_StartWithAMQP(t *testing.T) {
 	endpointURL := fmt.Sprintf("%s%s", scConfig.BaseURL, "dummy")
 	sub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), resourceAddress)
 	sub, _ = common.CreateSubscription(scConfig, sub)
+	assert.NotEmpty(t, sub.ID)
+	assert.NotEmpty(t, sub.URILocation)
 	//create a status ping sender object
 	v1amqp.CreateSender(scConfig.EventInCh, resourceStatusAddress)
 
 	// start ptp plugin
 	err = ptpPlugin.Start(&wg, scConfig, nil)
 	assert.Nil(t, err)
-	log.Printf("waiting to receive initial event in out-channel")
-	event1 := <-scConfig.EventOutCh // initial event
-	assert.Equal(t, channel.NEW, event1.Status)
-	log.Printf("got events from channel event 1%v\n", event1)
 
 	//status sender object, this wast you can send data to that channel
 	e := v1event.CloudNativeEvent()
@@ -106,10 +107,6 @@ func Test_StartWithAMQP(t *testing.T) {
 	statusEvent := <-scConfig.EventOutCh // status updated
 	assert.Equal(t, channel.SUCCESS, statusEvent.Status)
 	log.Printf("got events from channel statusEvent 1%#v\n", statusEvent)
-
-	event2 := <-scConfig.EventOutCh // after 5 secs
-	assert.Equal(t, channel.SUCCESS, event2.Status)
-	log.Printf("got events from channel event 2%#v\n", event2)
 	log.Printf("Closing the channels")
 	close(scConfig.CloseCh) // close the channel
 	pubs := scConfig.PubSubAPI.GetPublishers()
@@ -117,6 +114,7 @@ func Test_StartWithAMQP(t *testing.T) {
 }
 
 func Test_StartWithOutAMQP(t *testing.T) {
+	os.Setenv("NODE_NAME", "test_node")
 	defer cleanUP()
 	scConfig.CloseCh = make(chan struct{})
 	scConfig.PubSubAPI.DisableTransport()
@@ -136,25 +134,25 @@ func Test_StartWithOutAMQP(t *testing.T) {
 	// start ptp plugin
 	err := ptpPlugin.Start(&wg, scConfig, nil)
 	assert.Nil(t, err)
-	log.Printf("waiting to receive initial event in out-channel")
+	time.Sleep(2 * time.Second)
 
 	//status sender object, client requesting for an event
 	e := v1event.CloudNativeEvent()
 	ce, _ := v1event.CreateCloudEvents(e, sub)
 	ce.SetSource(resourceAddress)
+	log.Printf("sending event to data channel %v", ce)
 	v1event.SendNewEventToDataChannel(scConfig.EventInCh, resourceStatusAddress, ce)
 
 	EventData := <-scConfig.EventOutCh // status updated
 	assert.Equal(t, channel.EVENT, EventData.Type)
-	log.Printf("got events from channel publisherData 1%v\n", EventData)
+	log.Printf("got events from channel publisherData %v\n", EventData)
 
-	EventData = <-scConfig.EventOutCh // after 5 secs
-	assert.Equal(t, channel.EVENT, EventData.Type)
-	log.Printf("got events from channel event 2%v\n", EventData)
 	log.Printf("Closing the channels")
 	close(scConfig.CloseCh) // close the channel
 	pubs := scConfig.PubSubAPI.GetPublishers()
-	assert.Equal(t, len(pubs), 1)
+	assert.Equal(t, 1, len(pubs))
+	subs := scConfig.PubSubAPI.GetSubscriptions()
+	assert.Equal(t, 1, len(subs))
 
 }
 
@@ -164,7 +162,7 @@ func ProcessInChannel() {
 		select {
 		case d := <-scConfig.EventInCh:
 			if d.Type == channel.LISTENER {
-				log.Printf("amqp disabled,no action taken: request to create listener  address %s was called,but transport is not enabled", d.Address)
+				log.Printf("1amqp disabled,no action taken: request to create listener address %s was called,but transport is not enabled", d.Address)
 			} else if d.Type == channel.SENDER {
 				log.Printf("no action taken: request to create sender for address %s was called,but transport is not enabled", d.Address)
 			} else if d.Type == channel.EVENT && d.Status == channel.NEW {
@@ -189,4 +187,3 @@ func ProcessInChannel() {
 		}
 	}
 }
-
