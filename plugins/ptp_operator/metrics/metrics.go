@@ -31,7 +31,6 @@ const (
 var (
 	// NodeName from the env
 	ptpNodeName = ""
-	publisherID = ""
 	eventConfig *common.SCConfiguration
 
 	// OffsetFromMaster metrics for offset from the master
@@ -263,7 +262,7 @@ func (p *PTPEventManager) publishEvent(state ceevent.SyncState, iface string) {
 	data := ceevent.Data{
 		Version: "v1",
 		Values: []ceevent.DataValue{{
-			Resource:  fmt.Sprintf("/cluster/%s/ptp/interface/%s", ptpNodeName, iface),
+			Resource:  fmt.Sprintf("/cluster/%s/ptp/interface/%s", p.nodeName, iface),
 			DataType:  ceevent.NOTIFICATION,
 			ValueType: ceevent.ENUMERATION,
 			Value:     state,

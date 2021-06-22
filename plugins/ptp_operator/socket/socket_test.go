@@ -35,14 +35,7 @@ var logsData = [logLength]string{
 }
 var eventProcessor *metrics.PTPEventManager
 var pubID="123"
-var (
-	channelBufferSize int = 10
-	scConfig          *common.SCConfiguration
-	resourceAddress   string = "/test/main"
-	apiPort           int    = 8989
-	storePath="."
-)
-
+var scConfig          *common.SCConfiguration
 
 func setup(){
 	scConfig = &common.SCConfiguration{
