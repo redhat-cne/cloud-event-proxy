@@ -2,12 +2,13 @@ package metrics
 
 import (
 	"fmt"
-	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"math"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 
 	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus"
@@ -193,10 +194,8 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		var s *Stats
 		var found bool
 		if s, found = p.Stats[iface]; !found {
-			p.lock.Lock()
 			s = &Stats{}
 			p.Stats[iface] = s
-			p.lock.Unlock()
 		}
 		s.frequencyAdjustment = frequencyAdjustment
 		s.delayFromMaster = delayFromMaster
