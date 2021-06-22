@@ -16,6 +16,12 @@ package main_test
 
 import (
 	"fmt"
+	"log"
+	"os"
+	"sync"
+	"testing"
+	"time"
+
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	restapi "github.com/redhat-cne/rest-api"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
@@ -23,11 +29,6 @@ import (
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
 	"github.com/stretchr/testify/assert"
-	"log"
-	"os"
-	"sync"
-	"testing"
-	"time"
 
 	ptpPlugin "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"

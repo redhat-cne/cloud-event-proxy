@@ -17,15 +17,16 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"net"
+	"os"
+	"sync"
+
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptp_socket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
 	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	log "github.com/sirupsen/logrus"
-	"net"
-	"os"
-	"sync"
 
 	ptp_metrics "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
@@ -34,8 +35,8 @@ import (
 )
 
 var (
-	resourceAddress string = "/cluster/node/ptp"
-	config          *common.SCConfiguration
+	resourceAddress  string = "/cluster/node/ptp"
+	config           *common.SCConfiguration
 	metricsProcessor *ptp_metrics.Metric
 )
 

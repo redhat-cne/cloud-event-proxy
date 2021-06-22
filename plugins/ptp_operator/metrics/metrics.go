@@ -1,14 +1,15 @@
 package metrics
 
 import (
-	"github.com/golang/glog"
-	"github.com/prometheus/client_golang/prometheus"
-	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
-	log "github.com/sirupsen/logrus"
 	"math"
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/golang/glog"
+	"github.com/prometheus/client_golang/prometheus"
+	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -155,7 +156,7 @@ func (m *Metric) ExtractMetrics(msg string) {
 		}
 		s.frequencyAdjustment = frequencyAdjustment
 		s.delayFromMaster = delayFromMaster
-		s.lastOffset=offsetFromMaster
+		s.lastOffset = offsetFromMaster
 
 		s.addValue(offsetFromMaster)
 		lastLockState := s.lastClockState

@@ -40,12 +40,11 @@ func removeIfStaleUnixSocket(socketPath string) error {
 	}
 	// Try to connect
 	conn, err := net.DialTimeout("unix", socketPath, staleSocketTimeout)
-	if err!=nil {//=syscall.ECONNREFUSED {
+	if err != nil { //=syscall.ECONNREFUSED {
 		return os.Remove(socketPath)
-	}else if err == nil {
+	} else if err == nil {
 		return conn.Close()
 	}
 
 	return nil
 }
-
