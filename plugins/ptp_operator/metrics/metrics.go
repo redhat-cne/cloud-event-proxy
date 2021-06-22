@@ -24,8 +24,8 @@ const (
 	unLocked                    = "s0"
 	clockStep                   = "s1"
 	locked                      = "s2"
-	maxOffsetThrushHold float64 = 100
-	minOffsetThrushHold float64 = -100
+	maxOffsetThreshHold float64 = 100 //in nano secs
+	minOffsetThreshHold float64 = -100
 )
 
 var (
@@ -109,7 +109,7 @@ func (s *Stats) addValue(val float64) {
 	if s.max < val {
 		s.max = val
 	}
-	if s.min > val {
+	if s.num == 0 || s.min > val {
 		s.min = val
 	}
 	s.num++
@@ -127,7 +127,7 @@ func (s *Stats) getStdev() float64 { //nolint:unused
 	return 1
 }
 func (s *Stats) getMaxAbs() float64 {
-	if s.max > s.mean {
+	if s.max > s.min {
 		return s.max
 	}
 	return s.min
@@ -139,6 +139,7 @@ func (s *Stats) reset() { //nolint:unused
 	s.num = 0
 	s.max = 0
 	s.mean = 0
+	s.min = 0
 	s.sumDiffSqr = 0
 	s.sumSqr = 0
 }
@@ -220,6 +221,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			p.Stats[iface] = s
 			p.lock.Unlock()
 		}
+		s.reset() //every time ptp4l says the clock is  FREERUN then reset the stats
 
 		lastLockState := s.lastClockState
 		s.lastClockState = clockState
@@ -231,21 +233,20 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 
 // GenPhc2SysEvent ... generate events form the logs
 func (p *PTPEventManager) GenPhc2SysEvent(iface string, offsetFromMaster float64, clockState ceevent.SyncState) {
-	//TODO: Decide from HOLDOVER  to FREERUN
+	//TODO: move maxOffsetThreshHold and minOffsetThreshHold to  configmap
 	lastLockState := p.Stats[iface].lastClockState
 	if clockState == ceevent.LOCKED {
 		if offsetFromMaster != 0 { //ptp4l will  return 0 offset
-			if (offsetFromMaster > maxOffsetThrushHold || offsetFromMaster < minOffsetThrushHold) &&
+			if (offsetFromMaster > maxOffsetThreshHold || offsetFromMaster < minOffsetThreshHold) &&
 				lastLockState != ceevent.HOLDOVER {
 				p.publishEvent(ceevent.HOLDOVER, iface)
 				p.Stats[iface].lastClockState = ceevent.HOLDOVER
-			} else if offsetFromMaster > maxOffsetThrushHold || offsetFromMaster < minOffsetThrushHold &&
+			} else if offsetFromMaster > maxOffsetThreshHold || offsetFromMaster < minOffsetThreshHold &&
 				lastLockState != ceevent.FREERUN {
 				p.Stats[iface].lastClockState = ceevent.FREERUN
 				p.publishEvent(ceevent.FREERUN, iface)
 			} else if lastLockState != clockState {
 				p.publishEvent(clockState, iface)
-
 			}
 		} else if clockState != lastLockState {
 			p.Stats[iface].lastClockState = clockState
