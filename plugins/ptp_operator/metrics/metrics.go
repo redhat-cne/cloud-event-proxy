@@ -106,10 +106,10 @@ func (s *Stats) addValue(val float64) {
 
 	oldMean := s.mean
 
-	if s.num == 0 || s.max < val {
+	if s.max < val {
 		s.max = val
 	}
-	if s.num == 0 && s.min > val {
+	if s.min > val {
 		s.min = val
 	}
 	s.num++
@@ -402,7 +402,6 @@ func extractPTP4lEventState(processName, output string) (clockState ceevent.Sync
 	//ptp4l[3535499.740]: [ens5f0] master offset         -6 s2 freq   -1879 path delay        88
 
 	/*
-		"INITIALIZING to LISTENING on INIT_COMPLETE"
 		"INITIALIZING to LISTENING on INIT_COMPLETE"
 		"LISTENING to UNCALIBRATED on RS_SLAVE"
 		"UNCALIBRATED to SLAVE on MASTER_CLOCK_SELECTED"
