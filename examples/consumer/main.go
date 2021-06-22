@@ -21,6 +21,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"sync"
 	"time"
 
@@ -37,8 +38,10 @@ var (
 	apiPath                string = "/api/cloudNotifications/v1/"
 	resourceAddressSports  string = "/news-service/sports"
 	resourceAddressFinance string = "/news-service/finance"
+	resourceAddressPTP     string = "/cluster/node/%s/ptp"
 	resourceAddressHwEvent string = "/hw-event"
 	localAPIAddr           string = "localhost:9089"
+	nodeName			   string ="node"
 )
 
 func main() {
@@ -47,6 +50,10 @@ func main() {
 	flag.StringVar(&apiPath, "api-path", "/api/cloudNotifications/v1/", "The rest api path.")
 	flag.StringVar(&apiAddr, "api-addr", "localhost:8080", "The address the framework api endpoint binds to.")
 	flag.Parse()
+
+	if envNode := os.Getenv("NODE_NAME");envNode!=""{
+		nodeName=envNode
+	}
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -58,7 +65,10 @@ func main() {
 		Resource: resourceAddressFinance,
 	}, &pubsub.PubSub{
 		Resource: resourceAddressHwEvent,
-	}}
+	}, &pubsub.PubSub{
+		Resource: fmt.Sprintf(resourceAddressPTP, nodeName),
+	},
+	}
 	healthURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
 		Path: fmt.Sprintf("%s%s", apiPath, "health")}}

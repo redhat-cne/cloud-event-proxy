@@ -35,7 +35,7 @@ import (
 )
 
 var (
-	resourceAddress string = "/cluster/node/ptp"
+	resourceAddress string = "/cluster/node/%s/ptp"
 	config          *common.SCConfiguration
 	eventProcessor  *ptpMetrics.PTPEventManager
 )
@@ -54,7 +54,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	// 1. Create event Publication
 	var pub pubsub.PubSub
 	var err error
-	if pub, err = createPublisher(resourceAddress); err != nil {
+	if pub, err = createPublisher(fmt.Sprintf(resourceAddress,nodeName)); err != nil {
 		log.Errorf("failed to create a publisher %v", err)
 		return err
 	}
