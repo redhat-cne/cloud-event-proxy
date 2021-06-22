@@ -19,17 +19,12 @@ import (
 	"fmt"
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
-	ptp_event "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/event"
 	ptp_socket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
 	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
+	log "github.com/sirupsen/logrus"
 	"net"
 	"os"
-	"os/signal"
-
-	"syscall"
-
-	log "github.com/sirupsen/logrus"
 	"sync"
 
 	ptp_metrics "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
@@ -41,33 +36,21 @@ import (
 var (
 	resourceAddress string = "/cluster/node/ptp"
 	config          *common.SCConfiguration
-	dispatcher      *ptp_event.Dispatcher
+	metricsProcessor *ptp_metrics.Metric
 )
 
 // Start ptp plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
 func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e ceevent.Event) error) error { //nolint:deadcode,unused
 	// The name of NodePtpDevice CR for this node is equal to the node name
 	nodeName := os.Getenv("NODE_NAME")
+	metricsProcessor = &ptp_metrics.Metric{Stats: make(map[string]*ptp_metrics.Stats)}
 	if nodeName == "" {
 		log.Error("cannot find NODE_NAME environment variable")
 		return fmt.Errorf("cannot find NODE_NAME environment variable")
 	}
 	// register metrics type
 	ptp_metrics.RegisterMetrics(nodeName)
-	dispatcher = ptp_event.NewDispatcher(wg)
-	dispatcher.Start()
 	go listenToSocket()
-
-	c := make(chan os.Signal)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		<-c
-		//clean up
-		log.Info("exit ptp")
-		dispatcher.Stop()
-	}()
-
 	// 1. Create event Publication
 	var pub pubsub.PubSub
 	var err error
@@ -141,7 +124,6 @@ func processMessages(c net.Conn) {
 			break
 		}
 		msg := scanner.Text()
-		dispatcher.ProcessMsg(msg)
+		metricsProcessor.ExtractMetrics(msg)
 	}
-
 }
