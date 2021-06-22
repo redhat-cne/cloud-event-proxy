@@ -1,7 +1,10 @@
 package metrics
 
 import (
+	"fmt"
+	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"math"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -26,7 +29,9 @@ const (
 
 var (
 	// NodeName from the env
-	NodeName = ""
+	ptpNodeName = ""
+	publisherID = ""
+	eventConfig *common.SCConfiguration
 
 	// OffsetFromMaster metrics for offset from the master
 	OffsetFromMaster = prometheus.NewGaugeVec(
@@ -64,6 +69,24 @@ var (
 			Help:      "",
 		}, []string{"process", "node", "iface"})
 )
+
+var registerMetrics sync.Once
+
+// RegisterMetrics ... register metrics for all side car plugins
+func RegisterMetrics(nodeName string) {
+	registerMetrics.Do(func() {
+		prometheus.MustRegister(OffsetFromMaster)
+		prometheus.MustRegister(MaxOffsetFromMaster)
+		prometheus.MustRegister(FrequencyAdjustment)
+		prometheus.MustRegister(DelayFromMaster)
+
+		// Including these stats kills performance when Prometheus polls with multiple targets
+		prometheus.Unregister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
+		prometheus.Unregister(prometheus.NewGoCollector())
+
+		ptpNodeName = nodeName
+	})
+}
 
 // Stats calculates stats  nolint:unused
 type Stats struct {
@@ -120,27 +143,48 @@ func (s *Stats) reset() { //nolint:unused
 	s.sumSqr = 0
 }
 
-// Metric for PTP
-type Metric struct {
-	lock  sync.RWMutex
-	Stats map[string]*Stats
+// PTPEventManager for PTP
+type PTPEventManager struct {
+	publisherID string
+	nodeName    string
+	scConfig    *common.SCConfiguration
+	lock        sync.RWMutex
+	Stats       map[string]*Stats
+	mock        bool
+}
+
+// NewPTPEventManager to manage events and metrics
+func NewPTPEventManager(publisherID string, nodeName string, config *common.SCConfiguration) (ptpEventManager *PTPEventManager) {
+	ptpEventManager = &PTPEventManager{
+		publisherID: publisherID,
+		nodeName:    nodeName,
+		scConfig:    config,
+		lock:        sync.RWMutex{},
+		Stats:       make(map[string]*Stats),
+	}
+	return
+}
+
+// MockTest .. use for test only
+func (p *PTPEventManager) MockTest(t bool) {
+	p.mock = t
 }
 
 // ExtractMetrics ...
-func (m *Metric) ExtractMetrics(msg string) {
+func (p *PTPEventManager) ExtractMetrics(msg string) {
 	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
 	output := replacer.Replace(msg)
 	fields := strings.Fields(output)
 	if len(fields) < 2 {
-		glog.Errorf("ignoring log:log  is not in required format processname[time]: [iface]")
+		glog.Errorf("ignoring log:log  is not in required format ptp4l/phc2sys[time]: [interface]")
 		return
 	}
 	processName := fields[0]
 	iface := fields[2]
-	if strings.Contains(output, " max ") { // this get generated in case -u is passed an option to phy2sys opts
+	if strings.Contains(output, "max") { // this get generated in case -u is passed an option to phy2sys opts
 		offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster := extractSummaryMetrics(processName, output)
 		UpdatePTPMetrics(processName, iface, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
-	} else if strings.Contains(output, " offset ") { // dispatcher calls metrics for phy2sys
+	} else if strings.Contains(output, "offset") {
 		offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster, clockState := extractRegularMetrics(processName, output)
 		// update stats
 		if clockState == "" {
@@ -148,21 +192,19 @@ func (m *Metric) ExtractMetrics(msg string) {
 		}
 		var s *Stats
 		var found bool
-		if s, found = m.Stats[iface]; !found {
-			m.lock.Lock()
+		if s, found = p.Stats[iface]; !found {
+			p.lock.Lock()
 			s = &Stats{}
-			m.Stats[iface] = s
-			m.lock.Unlock()
+			p.Stats[iface] = s
+			p.lock.Unlock()
 		}
 		s.frequencyAdjustment = frequencyAdjustment
 		s.delayFromMaster = delayFromMaster
 		s.lastOffset = offsetFromMaster
-
 		s.addValue(offsetFromMaster)
-		lastLockState := s.lastClockState
-		s.lastClockState = clockState
+
 		if phc2sysProcessName == processName {
-			GenPhc2SysEvent(iface, offsetFromMaster, clockState, lastLockState)
+			p.GenPhc2SysEvent(iface, offsetFromMaster, clockState)
 			UpdatePTPMetrics(processName, iface, offsetFromMaster, s.getMaxAbs(), frequencyAdjustment, delayFromMaster)
 		} else if ptp4lProcessName == processName {
 			UpdatePTPMetrics(processName, iface, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
@@ -174,59 +216,96 @@ func (m *Metric) ExtractMetrics(msg string) {
 		}
 		var s *Stats
 		var found bool
-		if s, found = m.Stats[iface]; !found {
-			m.lock.Lock()
+		if s, found = p.Stats[iface]; !found {
+			p.lock.Lock()
 			s = &Stats{}
-			m.Stats[iface] = s
-			m.lock.Unlock()
+			p.Stats[iface] = s
+			p.lock.Unlock()
 		}
 
 		lastLockState := s.lastClockState
 		s.lastClockState = clockState
 		if clockState != lastLockState {
-			log.Infof("EVENT DATA FOR %s  IS %#v", iface, eventData(clockState))
+			p.publishEvent(clockState, iface)
 		}
 	}
 }
 
-var registerMetrics sync.Once
+// GenPhc2SysEvent ... generate events form the logs
+func (p *PTPEventManager) GenPhc2SysEvent(iface string, offsetFromMaster float64, clockState ceevent.SyncState) {
+	//TODO: Decide from HOLDOVER  to FREERUN
+	lastLockState := p.Stats[iface].lastClockState
+	if clockState == ceevent.LOCKED {
+		if offsetFromMaster != 0 { //ptp4l will  return 0 offset
+			if (offsetFromMaster > maxOffsetThrushHold || offsetFromMaster < minOffsetThrushHold) &&
+				lastLockState != ceevent.HOLDOVER {
+				p.publishEvent(ceevent.HOLDOVER, iface)
+				p.Stats[iface].lastClockState = ceevent.HOLDOVER
+			} else if offsetFromMaster > maxOffsetThrushHold || offsetFromMaster < minOffsetThrushHold &&
+				lastLockState != ceevent.FREERUN {
+				p.Stats[iface].lastClockState = ceevent.FREERUN
+				p.publishEvent(ceevent.FREERUN, iface)
+			} else if lastLockState != clockState {
+				p.publishEvent(clockState, iface)
 
-// RegisterMetrics ... register metrics for all side car plugins
-func RegisterMetrics(nodeName string) {
-	registerMetrics.Do(func() {
-		prometheus.MustRegister(OffsetFromMaster)
-		prometheus.MustRegister(MaxOffsetFromMaster)
-		prometheus.MustRegister(FrequencyAdjustment)
-		prometheus.MustRegister(DelayFromMaster)
+			}
+		} else if clockState != lastLockState {
+			p.Stats[iface].lastClockState = clockState
+			p.publishEvent(clockState, iface)
+		}
+	} else if clockState != lastLockState {
+		p.Stats[iface].lastClockState = clockState
+		p.publishEvent(clockState, iface)
+	}
+}
 
-		// Including these stats kills performance when Prometheus polls with multiple targets
-		prometheus.Unregister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
-		prometheus.Unregister(prometheus.NewGoCollector())
+func (p *PTPEventManager) publishEvent(state ceevent.SyncState, iface string) {
+	// create an event
+	data := ceevent.Data{
+		Version: "v1",
+		Values: []ceevent.DataValue{{
+			Resource:  fmt.Sprintf("/cluster/%s/ptp/interface/%s", ptpNodeName, iface),
+			DataType:  ceevent.NOTIFICATION,
+			ValueType: ceevent.ENUMERATION,
+			Value:     state,
+		},
+		},
+	}
+	e, err := common.CreateEvent(p.publisherID, "PTP_EVENT", data)
+	if err != nil {
+		log.Errorf("failed to create ptp event, %s", err)
+		return
+	}
+	if !p.mock {
+		if err = common.PublishEvent(eventConfig, e); err != nil {
+			log.Errorf("failed to publish ptp event %v, %s", e, err)
+			return
+		}
+	}
 
-		NodeName = nodeName
-	})
+	log.Infof("ptp clock  status event published %v ", e)
 }
 
 // UpdatePTPMetrics ...
 func UpdatePTPMetrics(process, iface string, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster float64) {
 	OffsetFromMaster.With(prometheus.Labels{
-		"process": process, "node": NodeName, "iface": iface}).Set(offsetFromMaster)
+		"process": process, "node": ptpNodeName, "iface": iface}).Set(offsetFromMaster)
 
 	MaxOffsetFromMaster.With(prometheus.Labels{
-		"process": process, "node": NodeName, "iface": iface}).Set(maxOffsetFromMaster)
+		"process": process, "node": ptpNodeName, "iface": iface}).Set(maxOffsetFromMaster)
 
 	FrequencyAdjustment.With(prometheus.Labels{
-		"process": process, "node": NodeName, "iface": iface}).Set(frequencyAdjustment)
+		"process": process, "node": ptpNodeName, "iface": iface}).Set(frequencyAdjustment)
 
 	DelayFromMaster.With(prometheus.Labels{
-		"process": process, "node": NodeName, "iface": iface}).Set(delayFromMaster)
+		"process": process, "node": ptpNodeName, "iface": iface}).Set(delayFromMaster)
 }
 
 func extractSummaryMetrics(processName, output string) (offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster float64) {
 	// remove everything before the rms string
 	// This makes the out to equals
-	indx := strings.Index(output, "rms")
-	output = output[indx:]
+	index := strings.Index(output, "rms")
+	output = output[index:]
 	fields := strings.Fields(output)
 
 	if len(fields) < 5 {
@@ -266,8 +345,8 @@ func extractRegularMetrics(processName, output string) (offsetFromMaster, maxOff
 	// remove everything before the rms string
 	// This makes the out to equals
 	output = strings.Replace(output, "path", "", 1)
-	indx := strings.Index(output, "offset")
-	output = output[indx:]
+	index := strings.Index(output, "offset")
+	output = output[index:]
 	fields := strings.Fields(output)
 
 	if len(fields) < 5 {
@@ -311,6 +390,7 @@ func extractRegularMetrics(processName, output string) (offsetFromMaster, maxOff
 	} else {
 		// If there is no delay from master this mean we are out of sync
 		glog.Warningf("no delay from master process %s out of sync", processName)
+		clockState = ceevent.HOLDOVER
 	}
 
 	return
@@ -322,60 +402,22 @@ func extractPTP4lEventState(processName, output string) (clockState ceevent.Sync
 	//phc2sys[187248.740]:[ens5f0] CLOCK_REALTIME phc offset        12 s2 freq   +6879 delay    49
 	// phc2sys[187248.740]:[ens5f1] CLOCK_REALTIME phc offset        12 s2 freq   +6879 delay    49
 	//ptp4l[3535499.740]: [ens5f0] master offset         -6 s2 freq   -1879 path delay        88
-	if strings.Contains(output, "INITIALIZING to LISTENING on INIT_COMPLETE") {
+
+	/*
+		"INITIALIZING to LISTENING on INIT_COMPLETE"
+		"INITIALIZING to LISTENING on INIT_COMPLETE"
+		"LISTENING to UNCALIBRATED on RS_SLAVE"
+		"UNCALIBRATED to SLAVE on MASTER_CLOCK_SELECTED"
+		"SLAVE to FAULTY on FAULT_DETECTED"
+		"LISTENING to FAULTY on FAULT_DETECTED"
+		"FAULTY to LISTENING on INIT_COMPLETE"
+		"FAULTY to SLAVE on INIT_COMPLETE"
+		"SLAVE to UNCALIBRATED on SYNCHRONIZATION_FAULT"
+	*/
+	var rePTPStatus = regexp.MustCompile(`INITIALIZING|LISTENING|UNCALIBRATED|FAULTY|FAULT_DETECTED|SYNCHRONIZATION_FAULT`)
+	if rePTPStatus.MatchString(output) {
 		clockState = ceevent.FREERUN
-	} else if strings.Contains(output, "LISTENING to UNCALIBRATED on RS_SLAVE") {
-		clockState = ceevent.FREERUN
-	} else if strings.Contains(output, "UNCALIBRATED to SLAVE on MASTER_CLOCK_SELECTED") {
-		clockState = ceevent.FREERUN
-	} else if strings.Contains(output, "SLAVE to FAULTY on FAULT_DETECTED") {
-		clockState = ceevent.FREERUN
-	} else if strings.Contains(output, "LISTENING to FAULTY on FAULT_DETECTED") {
-		clockState = ceevent.FREERUN
-	} else if strings.Contains(output, "FAULTY to LISTENING on INIT_COMPLETE") {
-		clockState = ceevent.FREERUN
-	} else if strings.Contains(output, "FAULTY to SLAVE on INIT_COMPLETE") {
-		clockState = ceevent.FREERUN
-	} else if strings.Contains(output, "SLAVE to UNCALIBRATED on SYNCHRONIZATION_FAULT") {
-		clockState = ceevent.HOLDOVER
 	}
+
 	return
-}
-
-// GenPhc2SysEvent ... generate events form the logs
-func GenPhc2SysEvent(iface string, offsetFromMaster float64, clockState, lastClockState ceevent.SyncState) {
-	//TODO: Decide from HOLDOVER  to FREERUN
-	log.Infof("lastClockState: %s\n curent clock state: %s\n offsetFromMaster %f\n  maxOffsetThrushHold %f\n ", lastClockState, clockState, offsetFromMaster, maxOffsetThrushHold)
-	if clockState == ceevent.LOCKED {
-		if offsetFromMaster != 0 { //ptp4l will  return 0 offset
-			if (offsetFromMaster > maxOffsetThrushHold || offsetFromMaster < minOffsetThrushHold) &&
-				lastClockState != ceevent.HOLDOVER {
-				log.Printf("EVENT DATA FOR %s IS %#v", iface, eventData(ceevent.HOLDOVER))
-			} else if offsetFromMaster > maxOffsetThrushHold || offsetFromMaster < minOffsetThrushHold &&
-				lastClockState != ceevent.FREERUN {
-				log.Printf("EVENT DATA FOR %s  IS %#v", iface, eventData(ceevent.FREERUN))
-			} else if lastClockState != clockState {
-				log.Printf("EVENT DATA FOR %s  IS %#v", iface, eventData(clockState))
-			}
-		} else if clockState != lastClockState {
-			log.Printf("EVENT DATA FOR %s  IS %#v", iface, eventData(clockState))
-		}
-	} else if clockState != lastClockState {
-		log.Printf("EVENT DATA FOR %s  IS %#v", iface, eventData(clockState))
-	}
-}
-
-func eventData(state ceevent.SyncState) ceevent.Data {
-	// create an event
-	data := ceevent.Data{
-		Version: "v1",
-		Values: []ceevent.DataValue{{
-			Resource:  "/cluster/node/ptp",
-			DataType:  ceevent.NOTIFICATION,
-			ValueType: ceevent.ENUMERATION,
-			Value:     state,
-		},
-		},
-	}
-	return data
 }

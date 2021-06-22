@@ -2,6 +2,7 @@ package socket_test
 
 import (
 	"bufio"
+	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
 	ptp_socket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
 	log "github.com/sirupsen/logrus"
@@ -12,7 +13,7 @@ import (
 )
 
 
-const logLength = 15
+const logLength = 16
 
 var logsData = [logLength]string{
 	"ptp4l[3535499.401]: [ens5f1] port 1: delay timeout " + "\n",
@@ -30,11 +31,29 @@ var logsData = [logLength]string{
 	"phc2sys[96254.969]: [ens5f1] CLOCK_REALTIME phc offset      100 s2 freq  -79243 delay   1058 " + "\n",
 	"phc2sys[432313.127]: [ens5f1] CLOCK_REALTIME phc offset   -837364 s2 freq +625227 delay   1415 " + "\n",
 	"ptp4l[432313.222]: [ens5f1] port 1: SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED) " + "\n",
+	"phc2sys[96254.969]: [ens5f1] CLOCK_REALTIME phc offset      100 s2 freq  -79243 delay   1058 " + "\n",
 }
-var metricsProcessor *metrics.Metric
+var eventProcessor *metrics.PTPEventManager
+var pubID="123"
+var (
+	channelBufferSize int = 10
+	scConfig          *common.SCConfiguration
+	resourceAddress   string = "/test/main"
+	apiPort           int    = 8989
+	storePath="."
+)
+
+
+func setup(){
+	scConfig = &common.SCConfiguration{
+	}
+}
+
 
 func Test_WriteMetricsToSocket(t *testing.T) {
-	metricsProcessor = &metrics.Metric{Stats: make(map[string]*metrics.Stats)}
+	setup()
+	eventProcessor = metrics.NewPTPEventManager(pubID,"tetsnode",scConfig)
+	eventProcessor.MockTest(true)
 	go listenToTestMetrics()
 	time.Sleep(2 * time.Second)
 	c, err := net.Dial("unix", "/tmp/go.sock")
@@ -69,7 +88,7 @@ func listenToTestMetrics() {
 		if err != nil {
 			log.Printf("accept error: %s", err)
 		} else {
-			go processTestMetrics2(fd)
+			processTestMetrics2(fd)
 		}
 	}
 }
@@ -84,9 +103,9 @@ func processTestMetrics2(c net.Conn) {
 		if !ok {
 			break
 		}
-		log.Printf("plugin got %s", scanner.Text())
+		//log.Printf("plugin got %s", scanner.Text())
 		msg := scanner.Text()
-		metricsProcessor.ExtractMetrics(msg)
+		eventProcessor.ExtractMetrics(msg)
 	}
 
 }

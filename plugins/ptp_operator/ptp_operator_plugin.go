@@ -23,44 +23,46 @@ import (
 
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
-	ptp_socket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
-	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
+	ptpSocket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
+	ceEvent "github.com/redhat-cne/sdk-go/pkg/event"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	log "github.com/sirupsen/logrus"
 
-	ptp_metrics "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
+	ptpMetrics "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 )
 
 var (
-	resourceAddress  string = "/cluster/node/ptp"
-	config           *common.SCConfiguration
-	metricsProcessor *ptp_metrics.Metric
+	resourceAddress string = "/cluster/node/ptp"
+	config          *common.SCConfiguration
+	eventProcessor  *ptpMetrics.PTPEventManager
 )
 
 // Start ptp plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
-func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e ceevent.Event) error) error { //nolint:deadcode,unused
+func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e ceEvent.Event) error) error { //nolint:deadcode,unused
 	// The name of NodePtpDevice CR for this node is equal to the node name
 	nodeName := os.Getenv("NODE_NAME")
-	metricsProcessor = &ptp_metrics.Metric{Stats: make(map[string]*ptp_metrics.Stats)}
+	// register metrics type
+	ptpMetrics.RegisterMetrics(nodeName)
+	config = configuration
 	if nodeName == "" {
 		log.Error("cannot find NODE_NAME environment variable")
 		return fmt.Errorf("cannot find NODE_NAME environment variable")
 	}
-	// register metrics type
-	ptp_metrics.RegisterMetrics(nodeName)
-	go listenToSocket()
 	// 1. Create event Publication
 	var pub pubsub.PubSub
 	var err error
-	config = configuration
 	if pub, err = createPublisher(resourceAddress); err != nil {
 		log.Errorf("failed to create a publisher %v", err)
 		return err
 	}
 	log.Printf("Created publisher %v", pub)
+	eventProcessor = ptpMetrics.NewPTPEventManager(pub.ID, nodeName, config)
+
+	go listenToSocket()
+
 	// 2.Create Status Listener
 	onStatusRequestFn := func(e v2.Event) error {
 		log.Info("got status check call,fire events for above publisher")
@@ -82,15 +84,15 @@ func createPublisher(address string) (pub pubsub.PubSub, err error) {
 	return pub, err
 }
 
-func createPTPEvent(pub pubsub.PubSub) (ceevent.Event, error) {
+func createPTPEvent(pub pubsub.PubSub) (ceEvent.Event, error) {
 	// create an event
-	data := ceevent.Data{
+	data := ceEvent.Data{
 		Version: "v1",
-		Values: []ceevent.DataValue{{
-			Resource:  "/cluster/node/ptp",
-			DataType:  ceevent.NOTIFICATION,
-			ValueType: ceevent.ENUMERATION,
-			Value:     ceevent.FREERUN,
+		Values: []ceEvent.DataValue{{
+			Resource:  "/cluster/node/ptp/not-implemented",
+			DataType:  ceEvent.NOTIFICATION,
+			ValueType: ceEvent.ENUMERATION,
+			Value:     ceEvent.FREERUN,
 		},
 		},
 	}
@@ -100,7 +102,7 @@ func createPTPEvent(pub pubsub.PubSub) (ceevent.Event, error) {
 
 func listenToSocket() {
 	log.Info("establishing socket connection for metrics and events")
-	l, err := ptp_socket.Listen("/tmp/metrics.sock")
+	l, err := ptpSocket.Listen("/tmp/metrics.sock")
 	if err != nil {
 		log.Errorf("error setting up socket %s", err)
 		return
@@ -125,6 +127,6 @@ func processMessages(c net.Conn) {
 			break
 		}
 		msg := scanner.Text()
-		metricsProcessor.ExtractMetrics(msg)
+		eventProcessor.ExtractMetrics(msg)
 	}
 }

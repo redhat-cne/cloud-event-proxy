@@ -45,6 +45,5 @@ func removeIfStaleUnixSocket(socketPath string) error {
 	} else if err == nil {
 		return conn.Close()
 	}
-
 	return nil
 }
