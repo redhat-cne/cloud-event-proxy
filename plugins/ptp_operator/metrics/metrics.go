@@ -111,7 +111,7 @@ func (s *Stats) addValue(val float64) {
 		s.max = val
 	}
 	if s.num == 0 && s.min > val {
-		s.mean = val
+		s.min = val
 	}
 	s.num++
 	s.mean = oldMean + (val-oldMean)/s.num

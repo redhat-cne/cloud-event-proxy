@@ -163,7 +163,7 @@ func ProcessInChannel() {
 		select {
 		case d := <-scConfig.EventInCh:
 			if d.Type == channel.LISTENER {
-				log.Printf("1amqp disabled,no action taken: request to create listener address %s was called,but transport is not enabled", d.Address)
+				log.Printf("amqp disabled,no action taken: request to create listener address %s was called,but transport is not enabled", d.Address)
 			} else if d.Type == channel.SENDER {
 				log.Printf("no action taken: request to create sender for address %s was called,but transport is not enabled", d.Address)
 			} else if d.Type == channel.EVENT && d.Status == channel.NEW {
