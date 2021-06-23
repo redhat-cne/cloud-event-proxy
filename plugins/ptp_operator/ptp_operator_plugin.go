@@ -94,7 +94,7 @@ func createPTPEvent(pub pubsub.PubSub) (ceEvent.Event, error) {
 			Resource:  "/cluster/node/ptp/not-implemented",
 			DataType:  ceEvent.NOTIFICATION,
 			ValueType: ceEvent.ENUMERATION,
-			Value:     ceEvent.FREERUN,
+			Value:     ceEvent.ACQUIRING_SYNC,
 		},
 		},
 	}
