@@ -41,7 +41,7 @@ var (
 	resourceAddressPTP     string = "/cluster/node/%s/ptp"
 	resourceAddressHwEvent string = "/hw-event"
 	localAPIAddr           string = "localhost:9089"
-	nodeName			   string ="node"
+	nodeName               string = "node"
 )
 
 func main() {
@@ -51,8 +51,8 @@ func main() {
 	flag.StringVar(&apiAddr, "api-addr", "localhost:8080", "The address the framework api endpoint binds to.")
 	flag.Parse()
 
-	if envNode := os.Getenv("NODE_NAME");envNode!=""{
-		nodeName=envNode
+	if envNode := os.Getenv("NODE_NAME"); envNode != "" {
+		nodeName = envNode
 	}
 
 	var wg sync.WaitGroup
