@@ -23,6 +23,7 @@ import (
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	log "github.com/sirupsen/logrus"
 
+	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 )
 
@@ -67,7 +68,7 @@ func (pl Handler) LoadAMQPPlugin(wg *sync.WaitGroup, scConfig *common.SCConfigur
 }
 
 // LoadPTPPlugin loads ptp plugin
-func (pl Handler) LoadPTPPlugin(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e interface{}) error) error {
+func (pl Handler) LoadPTPPlugin(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e ceevent.Event) error) error {
 	restPlugin, err := filepath.Glob(fmt.Sprintf("%s/ptp_operator_plugin.so", pl.Path))
 	if err != nil {
 		log.Fatalf("cannot load ptp plugin %v", err)
@@ -86,7 +87,7 @@ func (pl Handler) LoadPTPPlugin(wg *sync.WaitGroup, scConfig *common.SCConfigura
 		log.Fatalf("cannot open ptp plugin start method %v", err)
 		return err
 	}
-	startFunc, ok := symbol.(func(*sync.WaitGroup, *common.SCConfiguration, func(e interface{}) error) error)
+	startFunc, ok := symbol.(func(*sync.WaitGroup, *common.SCConfiguration, func(e ceevent.Event) error) error)
 	if !ok {
 		log.Fatalf("Plugin has no 'Start(*sync.WaitGroup, *common.SCConfiguration, func(e ceevent.Event) error)(error)' function")
 	}
@@ -94,7 +95,7 @@ func (pl Handler) LoadPTPPlugin(wg *sync.WaitGroup, scConfig *common.SCConfigura
 }
 
 // LoadHwEventPlugin loads hw event plugin
-func (pl Handler) LoadHwEventPlugin(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e interface{}) error) error {
+func (pl Handler) LoadHwEventPlugin(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e ceevent.Event) error) error {
 	restPlugin, err := filepath.Glob(fmt.Sprintf("%s/hw_event_plugin.so", pl.Path))
 	if err != nil {
 		log.Fatalf("cannot load hw event plugin %v", err)
@@ -113,7 +114,7 @@ func (pl Handler) LoadHwEventPlugin(wg *sync.WaitGroup, scConfig *common.SCConfi
 		log.Fatalf("cannot open hw event plugin start method %v", err)
 		return err
 	}
-	startFunc, ok := symbol.(func(*sync.WaitGroup, *common.SCConfiguration, func(e interface{}) error) error)
+	startFunc, ok := symbol.(func(*sync.WaitGroup, *common.SCConfiguration, func(e ceevent.Event) error) error)
 	if !ok {
 		log.Fatalf("Plugin has no 'Start(*sync.WaitGroup, *common.SCConfiguration, func(e ceevent.Event) error)(error)' function")
 	}
