@@ -31,7 +31,6 @@ const (
 var (
 	// NodeName from the env
 	ptpNodeName = ""
-	eventConfig *common.SCConfiguration
 
 	// OffsetFromMaster metrics for offset from the master
 	OffsetFromMaster = prometheus.NewGaugeVec(
@@ -173,6 +172,11 @@ func (p *PTPEventManager) MockTest(t bool) {
 
 // ExtractMetrics ...
 func (p *PTPEventManager) ExtractMetrics(msg string) {
+	defer func() {
+		if err := recover(); err != nil {
+			fmt.Println("Restored from extract metrics and events:", err)
+		}
+	}()
 	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
 	output := replacer.Replace(msg)
 	fields := strings.Fields(output)
@@ -182,10 +186,10 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	}
 	processName := fields[0]
 	iface := fields[2]
-	if strings.Contains(output, "max") { // this get generated in case -u is passed an option to phy2sys opts
+	if strings.Contains(output, " max ") { // this get generated in case -u is passed an option to phy2sys opts
 		offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster := extractSummaryMetrics(processName, output)
 		UpdatePTPMetrics(processName, iface, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
-	} else if strings.Contains(output, "offset") {
+	} else if strings.Contains(output, " offset ") {
 		offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster, clockState := extractRegularMetrics(processName, output)
 		// update stats
 		if clockState == "" {
@@ -247,6 +251,7 @@ func (p *PTPEventManager) GenPhc2SysEvent(iface string, offsetFromMaster float64
 				p.publishEvent(ceevent.FREERUN, iface)
 			} else if lastLockState != clockState {
 				p.publishEvent(clockState, iface)
+				p.Stats[iface].lastClockState = clockState
 			}
 		} else if clockState != lastLockState {
 			p.Stats[iface].lastClockState = clockState
@@ -276,13 +281,11 @@ func (p *PTPEventManager) publishEvent(state ceevent.SyncState, iface string) {
 		return
 	}
 	if !p.mock {
-		if err = common.PublishEvent(eventConfig, e); err != nil {
+		if err = common.PublishEvent(p.scConfig, e); err != nil {
 			log.Errorf("failed to publish ptp event %v, %s", e, err)
 			return
 		}
 	}
-
-	log.Infof("ptp clock  status event published %v ", e)
 }
 
 // UpdatePTPMetrics ...

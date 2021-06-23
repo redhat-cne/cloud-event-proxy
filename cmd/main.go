@@ -98,8 +98,8 @@ func main() {
 		os.Exit(1)
 	}()
 
-	var err error
-	_, err = common.StartPubSubService(&wg, scConfig)
+
+	_, err := common.StartPubSubService(&wg, scConfig)
 	if err != nil {
 		log.Fatal("pub/sub service API failed to start.")
 	}

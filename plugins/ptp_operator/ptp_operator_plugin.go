@@ -44,24 +44,26 @@ var (
 func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e ceEvent.Event) error) error { //nolint:deadcode,unused
 	// The name of NodePtpDevice CR for this node is equal to the node name
 	nodeName := os.Getenv("NODE_NAME")
-	// register metrics type
-	ptpMetrics.RegisterMetrics(nodeName)
-	config = configuration
 	if nodeName == "" {
 		log.Error("cannot find NODE_NAME environment variable")
 		return fmt.Errorf("cannot find NODE_NAME environment variable")
 	}
+	config = configuration
+	// register metrics type
+	ptpMetrics.RegisterMetrics(nodeName)
+
 	// 1. Create event Publication
 	var pub pubsub.PubSub
 	var err error
-	if pub, err = createPublisher(fmt.Sprintf(resourceAddress,nodeName)); err != nil {
+	if pub, err = createPublisher(fmt.Sprintf(resourceAddress, nodeName)); err != nil {
 		log.Errorf("failed to create a publisher %v", err)
 		return err
 	}
 	log.Printf("Created publisher %v", pub)
 	eventProcessor = ptpMetrics.NewPTPEventManager(pub.ID, nodeName, config)
 
-	go listenToSocket()
+	wg.Add(1)
+	go listenToSocket(wg)
 
 	// 2.Create Status Listener
 	onStatusRequestFn := func(e v2.Event) error {
@@ -100,8 +102,9 @@ func createPTPEvent(pub pubsub.PubSub) (ceEvent.Event, error) {
 	return e, err
 }
 
-func listenToSocket() {
+func listenToSocket(wg *sync.WaitGroup) {
 	log.Info("establishing socket connection for metrics and events")
+	defer wg.Done()
 	l, err := ptpSocket.Listen("/tmp/metrics.sock")
 	if err != nil {
 		log.Errorf("error setting up socket %s", err)
@@ -127,6 +130,6 @@ func processMessages(c net.Conn) {
 			break
 		}
 		msg := scanner.Text()
-		eventProcessor.ExtractMetrics(msg)
+		go eventProcessor.ExtractMetrics(msg)
 	}
 }
