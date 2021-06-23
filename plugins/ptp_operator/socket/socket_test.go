@@ -12,7 +12,6 @@ import (
 	"time"
 )
 
-
 const logLength = 17
 
 var logsData = [logLength]string{
@@ -33,21 +32,18 @@ var logsData = [logLength]string{
 	"phc2sys[96254.969]: [ens5f1] CLOCK_REALTIME phc offset      100 s2 freq  -79243 delay   1058 " + "\n",
 	"phc2sys[432313.127]: [ens5f1] CLOCK_REALTIME phc offset   -837364 s2 freq +625227 delay   1415 " + "\n",
 	"ptp4l[432313.222]: [ens5f1] port 1: SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED) " + "\n",
-
 }
 var eventProcessor *metrics.PTPEventManager
-var pubID="123"
-var scConfig          *common.SCConfiguration
+var pubID = "123"
+var scConfig *common.SCConfiguration
 
-func setup(){
-	scConfig = &common.SCConfiguration{
-	}
+func setup() {
+	scConfig = &common.SCConfiguration{}
 }
-
 
 func Test_WriteMetricsToSocket(t *testing.T) {
 	setup()
-	eventProcessor = metrics.NewPTPEventManager(pubID,"tetsnode",scConfig)
+	eventProcessor = metrics.NewPTPEventManager(pubID, "tetsnode", scConfig)
 	eventProcessor.MockTest(true)
 	go listenToTestMetrics()
 	time.Sleep(2 * time.Second)
@@ -66,7 +62,7 @@ func Test_WriteMetricsToSocket(t *testing.T) {
 		}
 	}
 
-	time.Sleep(3*time.Second)
+	time.Sleep(3 * time.Second)
 }
 
 func listenToTestMetrics() {
@@ -104,4 +100,3 @@ func processTestMetrics2(c net.Conn) {
 	}
 
 }
-
