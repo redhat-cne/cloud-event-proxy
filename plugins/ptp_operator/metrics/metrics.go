@@ -174,7 +174,8 @@ func (p *PTPEventManager) MockTest(t bool) {
 func (p *PTPEventManager) ExtractMetrics(msg string) {
 	defer func() {
 		if err := recover(); err != nil {
-			fmt.Println("Restored from extract metrics and events:", err)
+			log.Errorf("restored from extract metrics and events: %s", err)
+			log.Errorf("message  failed to send %s", msg )
 		}
 	}()
 	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
