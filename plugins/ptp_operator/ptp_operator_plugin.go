@@ -15,40 +15,56 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
-	v2 "github.com/cloudevents/sdk-go/v2"
-	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
-	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
-	"time"
-
-	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
-
-	log "github.com/sirupsen/logrus"
+	"net"
+	"os"
 	"sync"
 
+	v2 "github.com/cloudevents/sdk-go/v2"
+	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
+	ptpSocket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
+	ceEvent "github.com/redhat-cne/sdk-go/pkg/event"
+	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
+	log "github.com/sirupsen/logrus"
+
+	ptpMetrics "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 )
 
 var (
-	resourceAddress string        = "/cluster/node/ptp"
-	eventInterval   time.Duration = time.Second * 5
+	resourceAddress string = "/cluster/node/%s/ptp"
 	config          *common.SCConfiguration
+	eventProcessor  *ptpMetrics.PTPEventManager
 )
 
 // Start ptp plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
-func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e ceevent.Event) error) error { //nolint:deadcode,unused
+func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e ceEvent.Event) error) error { //nolint:deadcode,unused
+	// The name of NodePtpDevice CR for this node is equal to the node name
+	nodeName := os.Getenv("NODE_NAME")
+	if nodeName == "" {
+		log.Error("cannot find NODE_NAME environment variable")
+		return fmt.Errorf("cannot find NODE_NAME environment variable")
+	}
+	config = configuration
+	// register metrics type
+	ptpMetrics.RegisterMetrics(nodeName)
+
 	// 1. Create event Publication
 	var pub pubsub.PubSub
 	var err error
-	var e ceevent.Event
-	config = configuration
-	if pub, err = createPublisher(resourceAddress); err != nil {
+	if pub, err = createPublisher(fmt.Sprintf(resourceAddress, nodeName)); err != nil {
 		log.Errorf("failed to create a publisher %v", err)
 		return err
 	}
 	log.Printf("Created publisher %v", pub)
+	eventProcessor = ptpMetrics.NewPTPEventManager(pub.ID, nodeName, config)
+
+	wg.Add(1)
+	go listenToSocket(wg)
+
 	// 2.Create Status Listener
 	onStatusRequestFn := func(e v2.Event) error {
 		log.Info("got status check call,fire events for above publisher")
@@ -57,32 +73,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		return nil
 	}
 	v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pub.Resource, "status"), onStatusRequestFn, fn)
-	// 3. Fire initial Event
-	log.Info("sending initial events ( probably not needed until consumer asks for it in initial state)")
-	e, _ = createPTPEvent(pub)
-	_ = common.PublishEvent(config, e)
-	// event handler
-	log.Info("spinning event loop")
-	wg.Add(1)
-	go sendEvents(wg, pub)
 	return nil
-}
-
-func sendEvents(wg *sync.WaitGroup, pub pubsub.PubSub) {
-	ticker := time.NewTicker(eventInterval)
-	defer ticker.Stop()
-	defer wg.Done()
-	for {
-		select {
-		case <-ticker.C:
-			log.Info("sending events")
-			e, _ := createPTPEvent(pub)
-			_ = common.PublishEvent(config, e)
-		case <-config.CloseCh:
-			log.Info("done")
-			return
-		}
-	}
 }
 func createPublisher(address string) (pub pubsub.PubSub, err error) {
 	// this is loopback on server itself. Since current pod does not create any server
@@ -95,18 +86,50 @@ func createPublisher(address string) (pub pubsub.PubSub, err error) {
 	return pub, err
 }
 
-func createPTPEvent(pub pubsub.PubSub) (ceevent.Event, error) {
+func createPTPEvent(pub pubsub.PubSub) (ceEvent.Event, error) {
 	// create an event
-	data := ceevent.Data{
+	data := ceEvent.Data{
 		Version: "v1",
-		Values: []ceevent.DataValue{{
-			Resource:  "/cluster/node/ptp",
-			DataType:  ceevent.NOTIFICATION,
-			ValueType: ceevent.ENUMERATION,
-			Value:     ceevent.ACQUIRING_SYNC,
+		Values: []ceEvent.DataValue{{
+			Resource:  "/cluster/node/ptp/not-implemented",
+			DataType:  ceEvent.NOTIFICATION,
+			ValueType: ceEvent.ENUMERATION,
+			Value:     ceEvent.ACQUIRING_SYNC,
 		},
 		},
 	}
 	e, err := common.CreateEvent(pub.ID, "PTP_EVENT", data)
 	return e, err
+}
+
+func listenToSocket(wg *sync.WaitGroup) {
+	log.Info("establishing socket connection for metrics and events")
+	defer wg.Done()
+	l, err := ptpSocket.Listen("/tmp/metrics.sock")
+	if err != nil {
+		log.Errorf("error setting up socket %s", err)
+		return
+	}
+	log.Info("connection established successfully")
+	for {
+		fd, err := l.Accept()
+		if err != nil {
+			log.Errorf("accept error: %s", err)
+		} else {
+			go processMessages(fd)
+		}
+	}
+}
+
+func processMessages(c net.Conn) {
+	scanner := bufio.NewScanner(c)
+	for {
+		ok := scanner.Scan()
+		if !ok {
+			log.Error("error reading socket input")
+			break
+		}
+		msg := scanner.Text()
+		eventProcessor.ExtractMetrics(msg)
+	}
 }

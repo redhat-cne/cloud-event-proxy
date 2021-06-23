@@ -24,6 +24,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/collectors"
+
 	"github.com/redhat-cne/sdk-go/pkg/util/wait"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -70,8 +72,8 @@ func main() {
 	sdkmetrics.RegisterMetrics()
 
 	// Including these stats kills performance when Prometheus polls with multiple targets
-	prometheus.Unregister(prometheus.NewProcessCollector(prometheus.ProcessCollectorOpts{}))
-	prometheus.Unregister(prometheus.NewGoCollector())
+	prometheus.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	prometheus.Unregister(collectors.NewGoCollector())
 
 	scConfig = &common.SCConfiguration{
 		EventInCh:  make(chan *channel.DataChan, channelBufferSize),
@@ -85,12 +87,20 @@ func main() {
 		BaseURL:    nil,
 	}
 
-	wg := sync.WaitGroup{}
-	wg.Add(1)
 	metricServer(metricsAddr)
+	wg := sync.WaitGroup{}
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
-	var err error
-	_, err = common.StartPubSubService(&wg, scConfig)
+	go func() {
+		<-c
+		log.Info("exiting...")
+		close(scConfig.CloseCh)
+		wg.Wait()
+		os.Exit(1)
+	}()
+
+	_, err := common.StartPubSubService(&wg, scConfig)
 	if err != nil {
 		log.Fatal("pub/sub service API failed to start.")
 	}
@@ -119,17 +129,6 @@ func main() {
 			log.Fatalf("error loading hw plugin %v", err)
 		}
 	}
-
-	log.Info("ready...")
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-
-	go func() {
-		<-c
-		//clean up
-		close(scConfig.CloseCh)
-		os.Exit(1)
-	}()
 
 	if !scConfig.PubSubAPI.HasTransportEnabled() {
 		wg.Add(1)
@@ -175,7 +174,7 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 						if sub.EndPointURI != nil {
 							event.ID = sub.ID // set ID to the subscriptionID
 							if err := restClient.PostEvent(sub.EndPointURI, event); err != nil {
-								log.Errorf("error posting request at %s", sub.EndPointURI)
+								log.Errorf("error posting request at %s : %s", sub.EndPointURI, err)
 								localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
 							} else {
 								localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
@@ -238,6 +237,7 @@ func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 				}
 				if d.OnReceiveOverrideFn != nil {
 					if err := d.OnReceiveOverrideFn(*d.Data); err != nil {
+						log.Errorf("error onReceiveOverrideFn %s", err)
 						out.Status = channel.FAILED
 					} else {
 						out.Status = channel.SUCCESS

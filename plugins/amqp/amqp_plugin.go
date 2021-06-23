@@ -15,8 +15,10 @@
 package main
 
 import (
-	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"sync"
+	"time"
+
+	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 )
@@ -26,6 +28,8 @@ func Start(wg *sync.WaitGroup, config *common.SCConfiguration) (amqpInstance *v1
 	if amqpInstance, err = v1amqp.GetAMQPInstance(config.AMQPHost, config.EventInCh, config.EventOutCh, config.CloseCh); err != nil {
 		return
 	}
+	amqpInstance.Router.CancelTimeOut(500 * time.Millisecond)
+	amqpInstance.Router.RetryTime(1 * time.Second)
 	amqpInstance.Start(wg)
 	return
 }

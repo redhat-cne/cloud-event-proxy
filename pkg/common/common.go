@@ -145,10 +145,10 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 	rc := restclient.New()
 	err := rc.PostEvent(types.ParseURI(url), e)
 	if err != nil {
-		log.Errorf("error posting ptp events %v", err)
+		log.Errorf("error posting cloud native events %v", err)
 		return err
 	}
-	log.Errorf("published ptp event %s", e.String())
+	log.Infof("published cloud native event %s", e.String())
 
 	return nil
 }

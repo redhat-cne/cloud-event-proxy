@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 repo_root=$(dirname $0)/..
 
 BUILDCMD=${BUILDCMD:-podman build}

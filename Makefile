@@ -97,3 +97,4 @@ gha:
 	go build -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 	go build -o plugins/hw_event_plugin.so -buildmode=plugin plugins/hw_event/hw_event_plugin.go
 	go test ./...  -coverprofile=cover.out
+
