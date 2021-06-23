@@ -72,7 +72,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		_ = common.PublishEvent(config, event)
 		return nil
 	}
-	v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pub.Resource, "status"), onStatusRequestFn, nil)
+	v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pub.Resource, "status"), onStatusRequestFn, fn)
 	return nil
 }
 func createPublisher(address string) (pub pubsub.PubSub, err error) {
