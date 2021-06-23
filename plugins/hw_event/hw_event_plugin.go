@@ -26,7 +26,6 @@ import (
 	"time"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
-	cneevent "github.com/redhat-cne/sdk-go/pkg/event"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 	log "github.com/sirupsen/logrus"
@@ -79,7 +78,7 @@ type RedfishEvent struct {
 }
 
 // Start hw event plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
-func Start(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e cneevent.Event) error) error { //nolint:deadcode,unused
+func Start(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e interface{}) error) error { //nolint:deadcode,unused
 
 	webhookURL := getWebhookAddr()
 	status, _ := createHwEventSubscription(hwEventTypes, webhookURL)
