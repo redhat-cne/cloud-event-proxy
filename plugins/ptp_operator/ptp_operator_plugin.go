@@ -41,7 +41,7 @@ var (
 )
 
 // Start ptp plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
-func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e ceEvent.Event) error) error { //nolint:deadcode,unused
+func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e interface{}) error) error { //nolint:deadcode,unused
 	// The name of NodePtpDevice CR for this node is equal to the node name
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
