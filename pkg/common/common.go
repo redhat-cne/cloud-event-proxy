@@ -102,7 +102,7 @@ func CreatePublisher(config *SCConfiguration, publisher pubsub.PubSub) (pub pubs
 	return pub, err
 }
 
-//CreateSubscription creates a subscription object
+// CreateSubscription creates a subscription object
 func CreateSubscription(config *SCConfiguration, subscription pubsub.PubSub) (sub pubsub.PubSub, err error) {
 	apiURL := fmt.Sprintf("%s%s", config.BaseURL.String(), "subscriptions")
 	var subB []byte
@@ -122,7 +122,7 @@ func CreateSubscription(config *SCConfiguration, subscription pubsub.PubSub) (su
 	return sub, err
 }
 
-//CreateEvent create an event
+// CreateEvent create an event
 func CreateEvent(pubSubID, eventType string, data ceevent.Data) (ceevent.Event, error) {
 	// create an event
 	if pubSubID == "" {
@@ -140,7 +140,7 @@ func CreateEvent(pubSubID, eventType string, data ceevent.Data) (ceevent.Event, 
 	return event, nil
 }
 
-//CreateHwEvent create an hw event
+// CreateHwEvent create an hw event
 func CreateHwEvent(pubSubID, eventType string, data hwevent.Data) (hwevent.Event, error) {
 	// create an hw event
 	if pubSubID == "" {
@@ -188,7 +188,7 @@ func PublishHwEvent(scConfig *SCConfiguration, e hwevent.Event) error {
 	return nil
 }
 
-//APIHealthCheck .. rest api should be ready before starting to consume api
+// APIHealthCheck .. rest api should be ready before starting to consume api
 func APIHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
 	log.Printf("checking for rest service health\n")
 	for i := 0; i <= 5; i++ {
