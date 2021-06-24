@@ -257,7 +257,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		lastLockState := s.lastClockState
 		s.lastClockState = clockState
 		if clockState != lastLockState {
-			p.publishEvent(clockState, iface)
+			p.publishEvent(clockState, 0, iface)
 		}
 	}
 }
@@ -273,13 +273,13 @@ func (p *PTPEventManager) GenPhc2SysEvent(iface string, offsetFromMaster float64
 		switch lastClockState {
 		case ceevent.FREERUN: //last state was already sent for FreeRUN n, but if its within then send again with new state
 			if offsetFromMaster != 0 && (offsetFromMaster < p.maxOffsetThreshold && offsetFromMaster > p.minOffsetThreshold) { // within range
-				p.publishEvent(clockState, iface) // change to locked
+				p.publishEvent(clockState, offsetFromMaster, iface) // change to locked
 				iStats.lastClockState = clockState
 				iStats.lastClockStateCount = 1
 			}
 		case ceevent.LOCKED: // last state was in sync , check if its pout of sync
 			if offsetFromMaster == 0 || offsetFromMaster > p.maxOffsetThreshold || offsetFromMaster < p.minOffsetThreshold { // out of sync
-				p.publishEvent(ceevent.HOLDOVER, iface)
+				p.publishEvent(ceevent.HOLDOVER, offsetFromMaster, iface)
 				iStats.lastClockState = ceevent.HOLDOVER
 				iStats.lastClockStateCount = 1
 			}
@@ -288,39 +288,39 @@ func (p *PTPEventManager) GenPhc2SysEvent(iface string, offsetFromMaster float64
 				if iStats.lastClockStateCount < p.holdOverStateThreshold {
 					iStats.lastClockStateCount++
 				} else {
-					p.publishEvent(ceevent.FREERUN, iface)
+					p.publishEvent(ceevent.FREERUN, offsetFromMaster, iface)
 					iStats.lastClockState = ceevent.FREERUN
 					iStats.lastClockStateCount = 1
 				}
 			} else {
-				p.publishEvent(clockState, iface) // change to locked
+				p.publishEvent(clockState, offsetFromMaster, iface) // change to locked
 				iStats.lastClockState = clockState
 				iStats.lastClockStateCount = 1
 			}
 		default: // not yet used states
-			p.publishEvent(clockState, iface) // change to locked
+			p.publishEvent(clockState, offsetFromMaster, iface) // change to locked
 			iStats.lastClockState = clockState
 			iStats.lastClockStateCount = 1
 			//do nothing already send event
 		}
 	case ceevent.FREERUN:
 		if offsetFromMaster != 0 && (offsetFromMaster < p.maxOffsetThreshold && offsetFromMaster > p.minOffsetThreshold) { // within range
-			p.publishEvent(ceevent.LOCKED, iface) // change to locked
+			p.publishEvent(ceevent.LOCKED, offsetFromMaster, iface) // change to locked
 			iStats.lastClockState = ceevent.LOCKED
 			iStats.lastClockStateCount = 1
 		} else if lastClockState != ceevent.FREERUN {
-			p.publishEvent(clockState, iface) // change to freerun
+			p.publishEvent(clockState, offsetFromMaster, iface) // change to freerun
 			iStats.lastClockState = clockState
 			iStats.lastClockStateCount = 1
 		}
 	default:
-		p.publishEvent(clockState, iface) // change to locked
+		p.publishEvent(clockState, offsetFromMaster, iface) // change to locked
 		iStats.lastClockState = clockState
 		iStats.lastClockStateCount = 1
 	}
 }
 
-func (p *PTPEventManager) publishEvent(state ceevent.SyncState, iface string) {
+func (p *PTPEventManager) publishEvent(state ceevent.SyncState, offsetFromMaster float64, iface string) {
 	// create an event
 	data := ceevent.Data{
 		Version: "v1",
@@ -329,6 +329,11 @@ func (p *PTPEventManager) publishEvent(state ceevent.SyncState, iface string) {
 			DataType:  ceevent.NOTIFICATION,
 			ValueType: ceevent.ENUMERATION,
 			Value:     state,
+		}, {
+			Resource:  fmt.Sprintf("/cluster/%s/ptp/interface/%s", p.nodeName, iface),
+			DataType:  ceevent.METRIC,
+			ValueType: ceevent.DECIMAL,
+			Value:     offsetFromMaster,
 		},
 		},
 	}

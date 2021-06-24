@@ -272,8 +272,8 @@ github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a/go.mod h1:bCqn
 github.com/redhat-cne/rest-api v0.0.0-20210517164622-d80f90501d52 h1:v9yIf6+wTMPgFYVDJupj4TXMUQOYbsGKFHzmu6Jn6+s=
 github.com/redhat-cne/rest-api v0.0.0-20210517164622-d80f90501d52/go.mod h1:5+DmpZzeJjK/RNISDhchIcUYvIPt8mT9N1uaibNpoUQ=
 github.com/redhat-cne/sdk-go v0.0.0-20210514165344-d1a7d7921d8d/go.mod h1:FqtKJTyjOtOS5YPs3M0CZ9Vc/RYgEv9ecp+Zq4Lbeyk=
-github.com/redhat-cne/sdk-go v0.0.0-20210623214032-d35ab47373b2 h1:Ob6TB0Ng9tNvjjGTTu0G3k0QR27OHlnw+eKjatNijbo=
-github.com/redhat-cne/sdk-go v0.0.0-20210623214032-d35ab47373b2/go.mod h1:FqtKJTyjOtOS5YPs3M0CZ9Vc/RYgEv9ecp+Zq4Lbeyk=
+github.com/redhat-cne/sdk-go v0.0.0-20210624034130-7e978efb9f8d h1:5tnYOHZsRwOnhsDKsldHq4ehlwNzQOfRMhCqDuoKSm8=
+github.com/redhat-cne/sdk-go v0.0.0-20210624034130-7e978efb9f8d/go.mod h1:FqtKJTyjOtOS5YPs3M0CZ9Vc/RYgEv9ecp+Zq4Lbeyk=
 github.com/rogpeppe/fastuuid v0.0.0-20150106093220-6724a57986af/go.mod h1:XWv6SoW27p1b0cqNHllgS5HIMJraePCO15w5zCzIWYg=
 github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
 github.com/russross/blackfriday/v2 v2.0.1/go.mod h1:+Rmxgy9KzJVeS9/2gXHxylqXiyQDYRxCVz55jmeOWTM=
