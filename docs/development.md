@@ -22,14 +22,15 @@ make run-producer
 ```shell
 1. hack/build-image.sh
 2. hack/build-example-image.sh
+# find out image tags ${TAG}
 3. podman images
 ```
 #### Push images to a repo
 
 ```shell
-podman push localhost/cloud-event-proxy:edf2bcfd-dirty quay.io/aneeshkp/cloud-event-proxy:latest
-podman push localhost/cloud-native-event-consumer:edf2bcfd-dirty quay.io/aneeshkp/cloud-native-event-consumer:latest
-podman push localhost/cloud-native-event-producer:edf2bcfd-dirty quay.io/aneeshkp/cloud-native-event-producer:latest
+podman push localhost/cloud-event-proxy:${TAG} quay.io/aneeshkp/cloud-event-proxy:latest
+podman push localhost/cloud-native-event-consumer:${TAG}quay.io/aneeshkp/cloud-native-event-consumer:latest
+podman push localhost/cloud-native-event-producer:${TAG} quay.io/aneeshkp/cloud-native-event-producer:latest
 ```
 
 Use producer.yaml,consumer.yaml and service.yaml from examples/manifests folder to deploy to a cluster.

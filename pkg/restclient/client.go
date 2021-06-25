@@ -70,7 +70,6 @@ func (r *Rest) PostHwEvent(url *types.URI, e hwevent.Event) error {
 		log.Errorf("error marshalling event %v", e)
 		return err
 	}
-
 	if status := r.Post(url, b); status == http.StatusBadRequest {
 		return fmt.Errorf("post returned status %d", status)
 	}
