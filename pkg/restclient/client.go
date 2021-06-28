@@ -18,11 +18,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/redhat-cne/sdk-go/pkg/types"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
 	"time"
+
+	"github.com/redhat-cne/sdk-go/pkg/types"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/redhat-cne/sdk-go/pkg/event"
 	"golang.org/x/net/context"
@@ -111,4 +112,23 @@ func (r *Rest) PostWithReturn(url *types.URI, data []byte) (int, []byte) {
 		return http.StatusBadRequest, nil
 	}
 	return res.StatusCode, body
+}
+
+// Put  http request
+func (r *Rest) Put(url *types.URI) int {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, "PUT", url.String(), nil)
+	if err != nil {
+		log.Errorf("error creating post request %v", err)
+		return http.StatusBadRequest
+	}
+	request.Header.Set("content-type", "application/json")
+	res, err := r.client.Do(request)
+	if err != nil {
+		log.Errorf("error in post response %v to %s ", err, url)
+		return http.StatusBadRequest
+	}
+	return res.StatusCode
 }

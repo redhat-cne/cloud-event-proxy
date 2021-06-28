@@ -39,6 +39,7 @@ var (
 	localAPIAddr           string
 	resourceAddressSports  string = "/news-service/sports"
 	resourceAddressFinance string = "/news-service/finance"
+
 )
 
 func main() {
@@ -73,6 +74,8 @@ RETRY:
 		}
 		log.Infof("created publisher : %s\n", pub.String())
 	}
+
+
 
 	// create events periodically
 	wg.Add(1)
@@ -113,12 +116,12 @@ func createPublisher(resourceAddress string) []byte {
 	endpointURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: localAPIAddr,
 		Path: fmt.Sprintf("%s", "ack/event")}}
-	log.Infof("ednpo %s", endpointURL.String())
+	log.Infof("publisher endpoint %s", endpointURL.String())
 	pub := v1pubsub.NewPubSub(endpointURL, resourceAddress)
 	if b, err := json.Marshal(&pub); err == nil {
 		rc := restclient.New()
 		if status, b := rc.PostWithReturn(publisherURL, b); status == http.StatusCreated {
-			log.Infof("sdss%s", string(b))
+			log.Infof("create publisher status %s", string(b))
 			return b
 		}
 		log.Errorf("publisher create returned error %s", string(b))

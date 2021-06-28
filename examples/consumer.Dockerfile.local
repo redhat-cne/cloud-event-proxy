@@ -1,0 +1,15 @@
+FROM golang:1.15-alpine AS builder
+WORKDIR /go/src/github.com/redhat-cne/cloud-event-proxy
+COPY . .
+
+FROM golang:1.15-alpine as bin
+COPY --from=builder  /go/src/github.com/redhat-cne/cloud-event-proxy/build/libdl.so.2 /lib64/
+COPY --from=builder  /go/src/github.com/redhat-cne/cloud-event-proxy/build/libpthread.so.0 /lib64/
+COPY --from=builder  /go/src/github.com/redhat-cne/cloud-event-proxy/build/libc.so.6 /lib64/
+COPY --from=builder  /go/src/github.com/redhat-cne/cloud-event-proxy/build/ld-linux-x86-64.so.2 /lib64/
+
+COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/build/cloud-native-event-consumer /
+ENTRYPOINT ["/cloud-native-event-consumer"]
+
+
+

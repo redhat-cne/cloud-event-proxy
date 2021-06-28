@@ -34,19 +34,21 @@ All these metrics are prefixed with `cne_`
 
 | Name                                                  | Description                                              | Type    |
 |-------------------------------------------------------|----------------------------------------------------------|---------|
-| cne_events_amqp_received          | Metric to get number of events received  by the transport.   | Gauge |
-| cne_events_amqp_published     | Metric to get number of events published by the transport.  | Gauge   |
+| cne_amqp_events_received          | Metric to get number of events received  by the transport.   | Gauge |
+| cne_amqp_events_published     | Metric to get number of events published by the transport.  | Gauge   |
 | cne_amqp_connection_reset     | Metric to get number of connection resets.  | Gauge   |
 | cne_amqp_sender     | Metric to get number of sender created.  | Gauge   |
 | cne_amqp_receiver     | Metric to get number of receiver created.  | Gauge   |
+| cne_amqp_status_check_published | Metric to get number of status check published by the transport | Gauge |
 
 ### [REST-API Metrics ](https://github.com/redhat-cne/rest-api/blob/main/docs/metrics.md)
 
 | Name                                                  | Description                                              | Type    |
 |-------------------------------------------------------|----------------------------------------------------------|---------|
-| cne_events_api_published          | Metric to get number of events published by the rest api.   | Gauge |
+| cne_api_events_published          | Metric to get number of events published by the rest api.   | Gauge |
 | cne_api_subscriptions     | Metric to get number of subscriptions.  | Gauge   |
 | cne_api_publishers     | Metric to get number of publishers.  | Gauge   |
+| cne_api_status_ping | Metric to get number of status pings. | Gauge | 
 
 ### [cloud-event-proxy Metrics](#)
 These metrics describe the status of the cloud native events.

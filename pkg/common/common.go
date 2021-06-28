@@ -20,7 +20,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
@@ -57,6 +56,16 @@ func GetIntEnv(key string) int {
 	return 0
 }
 
+// GetFloatEnv get int value from env
+func GetFloatEnv(key string) float64 {
+	if val, ok := os.LookupEnv(key); ok && val != "" {
+		if ret, err := strconv.ParseFloat(val,64); err == nil {
+			return ret
+		}
+	}
+	return 0
+}
+
 // GetBoolEnv get bool value from env
 func GetBoolEnv(key string) bool {
 	if val, ok := os.LookupEnv(key); ok && val != "" {
@@ -68,7 +77,7 @@ func GetBoolEnv(key string) bool {
 }
 
 // StartPubSubService starts rest api service to manage events publishers and subscriptions
-func StartPubSubService(wg *sync.WaitGroup, scConfig *SCConfiguration) (*restapi.Server, error) {
+func StartPubSubService(scConfig *SCConfiguration) (*restapi.Server, error) {
 	// init
 	server := restapi.InitServer(scConfig.APIPort, scConfig.APIPath, scConfig.StorePath, scConfig.EventInCh, scConfig.CloseCh)
 	server.Start()
@@ -140,7 +149,6 @@ func CreateEvent(pubSubID, eventType string, data ceevent.Data) (ceevent.Event, 
 
 // PublishEvent publishes event
 func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
-	//create publisher
 	url := fmt.Sprintf("%s%s", scConfig.BaseURL.String(), "create/event")
 	rc := restclient.New()
 	err := rc.PostEvent(types.ParseURI(url), e)

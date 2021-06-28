@@ -7,7 +7,7 @@ ENV GOPATH=/go
 WORKDIR /go/src/github.com/redhat-cne/cloud-event-proxy
 COPY . .
 
-RUN hack/build-example-go.sh
+#RUN hack/build-example-go.sh
 
 FROM openshift/origin-base AS bin
 COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/build/cloud-native-event-producer /

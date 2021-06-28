@@ -21,17 +21,19 @@ import (
 	"os"
 	"sync"
 
+	"github.com/redhat-cne/sdk-go/pkg/channel"
+	"github.com/redhat-cne/sdk-go/pkg/event"
+
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptpSocket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
-	ceEvent "github.com/redhat-cne/sdk-go/pkg/event"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	log "github.com/sirupsen/logrus"
 
 	ptpMetrics "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
-	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
+	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
 )
 
 var (
@@ -46,7 +48,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
 		log.Error("cannot find NODE_NAME environment variable")
-		return fmt.Errorf("cannot find NODE_NAME environment variable")
+		return fmt.Errorf("cannot find NODE_NAME environment variable %s", nodeName)
 	}
 	config = configuration
 	// register metrics type
@@ -66,40 +68,31 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	go listenToSocket(wg)
 
 	// 2.Create Status Listener
-	onStatusRequestFn := func(e v2.Event) error {
+	// method to be called when ping received
+	onReceiveOverrideFn := func(e v2.Event, d *channel.DataChan) error {
 		log.Info("got status check call,fire events for above publisher")
-		event, _ := createPTPEvent(pub)
-		_ = common.PublishEvent(config, event)
+		if len(eventProcessor.Stats) == 0 {
+			eventProcessor.PublishEvent(event.FREERUN, 0, "ptp-not-set", "PTP_STATUS")
+		} else {
+			for i, s := range eventProcessor.Stats {
+				eventProcessor.PublishEvent(s.ClockState(), s.Offset(), i, "PTP_STATUS")
+			}
+		}
+		d.Type = channel.STATUS
 		return nil
 	}
-	v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pub.Resource, "status"), onStatusRequestFn, fn)
+	v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pub.Resource, "status"), onReceiveOverrideFn, fn)
 	return nil
 }
 func createPublisher(address string) (pub pubsub.PubSub, err error) {
 	// this is loopback on server itself. Since current pod does not create any server
 	returnURL := fmt.Sprintf("%s%s", config.BaseURL, "dummy")
-	pubToCreate := v1pubsub.NewPubSub(types.ParseURI(returnURL), address)
+	pubToCreate := v1pubs.NewPubSub(types.ParseURI(returnURL), address)
 	pub, err = common.CreatePublisher(config, pubToCreate)
 	if err != nil {
 		log.Errorf("failed to create publisher %v", pub)
 	}
 	return pub, err
-}
-
-func createPTPEvent(pub pubsub.PubSub) (ceEvent.Event, error) {
-	// create an event
-	data := ceEvent.Data{
-		Version: "v1",
-		Values: []ceEvent.DataValue{{
-			Resource:  "/cluster/node/ptp/not-implemented",
-			DataType:  ceEvent.NOTIFICATION,
-			ValueType: ceEvent.ENUMERATION,
-			Value:     ceEvent.ACQUIRING_SYNC,
-		},
-		},
-	}
-	e, err := common.CreateEvent(pub.ID, "PTP_EVENT", data)
-	return e, err
 }
 
 func listenToSocket(wg *sync.WaitGroup) {

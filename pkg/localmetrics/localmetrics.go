@@ -41,12 +41,19 @@ var (
 			Name: "cne_events_received",
 			Help: "Metric to get number of events received",
 		}, []string{"type", "status"})
+	//CNEStatusCheckReceivedCount ...  Total no of events received
+	cneStatusCheckReceivedCount = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cne_status_check_received",
+			Help: "Metric to get number of status check received",
+		}, []string{"type", "status"})
 )
 
 //RegisterMetrics ... register metrics collector with Prometheus
 func RegisterMetrics() {
 	prometheus.MustRegister(cneEventAckCount)
 	prometheus.MustRegister(cneEventReceivedCount)
+	prometheus.MustRegister(cneStatusCheckReceivedCount)
 }
 
 // UpdateEventReceivedCount ...
@@ -60,3 +67,10 @@ func UpdateEventAckCount(pubType string, status MetricStatus) {
 	cneEventAckCount.With(
 		prometheus.Labels{"type": pubType, "status": string(status)}).Inc()
 }
+
+// UpdateStatusAckCount  ...
+func UpdateStatusAckCount(pubType string, status MetricStatus) {
+	cneStatusCheckReceivedCount.With(
+		prometheus.Labels{"type": pubType, "status": string(status)}).Inc()
+}
+
