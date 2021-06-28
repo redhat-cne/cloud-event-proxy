@@ -54,7 +54,7 @@ func TestSidecar_MainWithAMQP(t *testing.T) {
 	log.Infof("Configuration set to %#v", scConfig)
 
 	//start rest service
-	_, err := common.StartPubSubService(wg, scConfig)
+	_, err := common.StartPubSubService(scConfig)
 	assert.Nil(t, err)
 
 	// imitate main process
@@ -116,7 +116,7 @@ func TestSidecar_MainWithOutAMQP(t *testing.T) {
 	scConfig.PubSubAPI.DisableTransport()
 
 	//start rest service
-	_, err := common.StartPubSubService(wg, scConfig)
+	_, err := common.StartPubSubService(scConfig)
 	assert.Nil(t, err)
 
 	// imitate main process

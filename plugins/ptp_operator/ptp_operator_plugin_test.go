@@ -60,7 +60,7 @@ func TestMain(m *testing.M) {
 	}
 
 	c = make(chan os.Signal)
-	server, _ = common.StartPubSubService(&wg, scConfig)
+	server, _ = common.StartPubSubService(scConfig)
 	scConfig.APIPort = server.Port()
 	scConfig.BaseURL = server.GetHostPath()
 	cleanUP()
@@ -175,7 +175,7 @@ func ProcessInChannel() {
 					ProcessEventFn: d.ProcessEventFn,
 				}
 				if d.OnReceiveOverrideFn != nil {
-					if err := d.OnReceiveOverrideFn(*d.Data); err != nil {
+					if err := d.OnReceiveOverrideFn(*d.Data,&out); err != nil {
 						out.Status = channel.FAILED
 					} else {
 						out.Status = channel.SUCCESS

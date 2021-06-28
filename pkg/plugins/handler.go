@@ -68,14 +68,14 @@ func (pl Handler) LoadAMQPPlugin(wg *sync.WaitGroup, scConfig *common.SCConfigur
 
 // LoadPTPPlugin loads ptp plugin
 func (pl Handler) LoadPTPPlugin(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e interface{}) error) error {
-	restPlugin, err := filepath.Glob(fmt.Sprintf("%s/ptp_operator_plugin.so", pl.Path))
+	ptpPlugin, err := filepath.Glob(fmt.Sprintf("%s/ptp_operator_plugin.so", pl.Path))
 	if err != nil {
 		log.Fatalf("cannot load ptp plugin %v", err)
 	}
-	if len(restPlugin) == 0 {
+	if len(ptpPlugin) == 0 {
 		return fmt.Errorf("ptp plugin not found in the path %s", pl.Path)
 	}
-	p, err := plugin.Open(restPlugin[0])
+	p, err := plugin.Open(ptpPlugin[0])
 	if err != nil {
 		log.Fatalf("cannot open ptp plugin %v", err)
 		return err
@@ -88,21 +88,21 @@ func (pl Handler) LoadPTPPlugin(wg *sync.WaitGroup, scConfig *common.SCConfigura
 	}
 	startFunc, ok := symbol.(func(*sync.WaitGroup, *common.SCConfiguration, func(e interface{}) error) error)
 	if !ok {
-		log.Fatalf("Plugin has no 'Start(*sync.WaitGroup, *common.SCConfiguration, func(e ceevent.Event) error)(error)' function")
+		log.Fatalf("Plugin has no 'Start(*sync.WaitGroup, *common.SCConfiguration,  fn func(e interface{}) error)(error)' function")
 	}
 	return startFunc(wg, scConfig, fn)
 }
 
 // LoadHwEventPlugin loads hw event plugin
 func (pl Handler) LoadHwEventPlugin(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e interface{}) error) error {
-	restPlugin, err := filepath.Glob(fmt.Sprintf("%s/hw_event_plugin.so", pl.Path))
+	hwPlugin, err := filepath.Glob(fmt.Sprintf("%s/hw_event_plugin.so", pl.Path))
 	if err != nil {
 		log.Fatalf("cannot load hw event plugin %v", err)
 	}
-	if len(restPlugin) == 0 {
+	if len(hwPlugin) == 0 {
 		return fmt.Errorf("hw event plugin not found in the path %s", pl.Path)
 	}
-	p, err := plugin.Open(restPlugin[0])
+	p, err := plugin.Open(hwPlugin[0])
 	if err != nil {
 		log.Fatalf("cannot open hw event plugin %v", err)
 		return err
@@ -115,7 +115,35 @@ func (pl Handler) LoadHwEventPlugin(wg *sync.WaitGroup, scConfig *common.SCConfi
 	}
 	startFunc, ok := symbol.(func(*sync.WaitGroup, *common.SCConfiguration, func(e interface{}) error) error)
 	if !ok {
-		log.Fatalf("Plugin has no 'Start(*sync.WaitGroup, *common.SCConfiguration, func(e ceevent.Event) error)(error)' function")
+		log.Fatalf("Plugin has no 'Start(*sync.WaitGroup, *common.SCConfiguration,  fn func(e interface{}) error)(error)' function")
+	}
+	return startFunc(wg, scConfig, fn)
+}
+
+
+// LoadMockPlugin loads mock test  plugin
+func (pl Handler) LoadMockPlugin(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e interface{}) error) error {
+	mockPlugin, err := filepath.Glob(fmt.Sprintf("%s/mock_plugin.so", pl.Path))
+	if err != nil {
+		log.Fatalf("cannot load mock plugin %v", err)
+	}
+	if len(mockPlugin) == 0 {
+		return fmt.Errorf("mock plugin not found in the path %s", pl.Path)
+	}
+	p, err := plugin.Open(mockPlugin[0])
+	if err != nil {
+		log.Fatalf("cannot open mock plugin %v", err)
+		return err
+	}
+
+	symbol, err := p.Lookup("Start")
+	if err != nil {
+		log.Fatalf("cannot open mock plugin start method %v", err)
+		return err
+	}
+	startFunc, ok := symbol.(func(*sync.WaitGroup, *common.SCConfiguration, func(e interface{}) error) error)
+	if !ok {
+		log.Fatalf("Plugin has no 'Start(*sync.WaitGroup, *common.SCConfiguration,  fn func(e interface{}) error)(error)' function")
 	}
 	return startFunc(wg, scConfig, fn)
 }

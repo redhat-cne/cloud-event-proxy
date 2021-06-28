@@ -88,7 +88,7 @@ func TestLoadAMQPPlugin(t *testing.T) {
 func TestLoadPTPPlugin(t *testing.T) {
 	scConfig.CloseCh = make(chan struct{})
 	wg := &sync.WaitGroup{}
-	_, err := common.StartPubSubService(wg, scConfig)
+	_, err := common.StartPubSubService(scConfig)
 	assert.Nil(t, err)
 
 	testCases := map[string]struct {

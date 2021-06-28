@@ -28,7 +28,7 @@ func Start(wg *sync.WaitGroup, config *common.SCConfiguration) (amqpInstance *v1
 	if amqpInstance, err = v1amqp.GetAMQPInstance(config.AMQPHost, config.EventInCh, config.EventOutCh, config.CloseCh); err != nil {
 		return
 	}
-	amqpInstance.Router.CancelTimeOut(500 * time.Millisecond)
+	amqpInstance.Router.CancelTimeOut(2 * time.Second)
 	amqpInstance.Router.RetryTime(1 * time.Second)
 	amqpInstance.Start(wg)
 	return

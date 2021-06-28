@@ -19,16 +19,16 @@ import (
 )
 
 const (
-	ptpNamespace                   = "openshift"
-	ptpSubsystem                   = "ptp"
-	phc2sysProcessName             = "phc2sys"
-	ptp4lProcessName               = "ptp4l"
-	unLocked                       = "s0"
-	clockStep                      = "s1"
-	locked                         = "s2"
-	maxOffsetThreshold     float64 = 100 //in nano secs
-	minOffsetThreshold     float64 = -100
-	holdOverStateThreshold int64   = 10
+	ptpNamespace                 = "openshift"
+	ptpSubsystem                 = "ptp"
+	phc2sysProcessName           = "phc2sys"
+	ptp4lProcessName             = "ptp4l"
+	unLocked                     = "s0"
+	clockStep                    = "s1"
+	locked                       = "s2"
+	maxOffsetThreshold     int64 = 100 //in nano secs
+	minOffsetThreshold     int64 = -100
+	holdOverStateThreshold int64 = 10
 )
 
 var (
@@ -92,20 +92,20 @@ func RegisterMetrics(nodeName string) {
 
 // Stats calculates stats  nolint:unused
 type Stats struct {
-	num                 float64
-	max                 float64
-	min                 float64
-	mean                float64
-	sumSqr              float64
-	sumDiffSqr          float64
-	frequencyAdjustment float64
-	delayFromMaster     float64
-	lastOffset          float64 //nolint:structcheck
+	num                 int64
+	max                 int64
+	min                 int64
+	mean                int64
+	sumSqr              int64
+	sumDiffSqr          int64
+	frequencyAdjustment int64
+	delayFromMaster     int64
+	lastOffset          int64 //nolint:structcheck
 	lastClockState      ceevent.SyncState
 	lastClockStateCount int64
 }
 
-func (s *Stats) addValue(val float64) {
+func (s *Stats) addValue(val int64) {
 
 	oldMean := s.mean
 
@@ -125,16 +125,27 @@ func (s *Stats) addValue(val float64) {
 // get stdDev
 func (s *Stats) getStdev() float64 { //nolint:unused
 	if s.num > 0 {
-		return math.Sqrt(s.sumDiffSqr / s.num)
+		return math.Sqrt(float64(s.sumDiffSqr / s.num))
 	}
 	return 1
 }
-func (s *Stats) getMaxAbs() float64 {
+
+func (s *Stats) getMaxAbs() int64 {
 	if s.max > s.min {
 		return s.max
 	}
 	return s.min
 
+}
+
+// Offset return last known offset
+func (s *Stats) Offset() int64 {
+	return s.lastOffset
+}
+
+// ClockState return last known clock state
+func (s *Stats) ClockState() ceevent.SyncState {
+	return s.lastClockState
 }
 
 // reset status
@@ -155,9 +166,9 @@ type PTPEventManager struct {
 	lock                   sync.RWMutex
 	Stats                  map[string]*Stats
 	mock                   bool
-	holdOverStateThreshold int64
-	maxOffsetThreshold     float64
-	minOffsetThreshold     float64
+	holdoverStateThreshold int64
+	maxOffsetThreshold     int64
+	minOffsetThreshold     int64
 }
 
 // NewPTPEventManager to manage events and metrics
@@ -169,25 +180,43 @@ func NewPTPEventManager(publisherID string, nodeName string, config *common.SCCo
 		lock:                   sync.RWMutex{},
 		Stats:                  make(map[string]*Stats),
 		mock:                   false,
-		holdOverStateThreshold: holdOverStateThreshold,
+		holdoverStateThreshold: holdOverStateThreshold,
 		maxOffsetThreshold:     maxOffsetThreshold,
 		minOffsetThreshold:     minOffsetThreshold,
 	}
+	if ht := common.GetIntEnv("ptp_holdoverStateThreshold"); ht != 0 {
+		ptpEventManager.holdoverStateThreshold = int64(ht)
+	}
+	if maxTh := common.GetIntEnv("ptp_maxOffsetThreshold"); maxTh != 0 {
+		ptpEventManager.maxOffsetThreshold = int64(maxTh)
+	}
+	if minTh := common.GetIntEnv("ptp_minOffsetThreshold"); minTh != 0 {
+		ptpEventManager.minOffsetThreshold = int64(minTh)
+	}
+
+	log.Infof("ptp event configured with "+
+		"HoldoverStateThreshold: %d,"+
+		"maxOffsetThreshold:%d,"+
+		"minOffsetThreshold %d",
+		ptpEventManager.holdoverStateThreshold,
+		ptpEventManager.maxOffsetThreshold,
+		ptpEventManager.minOffsetThreshold)
+
 	return
 }
 
 // HoldOverStateThreshold .. use for test only
 func (p *PTPEventManager) HoldOverStateThreshold(h int64) {
-	p.holdOverStateThreshold = h
+	p.holdoverStateThreshold = h
 }
 
 // MaxOffsetThreshold .. offset threshold
-func (p *PTPEventManager) MaxOffsetThreshold(m float64) {
+func (p *PTPEventManager) MaxOffsetThreshold(m int64) {
 	p.maxOffsetThreshold = m
 }
 
 // MinOffsetThreshold .. offset threshold
-func (p *PTPEventManager) MinOffsetThreshold(m float64) {
+func (p *PTPEventManager) MinOffsetThreshold(m int64) {
 	p.minOffsetThreshold = m
 }
 
@@ -228,14 +257,13 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			s = &Stats{}
 			p.Stats[iface] = s
 		}
-		s.frequencyAdjustment = frequencyAdjustment
-		s.delayFromMaster = delayFromMaster
-		s.lastOffset = offsetFromMaster
-		s.addValue(offsetFromMaster)
+		s.frequencyAdjustment = int64(frequencyAdjustment)
+		s.delayFromMaster = int64(delayFromMaster)
+		s.lastOffset = int64(offsetFromMaster)
 
 		if phc2sysProcessName == processName {
-			p.GenPhc2SysEvent(iface, offsetFromMaster, clockState)
-			UpdatePTPMetrics(processName, iface, offsetFromMaster, s.getMaxAbs(), frequencyAdjustment, delayFromMaster)
+			p.GenPhc2SysEvent(iface, s.lastOffset, clockState)
+			UpdatePTPMetrics(processName, iface, offsetFromMaster, float64(s.getMaxAbs()), frequencyAdjustment, delayFromMaster)
 		} else if ptp4lProcessName == processName {
 			UpdatePTPMetrics(processName, iface, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
 		}
@@ -252,19 +280,18 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			p.Stats[iface] = s
 			p.lock.Unlock()
 		}
-		s.reset() //every time ptp4l says the clock is  FREERUN then reset the stats
+		s.reset() //every time ptp4l says the clock is FREERUN then reset the stats
 
 		lastLockState := s.lastClockState
 		s.lastClockState = clockState
 		if clockState != lastLockState {
-			p.publishEvent(clockState, iface)
+			p.PublishEvent(clockState, 0, iface, "PTP_EVENT")
 		}
 	}
 }
 
 // GenPhc2SysEvent ... generate events form the logs
-func (p *PTPEventManager) GenPhc2SysEvent(iface string, offsetFromMaster float64, clockState ceevent.SyncState) {
-	//TODO: move maxOffsetThreshHold and minOffsetThreshHold to  configmap
+func (p *PTPEventManager) GenPhc2SysEvent(iface string, offsetFromMaster int64, clockState ceevent.SyncState) {
 	iStats := p.Stats[iface]
 	lastClockState := iStats.lastClockState
 
@@ -272,55 +299,64 @@ func (p *PTPEventManager) GenPhc2SysEvent(iface string, offsetFromMaster float64
 	case ceevent.LOCKED:
 		switch lastClockState {
 		case ceevent.FREERUN: //last state was already sent for FreeRUN n, but if its within then send again with new state
-			if offsetFromMaster != 0 && (offsetFromMaster < p.maxOffsetThreshold && offsetFromMaster > p.minOffsetThreshold) { // within range
-				p.publishEvent(clockState, iface) // change to locked
+			if offsetFromMaster < p.maxOffsetThreshold && offsetFromMaster > p.minOffsetThreshold { // within range
+				p.PublishEvent(clockState, offsetFromMaster, iface, "PTP_EVENT") // change to locked
 				iStats.lastClockState = clockState
 				iStats.lastClockStateCount = 1
+				p.Stats[iface].addValue(int64(offsetFromMaster)) // update off set when its in locked state and hold over only
 			}
-		case ceevent.LOCKED: // last state was in sync , check if its pout of sync
-			if offsetFromMaster == 0 || offsetFromMaster > p.maxOffsetThreshold || offsetFromMaster < p.minOffsetThreshold { // out of sync
-				p.publishEvent(ceevent.HOLDOVER, iface)
+		case ceevent.LOCKED: // last state was in sync , check if its out of sync
+			if offsetFromMaster > p.maxOffsetThreshold || offsetFromMaster < p.minOffsetThreshold { // out of sync
+				p.PublishEvent(ceevent.HOLDOVER, offsetFromMaster, iface, "PTP_EVENT")
 				iStats.lastClockState = ceevent.HOLDOVER
 				iStats.lastClockStateCount = 1
 			}
+			p.Stats[iface].addValue(int64(offsetFromMaster)) // update off set when its in locked state and hold over only
 		case ceevent.HOLDOVER: // last state was holdover check if it qualifies to be in holdover
-			if offsetFromMaster == 0 || offsetFromMaster > p.maxOffsetThreshold || offsetFromMaster < p.minOffsetThreshold { // still out of sync
-				if iStats.lastClockStateCount < p.holdOverStateThreshold {
+			if offsetFromMaster > p.maxOffsetThreshold || offsetFromMaster < p.minOffsetThreshold { // still out of sync
+				if iStats.lastClockStateCount < p.holdoverStateThreshold {
 					iStats.lastClockStateCount++
+					p.Stats[iface].addValue(int64(offsetFromMaster)) // update off set when its in locked state and hold over only
 				} else {
-					p.publishEvent(ceevent.FREERUN, iface)
+					p.PublishEvent(ceevent.FREERUN, offsetFromMaster, iface, "PTP_EVENT")
 					iStats.lastClockState = ceevent.FREERUN
 					iStats.lastClockStateCount = 1
+					p.Stats[iface].reset() // reset when its free run
 				}
 			} else {
-				p.publishEvent(clockState, iface) // change to locked
+				p.PublishEvent(clockState, offsetFromMaster, iface, "PTP_EVENT") // change to locked
 				iStats.lastClockState = clockState
 				iStats.lastClockStateCount = 1
+				p.Stats[iface].addValue(int64(offsetFromMaster)) // update off set when its in locked state and hold over only
 			}
 		default: // not yet used states
-			p.publishEvent(clockState, iface) // change to locked
+			p.PublishEvent(clockState, offsetFromMaster, iface, "PTP_EVENT") // change to locked
 			iStats.lastClockState = clockState
 			iStats.lastClockStateCount = 1
+
 			//do nothing already send event
 		}
 	case ceevent.FREERUN:
 		if offsetFromMaster != 0 && (offsetFromMaster < p.maxOffsetThreshold && offsetFromMaster > p.minOffsetThreshold) { // within range
-			p.publishEvent(ceevent.LOCKED, iface) // change to locked
+			p.PublishEvent(ceevent.LOCKED, offsetFromMaster, iface, "PTP_EVENT") // change to locked
 			iStats.lastClockState = ceevent.LOCKED
 			iStats.lastClockStateCount = 1
+			p.Stats[iface].addValue(int64(offsetFromMaster))
 		} else if lastClockState != ceevent.FREERUN {
-			p.publishEvent(clockState, iface) // change to freerun
+			p.PublishEvent(clockState, offsetFromMaster, iface, "PTP_EVENT") // change to freerun
 			iStats.lastClockState = clockState
 			iStats.lastClockStateCount = 1
 		}
 	default:
-		p.publishEvent(clockState, iface) // change to locked
+		p.PublishEvent(clockState, offsetFromMaster, iface, "PTP_EVENT") // change to locked
 		iStats.lastClockState = clockState
 		iStats.lastClockStateCount = 1
+		p.Stats[iface].reset() // reset when its free run
 	}
 }
 
-func (p *PTPEventManager) publishEvent(state ceevent.SyncState, iface string) {
+//PublishEvent ...publish events
+func (p *PTPEventManager) PublishEvent(state ceevent.SyncState, offsetFromMaster int64, iface, eventType string) {
 	// create an event
 	data := ceevent.Data{
 		Version: "v1",
@@ -329,10 +365,15 @@ func (p *PTPEventManager) publishEvent(state ceevent.SyncState, iface string) {
 			DataType:  ceevent.NOTIFICATION,
 			ValueType: ceevent.ENUMERATION,
 			Value:     state,
+		}, {
+			Resource:  fmt.Sprintf("/cluster/%s/ptp/interface/%s", p.nodeName, iface),
+			DataType:  ceevent.METRIC,
+			ValueType: ceevent.DECIMAL,
+			Value:     float64(offsetFromMaster),
 		},
 		},
 	}
-	e, err := common.CreateEvent(p.publisherID, "PTP_EVENT", data)
+	e, err := common.CreateEvent(p.publisherID, eventType, data)
 	if err != nil {
 		log.Errorf("failed to create ptp event, %s", err)
 		return

@@ -24,7 +24,7 @@ spec:
                     operator: In
                     values:
                       - local
-      serviceAccountName: sidecar-producer-sa
+      serviceAccountName: sidecar-consumer-sa
       containers:
         - name: cloud-native-event-consumer
           image: quay.io/aneeshkp/cloud-native-event-consumer
@@ -38,7 +38,7 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: CONSUMER_TYPE
-                value: "MOCK"
+              value: "PTP"
         - name: cloud-native-event-sidecar
           image: quay.io/aneeshkp/cloud-event-proxy
           args:
@@ -82,3 +82,4 @@ spec:
         - name: sidecar-certs
           secret:
             secretName: sidecar-consumer-secret
+

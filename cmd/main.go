@@ -33,15 +33,15 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
-	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
+	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/plugins"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
-	apimetrics "github.com/redhat-cne/rest-api/pkg/localmetrics"
+	apiMetrics "github.com/redhat-cne/rest-api/pkg/localmetrics"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
-	sdkmetrics "github.com/redhat-cne/sdk-go/pkg/localmetrics"
+	sdkMetrics "github.com/redhat-cne/sdk-go/pkg/localmetrics"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
 )
 
@@ -50,10 +50,10 @@ var (
 	storePath         string
 	amqpHost          string
 	apiPort           int
-	channelBufferSize int = 10
+	channelBufferSize = 100
 	scConfig          *common.SCConfiguration
 	metricsAddr       string
-	apiPath           string = "/api/cloudNotifications/v1/"
+	apiPath           = "/api/cloudNotifications/v1/"
 )
 
 func main() {
@@ -68,8 +68,8 @@ func main() {
 
 	// Register metrics
 	localmetrics.RegisterMetrics()
-	apimetrics.RegisterMetrics()
-	sdkmetrics.RegisterMetrics()
+	apiMetrics.RegisterMetrics()
+	sdkMetrics.RegisterMetrics()
 
 	// Including these stats kills performance when Prometheus polls with multiple targets
 	prometheus.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
@@ -81,7 +81,7 @@ func main() {
 		CloseCh:    make(chan struct{}),
 		APIPort:    apiPort,
 		APIPath:    apiPath,
-		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
+		PubSubAPI:  v1pubs.GetAPIInstance(storePath),
 		StorePath:  storePath,
 		AMQPHost:   amqpHost,
 		BaseURL:    nil,
@@ -96,11 +96,11 @@ func main() {
 		<-c
 		log.Info("exiting...")
 		close(scConfig.CloseCh)
-		wg.Wait()
+		//wg.Wait()
 		os.Exit(1)
 	}()
 
-	_, err := common.StartPubSubService(&wg, scConfig)
+	_, err := common.StartPubSubService(scConfig)
 	if err != nil {
 		log.Fatal("pub/sub service API failed to start.")
 	}
@@ -111,6 +111,8 @@ func main() {
 	if err != nil {
 		log.Warnf("requires QPID router installed to function fully %s", err.Error())
 		scConfig.PubSubAPI.DisableTransport()
+		wg.Add(1)
+		go ProcessInChannel(&wg, scConfig)
 	}
 
 	// load all senders and listeners from the existing store files.
@@ -130,9 +132,11 @@ func main() {
 		}
 	}
 
-	if !scConfig.PubSubAPI.HasTransportEnabled() {
-		wg.Add(1)
-		go ProcessInChannel(&wg, scConfig)
+	if common.GetBoolEnv("MOCK_PLUGIN") {
+		err := pl.LoadMockPlugin(&wg, scConfig, nil)
+		if err != nil {
+			log.Fatalf("error loading mock plugin %v", err)
+		}
 	}
 	ProcessOutChannel(&wg, scConfig)
 }
@@ -152,9 +156,8 @@ func metricServer(address string) {
 
 //ProcessOutChannel this process the out channel;data put out by amqp
 func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
-	defer wg.Done()
 	//qdr throws out the data on this channel ,listen to data coming out of qdrEventOutCh
-	restClient := restclient.New()
+
 	for { //nolint:gosimple
 		select { //nolint:gosimple
 		case d := <-scConfig.EventOutCh: // do something that is put out by QDR
@@ -173,6 +176,7 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 					} else if sub, ok := scConfig.PubSubAPI.HasSubscription(d.Address); ok {
 						if sub.EndPointURI != nil {
 							event.ID = sub.ID // set ID to the subscriptionID
+							restClient := restclient.New()
 							if err := restClient.PostEvent(sub.EndPointURI, event); err != nil {
 								log.Errorf("error posting request at %s : %s", sub.EndPointURI, err)
 								localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
@@ -197,12 +201,22 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 						}
 						if pub.EndPointURI != nil {
 							log.Debugf("posting event status %s to publisher %s", channel.Status(d.Status), pub.Resource)
+							restClient := restclient.New()
 							_ = restClient.Post(pub.EndPointURI,
 								[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, d.Status)))
 						}
 					} else {
 						log.Warnf("could not send ack to publisher ,`publisher` for address %s not found", d.Address)
 						localmetrics.UpdateEventAckCount(d.Address, localmetrics.FAILED)
+					}
+				}
+			} else if d.Type == channel.STATUS {
+				if d.Status == channel.SUCCESS || d.Status == channel.FAILED {
+					if d.Status == channel.SUCCESS {
+						localmetrics.UpdateStatusAckCount(d.Address, localmetrics.SUCCESS)
+					} else {
+						log.Errorf("failed to receive status request to address %s", d.Address)
+						localmetrics.UpdateStatusAckCount(d.Address, localmetrics.FAILED)
 					}
 				}
 			}
@@ -236,7 +250,7 @@ func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 					ProcessEventFn: d.ProcessEventFn,
 				}
 				if d.OnReceiveOverrideFn != nil {
-					if err := d.OnReceiveOverrideFn(*d.Data); err != nil {
+					if err := d.OnReceiveOverrideFn(*d.Data, &out); err != nil {
 						log.Errorf("error onReceiveOverrideFn %s", err)
 						out.Status = channel.FAILED
 					} else {
@@ -244,6 +258,23 @@ func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 					}
 				}
 				scConfig.EventOutCh <- &out
+			} else if d.Type == channel.STATUS && d.Status == channel.NEW {
+				log.Warnf("amqp disabled,no action taken(can't send to a destination): logging new status check %v\n", d)
+				out := channel.DataChan{
+					Address:        d.Address,
+					Data:           d.Data,
+					Status:         channel.SUCCESS,
+					Type:           channel.EVENT,
+					ProcessEventFn: d.ProcessEventFn,
+				}
+				if d.OnReceiveOverrideFn != nil {
+					if err := d.OnReceiveOverrideFn(*d.Data, &out); err != nil {
+						log.Errorf("error onReceiveOverrideFn %s", err)
+						out.Status = channel.FAILED
+					} else {
+						out.Status = channel.SUCCESS
+					}
+				}
 			}
 		case <-scConfig.CloseCh:
 			return
@@ -253,12 +284,12 @@ func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 
 func loadFromPubSubStore() {
 	pubs := scConfig.PubSubAPI.GetPublishers()
-	//apimetrics.UpdatePublisherCount(apimetrics.ACTIVE, len(pubs))
+	//apiMetrics.UpdatePublisherCount(apiMetrics.ACTIVE, len(pubs))
 	for _, pub := range pubs {
 		v1amqp.CreateSender(scConfig.EventInCh, pub.Resource)
 	}
 	subs := scConfig.PubSubAPI.GetSubscriptions()
-	//apimetrics.UpdateSubscriptionCount(apimetrics.ACTIVE, len(subs))
+	//apiMetrics.UpdateSubscriptionCount(apiMetrics.ACTIVE, len(subs))
 	for _, sub := range subs {
 		v1amqp.CreateListener(scConfig.EventInCh, sub.Resource)
 	}

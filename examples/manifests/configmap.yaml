@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloud-event-sidecar-config
+  namespace: openshift-ptp
+data:
+  # clock state to stay in holdover state  if offset is not in desired range
+  ptp_holdoverStateThreshold: "10"
+  # max offset in nano secs
+  ptp_maxOffsetThreshold: "99"
+  # min offset in nano secs
+  ptp_minOffsetThreshold: "-99"
+  #Example Mount this configmap
+  #envFrom:
+  #  - configMapRef:
+  #     name: cloud-event-sidecar-config
