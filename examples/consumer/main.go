@@ -65,7 +65,7 @@ func main() {
 
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
-		log.Error("cannot find NODE_NAME environment variable,setting to default `moc` noe")
+		log.Error("cannot find NODE_NAME environment variable,setting to default `mock` node")
 		nodeName = "mock"
 	}
 

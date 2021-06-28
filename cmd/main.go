@@ -259,7 +259,7 @@ func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 				}
 				scConfig.EventOutCh <- &out
 			} else if d.Type == channel.STATUS && d.Status == channel.NEW {
-				log.Warnf("amqp disabled,no action taken(can't send to a desitination): logging new status checl %v\n", d)
+				log.Warnf("amqp disabled,no action taken(can't send to a destination): logging new status check %v\n", d)
 				out := channel.DataChan{
 					Address:        d.Address,
 					Data:           d.Data,
