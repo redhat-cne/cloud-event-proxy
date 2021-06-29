@@ -3,7 +3,7 @@ kind: Service
 metadata:
   annotations:
     prometheus.io/scrape: "true"
-    service.alpha.openshift.io/serving-cert-secret-name: hw-event-plugin-secret
+    service.alpha.openshift.io/serving-cert-secret-name: hw-event-proxy-secret
   name: hw-event-proxy-service
   namespace: cloud-native-events
   labels:
@@ -13,28 +13,12 @@ spec:
     - name: hw-event
       port: 9087
       targetPort: 9087
-    - name: hw-event-https
-      port: 9443
-      targetPort: https-hwevent
-  selector:
-    app: hw-event-proxy
-  type: ClusterIP
----
-apiVersion: v1
-kind: Service
-metadata:
-  annotations:
-    prometheus.io/scrape: "true"
-    service.alpha.openshift.io/serving-cert-secret-name: hw-event-sidecar-secret
-  name: hw-event-proxy-metrics-service
-  namespace: cloud-native-events
-  labels:
-    app: hw-event-proxy
-spec:
-  ports:
-    - name: hw-event
+    - name: https-metrics
       port: 8443
-      targetPort: https
+      targetPort: https-metrics
+    - name: https-webhook
+      port: 9443
+      targetPort: https-webhook
   selector:
     app: hw-event-proxy
   type: ClusterIP

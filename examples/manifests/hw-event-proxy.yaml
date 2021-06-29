@@ -69,17 +69,17 @@ spec:
             - --tls-cert-file=/etc/metrics/tls.crt
           ports:
             - containerPort: 8443
-              name: https
+              name: https-metrics
           resources:
             requests:
               cpu: 10m
               memory: 20Mi
           terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
-            - name: hw-event-sidecar-certs
+            - name: hw-event-proxy-certs
               mountPath: /etc/metrics
               readOnly: True
-        - name: kube-rbac-proxy-hwevent
+        - name: kube-rbac-proxy-webhook
           image: quay.io/coreos/kube-rbac-proxy:v0.5.0
           imagePullPolicy: Always
           args:
@@ -87,26 +87,23 @@ spec:
             - --secure-listen-address=:9443
             - --tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_RSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
             - --upstream=http://127.0.0.1:9087/
-            - --tls-private-key-file=/etc/hwevent/tls.key
-            - --tls-cert-file=/etc/hwevent/tls.crt
+            - --tls-private-key-file=/etc/webhook/tls.key
+            - --tls-cert-file=/etc/webhook/tls.crt
           ports:
             - containerPort: 9443
-              name: https-hwevent
+              name: https-webhook
           resources:
             requests:
               cpu: 10m
               memory: 20Mi
           terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
-            - name: hw-event-plugin-certs
-              mountPath: /etc/hwevent
+            - name: hw-event-proxy-certs
+              mountPath: /etc/webhook
               readOnly: True
       volumes:
         - name: pubsubstore
           emptyDir: {}
-        - name: hw-event-sidecar-certs
+        - name: hw-event-proxy-certs
           secret:
-            secretName: hw-event-sidecar-secret
-        - name: hw-event-plugin-certs
-          secret:
-            secretName: hw-event-plugin-secret
+            secretName: hw-event-proxy-secret
