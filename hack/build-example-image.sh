@@ -11,4 +11,4 @@ NAME=${REPO}producer:${VERSION}
 ${BUILDCMD} --squash  -f examples/producer.Dockerfile -t "${NAME}" $(dirname $0)/..
 
 NAME=${REPO}consumer:${VERSION}
-${BUILDCMD} --squash  -f examples/consumer.Dockerfile.local -t "${NAME}" $(dirname $0)/..
+${BUILDCMD} --squash  -f examples/consumer.Dockerfile -t "${NAME}" $(dirname $0)/..

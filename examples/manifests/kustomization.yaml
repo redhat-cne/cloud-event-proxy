@@ -6,7 +6,6 @@ resources:
 - roles.yaml
 - service.yaml
 - consumer.yaml
-- producer.yaml
 - route.yaml
 - hw-event-proxy.yaml
 replicas:
@@ -16,8 +15,8 @@ replicas:
   name: hw-event-proxy
 images:
 - name: cloud-event-proxy
-  newName: quay.io/jacding/cloud-event-proxy
+  newName: quay.io/aneeshkp/cloud-event-proxy
 - name: cloud-native-event-consumer
-  newName: quay.io/jacding/cloud-native-event-consumer
+  newName: quay.io/aneeshkp/cloud-native-event-consumer
 - name: cloud-native-event-producer
-  newName: quay.io/jacding/cloud-native-event-producer
+  newName: quay.io/aneeshkp/cloud-native-event-producer
