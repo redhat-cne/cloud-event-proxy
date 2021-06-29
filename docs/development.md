@@ -1,5 +1,9 @@
 ## Running examples locally
 
+### Install and run Apache Qpid Dispach Router
+sudo dnf install qpid-dispatch-router
+qdrouterd &
+
 ### Side car
 ```shell
 make build-plugins
@@ -15,17 +19,32 @@ make run-producer
 ```
 
 ## Building images 
-```shell
-1. hack/build-image.sh
-2. hack/build-example-image.sh
-3. podman images
-```
-#### Push images to a repo
+
+### Build with local dependencies
 
 ```shell
-podman push localhost/cloud-event-proxy:edf2bcfd-dirty quay.io/aneeshkp/cloud-event-proxy:latest
-podman push localhost/cloud-native-event-consumer:edf2bcfd-dirty quay.io/aneeshkp/cloud-native-event-consumer:latest
-podman push localhost/cloud-native-event-producer:edf2bcfd-dirty quay.io/aneeshkp/cloud-native-event-producer:latest
+1. hack/local-ldd-dep.sh 
+2. edit build-example-image.sh and rename consumer.Dockerfile to consumer.Dockerfile.local
+3. edit build-image.sh and rename Dockerfile to Dockerfile.local
+```
+
+### Build Images
+
+```shell
+1. hack/build-go.sh
+2. hack/build-example-go.sh 
+3. hack/build-image.sh
+4. hack/build-example-image.sh
+# find out image tags ${TAG}
+5. podman images
+```
+
+### Push images to a repo
+
+```shell
+podman push localhost/cloud-event-proxy:${TAG} quay.io/aneeshkp/cloud-event-proxy:latest
+podman push localhost/cloud-native-event-consumer:${TAG}quay.io/aneeshkp/cloud-native-event-consumer:latest
+podman push localhost/cloud-native-event-producer:${TAG} quay.io/aneeshkp/cloud-native-event-producer:latest
 ```
 
 Use producer.yaml,consumer.yaml and service.yaml from examples/manifests folder to deploy to a cluster.

@@ -271,7 +271,6 @@ github.com/prometheus/procfs v0.6.0/go.mod h1:cz+aTbrPOrUb4q7XlbU9ygM+/jj0fzG6c1
 github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a/go.mod h1:bCqnVzQkZxMG4s8nGwiZ5l3QUCyqpo9Y+/ZMZ9VjZe4=
 github.com/redhat-cne/rest-api v0.0.0-20210628151454-c8f37f0a9c3e h1:UQxSPUyEcA1S4O2jSUk8gxTVTXSswkifqE8ACm42n2A=
 github.com/redhat-cne/rest-api v0.0.0-20210628151454-c8f37f0a9c3e/go.mod h1:sce7EnWlgeu8N9E8D8LP0lkokAu93E9TpkwkVDhwmQs=
-github.com/redhat-cne/sdk-go v0.0.0-20210626184356-7e16fddf03af h1:vEnYmkYpiXewhG8z26lAPjE6GMNZ6R1NYAWfgQc/eo4=
 github.com/redhat-cne/sdk-go v0.0.0-20210626184356-7e16fddf03af/go.mod h1:FqtKJTyjOtOS5YPs3M0CZ9Vc/RYgEv9ecp+Zq4Lbeyk=
 github.com/redhat-cne/sdk-go v0.0.0-20210628151512-f6b1a08d4827 h1:3e/KUdjYMj5mXanzIRjFGvYyt28VX7+Cb0O+J2YAbW4=
 github.com/redhat-cne/sdk-go v0.0.0-20210628151512-f6b1a08d4827/go.mod h1:FqtKJTyjOtOS5YPs3M0CZ9Vc/RYgEv9ecp+Zq4Lbeyk=

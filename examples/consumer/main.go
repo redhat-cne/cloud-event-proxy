@@ -38,13 +38,12 @@ type ConsumerTypeEnum string
 
 const (
 	// PTP consumer
-	PTP ConsumerTypeEnum ="PTP"
+	PTP ConsumerTypeEnum = "PTP"
 	// HW Consumer
-	HW ConsumerTypeEnum ="HW"
+	HW ConsumerTypeEnum = "HW"
 	// MOCK consumer
-	MOCK ConsumerTypeEnum="MOCK"
+	MOCK ConsumerTypeEnum = "MOCK"
 )
-
 
 var (
 	apiAddr      string = "localhost:8080"
@@ -71,10 +70,10 @@ func main() {
 
 	var consumerType ConsumerTypeEnum
 	consumerTypeEnv := os.Getenv("CONSUMER_TYPE")
-	if consumerTypeEnv=="" {
-  			consumerType=MOCK
-	}else{
-		consumerType=ConsumerTypeEnum(consumerTypeEnv)
+	if consumerTypeEnv == "" {
+		consumerType = MOCK
+	} else {
+		consumerType = ConsumerTypeEnum(consumerTypeEnv)
 	}
 
 	var wg sync.WaitGroup
@@ -100,9 +99,9 @@ RETRY:
 	},
 	}
 
-	if consumerType==PTP {
+	if consumerType == PTP {
 		createPublisherForStatusPing(subs[2].Resource) // ptp // disable this for testing else you will see context deadline error
-	} else if consumerType==MOCK {
+	} else if consumerType == MOCK {
 		createPublisherForStatusPing(subs[1].Resource) // mock
 	}
 
@@ -122,9 +121,9 @@ RETRY:
 		defer wg.Done()
 		for range time.Tick(30 * time.Second) {
 			//only for PTP testing
-			if consumerType==PTP {
+			if consumerType == PTP {
 				pingForStatus(subs[2].ID) // ptp // disable this for testing else you will see context deadline error
-			} else if consumerType==MOCK {
+			} else if consumerType == MOCK {
 				pingForStatus(subs[1].ID) // mock
 			}
 		}

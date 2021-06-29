@@ -39,7 +39,6 @@ var (
 	localAPIAddr           string
 	resourceAddressSports  string = "/news-service/sports"
 	resourceAddressFinance string = "/news-service/finance"
-
 )
 
 func main() {
@@ -74,8 +73,6 @@ RETRY:
 		}
 		log.Infof("created publisher : %s\n", pub.String())
 	}
-
-
 
 	// create events periodically
 	wg.Add(1)

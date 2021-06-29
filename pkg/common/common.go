@@ -26,9 +26,11 @@ import (
 	restapi "github.com/redhat-cne/rest-api"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
+	"github.com/redhat-cne/sdk-go/pkg/hwevent"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
+	v1hwevent "github.com/redhat-cne/sdk-go/v1/hwevent"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 	log "github.com/sirupsen/logrus"
 )
@@ -59,7 +61,7 @@ func GetIntEnv(key string) int {
 // GetFloatEnv get int value from env
 func GetFloatEnv(key string) float64 {
 	if val, ok := os.LookupEnv(key); ok && val != "" {
-		if ret, err := strconv.ParseFloat(val,64); err == nil {
+		if ret, err := strconv.ParseFloat(val, 64); err == nil {
 			return ret
 		}
 	}
@@ -109,7 +111,7 @@ func CreatePublisher(config *SCConfiguration, publisher pubsub.PubSub) (pub pubs
 	return pub, err
 }
 
-//CreateSubscription creates a subscription object
+// CreateSubscription creates a subscription object
 func CreateSubscription(config *SCConfiguration, subscription pubsub.PubSub) (sub pubsub.PubSub, err error) {
 	apiURL := fmt.Sprintf("%s%s", config.BaseURL.String(), "subscriptions")
 	var subB []byte
@@ -129,7 +131,7 @@ func CreateSubscription(config *SCConfiguration, subscription pubsub.PubSub) (su
 	return sub, err
 }
 
-//CreateEvent create an event
+// CreateEvent create an event
 func CreateEvent(pubSubID, eventType string, data ceevent.Data) (ceevent.Event, error) {
 	// create an event
 	if pubSubID == "" {
@@ -147,6 +149,24 @@ func CreateEvent(pubSubID, eventType string, data ceevent.Data) (ceevent.Event, 
 	return event, nil
 }
 
+// CreateHwEvent create an hw event
+func CreateHwEvent(pubSubID, eventType string, data hwevent.Data) (hwevent.Event, error) {
+	// create an hw event
+	if pubSubID == "" {
+		return hwevent.Event{}, fmt.Errorf("id is a required field")
+	}
+	if eventType == "" {
+		return hwevent.Event{}, fmt.Errorf("eventType  is a required field")
+	}
+	event := v1hwevent.CloudNativeEvent()
+	event.ID = pubSubID
+	event.Type = eventType
+	event.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
+	event.SetDataContentType(hwevent.ApplicationJSON)
+	event.SetData(data)
+	return event, nil
+}
+
 // PublishEvent publishes event
 func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 	url := fmt.Sprintf("%s%s", scConfig.BaseURL.String(), "create/event")
@@ -156,12 +176,27 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 		log.Errorf("error posting cloud native events %v", err)
 		return err
 	}
-	log.Infof("published cloud native event %s", e.String())
+	log.Debugf("published cloud native event %s", e.String())
 
 	return nil
 }
 
-//APIHealthCheck .. rest api should be ready before starting to consume api
+// PublishHwEvent publishes hw event
+func PublishHwEvent(scConfig *SCConfiguration, e hwevent.Event) error {
+	//create publisher
+	url := fmt.Sprintf("%s%s", scConfig.BaseURL.String(), "create/hwevent")
+	rc := restclient.New()
+	err := rc.PostHwEvent(types.ParseURI(url), e)
+	if err != nil {
+		log.Errorf("error posting hw events %v", err)
+		return err
+	}
+	log.Debugf("published hw event %s", e)
+
+	return nil
+}
+
+// APIHealthCheck .. rest api should be ready before starting to consume api
 func APIHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
 	log.Printf("checking for rest service health\n")
 	for i := 0; i <= 5; i++ {

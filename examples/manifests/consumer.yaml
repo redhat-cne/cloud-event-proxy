@@ -38,15 +38,19 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: CONSUMER_TYPE
-                value: "MOCK"
+              value: "MOCK"
         - name: cloud-native-event-sidecar
           image: quay.io/aneeshkp/cloud-event-proxy
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
-            - "--transport-host=amqp://amq-interconnect.amqp-interconnect.svc.cluster.local"
+            - "--transport-host=amqp://amq-interconnect.$(AMQP_NAMESPACE).svc.cluster.local"
             - "--api-port=8080"
           env:
+            - name: HW_PLUGIN
+              value: "true"
+            - name: AMQP_NAMESPACE
+              value: "amqp"
             - name: NODE_NAME
               valueFrom:
                 fieldRef:

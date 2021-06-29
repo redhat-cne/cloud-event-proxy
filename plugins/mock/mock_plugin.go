@@ -50,7 +50,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 
 	// 2.Create Status Listener : This listener will create events
 	// method to execute when ping is received
-	onStatusRequestFn := func(e v2.Event,d *channel.DataChan) error {
+	onStatusRequestFn := func(e v2.Event, d *channel.DataChan) error {
 		log.Infof("got status check call,fire events for publisher %s", pub.Resource)
 		re, err := createMockEvent(pub) // create a mock event
 		if err != nil {
@@ -58,7 +58,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		} else {
 			_ = common.PublishEvent(config, re)
 		}
-		d.Type=channel.STATUS
+		d.Type = channel.STATUS
 		return nil
 	}
 	// create amqp listener
@@ -72,14 +72,14 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		defer wg.Done()
 		for range time.Tick(100 * time.Millisecond) {
 			// create an event
-			if mEvent,err:=createMockEvent(pub);err==nil{
+			if mEvent, err := createMockEvent(pub); err == nil {
 				mEvent.Type = "ptp_status_type"
-				mEvent.Data.Values[0].Value=ceEvent.LOCKED
-				mEvent.Data.Values[1].Value=-200
+				mEvent.Data.Values[0].Value = ceEvent.LOCKED
+				mEvent.Data.Values[1].Value = -200
 				if err = common.PublishEvent(config, mEvent); err != nil {
 					log.Errorf("error publishing events %s", err)
 				}
-			}else{
+			} else {
 				log.Errorf("error creating mock event")
 			}
 		}

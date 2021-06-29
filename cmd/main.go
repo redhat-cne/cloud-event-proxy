@@ -32,17 +32,19 @@ import (
 	"github.com/redhat-cne/cloud-event-proxy/pkg/localmetrics"
 	log "github.com/sirupsen/logrus"
 
-	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
-	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
-
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/plugins"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	apiMetrics "github.com/redhat-cne/rest-api/pkg/localmetrics"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
+	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
+	"github.com/redhat-cne/sdk-go/pkg/hwevent"
 	sdkMetrics "github.com/redhat-cne/sdk-go/pkg/localmetrics"
+	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
+	v1hwevent "github.com/redhat-cne/sdk-go/v1/hwevent"
+	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
 )
 
 var (
@@ -154,7 +156,7 @@ func metricServer(address string) {
 	}, 5*time.Second, scConfig.CloseCh)
 }
 
-//ProcessOutChannel this process the out channel;data put out by amqp
+// ProcessOutChannel this process the out channel;data put out by amqp
 func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 	//qdr throws out the data on this channel ,listen to data coming out of qdrEventOutCh
 
@@ -162,7 +164,13 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 		select { //nolint:gosimple
 		case d := <-scConfig.EventOutCh: // do something that is put out by QDR
 			// regular events
-			event, err := v1event.GetCloudNativeEvents(*d.Data)
+			var event interface{}
+			var err error
+			if d.Data.Type() == "HW_EVENT" {
+				event, err = v1hwevent.GetCloudNativeEvents(*d.Data)
+			} else {
+				event, err = v1event.GetCloudNativeEvents(*d.Data)
+			}
 			if err != nil {
 				log.Errorf("error marshalling event data when reading from amqp %v\n %#v", err, d)
 				log.Infof("data %#v", d.Data)
@@ -175,13 +183,26 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 						}
 					} else if sub, ok := scConfig.PubSubAPI.HasSubscription(d.Address); ok {
 						if sub.EndPointURI != nil {
-							event.ID = sub.ID // set ID to the subscriptionID
 							restClient := restclient.New()
-							if err := restClient.PostEvent(sub.EndPointURI, event); err != nil {
-								log.Errorf("error posting request at %s : %s", sub.EndPointURI, err)
-								localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
+							if d.Data.Type() == "HW_EVENT" {
+								e := event.(hwevent.Event)
+								e.ID = sub.ID // set ID to the subscriptionID
+								if err := restClient.PostHwEvent(sub.EndPointURI, e); err != nil {
+									log.Errorf("error posting request at %s : %s", sub.EndPointURI, err)
+									localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
+								} else {
+									localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
+								}
 							} else {
-								localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
+								e := event.(ceevent.Event)
+								e.ID = sub.ID // set ID to the subscriptionID
+								if err := restClient.PostEvent(sub.EndPointURI, e); err != nil {
+									log.Errorf("error posting request at %s : %s", sub.EndPointURI, err)
+									localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
+								} else {
+									localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
+								}
+
 							}
 						} else {
 							log.Warnf("endpoint uri not given, posting event to log %#v for address %s\n", event, d.Address)
@@ -226,7 +247,7 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 	}
 }
 
-//ProcessInChannel will be called if Transport is disabled
+// ProcessInChannel will be called if Transport is disabled
 func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 	defer wg.Done()
 	for { //nolint:gosimple
