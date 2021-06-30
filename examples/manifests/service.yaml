@@ -13,12 +13,9 @@ spec:
     - name: hw-event
       port: 9087
       targetPort: 9087
-    - name: https-metrics
+    - name: https
       port: 8443
-      targetPort: https-metrics
-    - name: https-webhook
-      port: 9443
-      targetPort: https-webhook
+      targetPort: https
   selector:
     app: hw-event-proxy
   type: ClusterIP

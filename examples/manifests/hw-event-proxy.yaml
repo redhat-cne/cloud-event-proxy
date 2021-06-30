@@ -19,7 +19,7 @@ spec:
     spec:
       serviceAccountName: hw-event-proxy-sa
       containers:
-        - name: cloud-native-event-handler
+        - name: hw-event-proxy
           image: quay.io/jacding/cloud-event-proxy:latest
           args:
             - "--metrics-addr=127.0.0.1:9091"
@@ -69,7 +69,7 @@ spec:
             - --tls-cert-file=/etc/metrics/tls.crt
           ports:
             - containerPort: 8443
-              name: https-metrics
+              name: https
           resources:
             requests:
               cpu: 10m
@@ -78,29 +78,6 @@ spec:
           volumeMounts:
             - name: hw-event-proxy-certs
               mountPath: /etc/metrics
-              readOnly: True
-        - name: kube-rbac-proxy-webhook
-          image: quay.io/coreos/kube-rbac-proxy:v0.5.0
-          imagePullPolicy: Always
-          args:
-            - --logtostderr=true
-            - --v=10
-            - --secure-listen-address=:9443
-            - --tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_RSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-            - --upstream=http://127.0.0.1:9087/
-            - --tls-private-key-file=/etc/webhook/tls.key
-            - --tls-cert-file=/etc/webhook/tls.crt
-          ports:
-            - containerPort: 9443
-              name: https-webhook
-          resources:
-            requests:
-              cpu: 10m
-              memory: 20Mi
-          terminationMessagePolicy: FallbackToLogsOnError
-          volumeMounts:
-            - name: hw-event-proxy-certs
-              mountPath: /etc/webhook
               readOnly: True
       volumes:
         - name: pubsubstore
