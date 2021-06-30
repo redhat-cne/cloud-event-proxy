@@ -197,7 +197,7 @@ func NewPTPEventManager(publisherID string, nodeName string, config *common.SCCo
 		maxOffsetThreshold: maxOffsetThreshold,
 		minOffsetThreshold: minOffsetThreshold,
 	}
-	if ht := common.GetIntEnv("ptp_holdOverTimeOutInSecs"); ht != 0 {
+	if ht := common.GetIntEnv("ptp_holdoverTimeout"); ht != 0 {
 		ptpEventManager.holdoverTimeout = time.Duration(ht)
 	}
 	if maxTh := common.GetIntEnv("ptp_maxOffsetThreshold"); maxTh != 0 {

@@ -4,8 +4,8 @@ metadata:
   name: cloud-event-sidecar-config
   namespace: openshift-ptp
 data:
-  # clock state to stay in holdover state  if offset is not in desired range
-  ptp_holdoverStateThreshold: "10"
+  # clock state to stay in holdover state in secs
+  ptp_holdoverTimeout: "5"
   # max offset in nano secs
   ptp_maxOffsetThreshold: "99"
   # min offset in nano secs
