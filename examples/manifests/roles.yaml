@@ -10,7 +10,7 @@ rules:
     resources: ["subjectaccessreviews"]
     verbs: ["create"]
   - nonResourceURLs: ["/webhook"]
-    verbs: ["post"]
+    verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
