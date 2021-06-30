@@ -24,7 +24,7 @@ spec:
                     operator: In
                     values:
                       - local
-      serviceAccountName: sidecar-producer-sa
+      serviceAccountName: sidecar-consumer-sa
       containers:
         - name: cloud-native-event-consumer
           image: quay.io/jacding/cloud-native-event-consumer
