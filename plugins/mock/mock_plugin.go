@@ -73,7 +73,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		for range time.Tick(100 * time.Millisecond) {
 			// create an event
 			if mEvent, err := createMockEvent(pub); err == nil {
-				mEvent.Type = "ptp_status_type"
+				mEvent.Type = channel.PTPStatus
 				mEvent.Data.Values[0].Value = ceEvent.LOCKED
 				mEvent.Data.Values[1].Value = -200
 				if err = common.PublishEvent(config, mEvent); err != nil {
