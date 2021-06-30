@@ -251,13 +251,11 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 						postProcessFn(d.Address, d.Status)
 					}
 				} else if d.Type == channel.STATUS {
-					if d.Status == channel.SUCCESS || d.Status == channel.FAILED {
-						if d.Status == channel.SUCCESS {
-							localmetrics.UpdateStatusAckCount(d.Address, localmetrics.SUCCESS)
-						} else {
-							log.Errorf("failed to receive status request to address %s", d.Address)
-							localmetrics.UpdateStatusAckCount(d.Address, localmetrics.FAILED)
-						}
+					if d.Status == channel.SUCCESS {
+						localmetrics.UpdateStatusAckCount(d.Address, localmetrics.SUCCESS)
+					} else {
+						log.Errorf("failed to receive status request to address %s", d.Address)
+						localmetrics.UpdateStatusAckCount(d.Address, localmetrics.FAILED)
 					}
 				}
 			} // end switch
