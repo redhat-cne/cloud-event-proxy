@@ -19,7 +19,7 @@ spec:
     spec:
       serviceAccountName: hw-event-proxy-sa
       containers:
-        - name: cloud-native-event-handler
+        - name: hw-event-proxy
           image: quay.io/jacding/cloud-event-proxy:latest
           args:
             - "--metrics-addr=127.0.0.1:9091"
@@ -76,12 +76,12 @@ spec:
               memory: 20Mi
           terminationMessagePolicy: FallbackToLogsOnError
           volumeMounts:
-            - name: hw-event-plugin-certs
+            - name: hw-event-proxy-certs
               mountPath: /etc/metrics
               readOnly: True
       volumes:
         - name: pubsubstore
           emptyDir: {}
-        - name: hw-event-plugin-certs
+        - name: hw-event-proxy-certs
           secret:
-            secretName: hw-event-plugin-secret
+            secretName: hw-event-proxy-secret
