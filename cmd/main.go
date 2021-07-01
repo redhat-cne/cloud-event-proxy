@@ -24,6 +24,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redhat-cne/sdk-go/pkg/types"
+
 	"github.com/prometheus/client_golang/prometheus/collectors"
 
 	"github.com/redhat-cne/sdk-go/pkg/util/wait"
@@ -38,8 +40,6 @@ import (
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	apiMetrics "github.com/redhat-cne/rest-api/pkg/localmetrics"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
-	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
-	"github.com/redhat-cne/sdk-go/pkg/hwevent"
 	sdkMetrics "github.com/redhat-cne/sdk-go/pkg/localmetrics"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
@@ -159,80 +159,98 @@ func metricServer(address string) {
 // ProcessOutChannel this process the out channel;data put out by amqp
 func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 	//qdr throws out the data on this channel ,listen to data coming out of qdrEventOutCh
+	//Send back the acknowledgement to publisher
+	postProcessFn := func(address string, status channel.Status) {
+		if pub, ok := scConfig.PubSubAPI.HasPublisher(address); ok {
+			if status == channel.SUCCESS {
+				localmetrics.UpdateEventAckCount(address, localmetrics.SUCCESS)
+			} else {
+				localmetrics.UpdateEventAckCount(address, localmetrics.FAILED)
+			}
+			if pub.EndPointURI != nil {
+				log.Debugf("posting event status %s to publisher %s", channel.Status(status), pub.Resource)
+				restClient := restclient.New()
+				_ = restClient.Post(pub.EndPointURI,
+					[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, status)))
+			}
+		} else {
+			log.Warnf("could not send ack to publisher ,`publisher` for address %s not found", address)
+			localmetrics.UpdateEventAckCount(address, localmetrics.FAILED)
+		}
+	}
+	postHandler := func(err error, endPointURI *types.URI, address string) {
+		if err != nil {
+			log.Errorf("error posting request at %s : %s", endPointURI, err)
+			localmetrics.UpdateEventReceivedCount(address, localmetrics.FAILED)
+		} else {
+			localmetrics.UpdateEventReceivedCount(address, localmetrics.SUCCESS)
+		}
+	}
 
 	for { //nolint:gosimple
 		select { //nolint:gosimple
 		case d := <-scConfig.EventOutCh: // do something that is put out by QDR
-			// regular events
-			var event interface{}
-			var err error
-			if d.Data.Type() == "HW_EVENT" {
-				event, err = v1hwevent.GetCloudNativeEvents(*d.Data)
-			} else {
-				event, err = v1event.GetCloudNativeEvents(*d.Data)
-			}
-			if err != nil {
-				log.Errorf("error marshalling event data when reading from amqp %v\n %#v", err, d)
-				log.Infof("data %#v", d.Data)
-			} else if d.Type == channel.EVENT {
-				if d.Status == channel.NEW {
-					if d.ProcessEventFn != nil { // always leave event to handle by default method for events
-						if err := d.ProcessEventFn(event); err != nil {
-							log.Errorf("error processing data %v", err)
-							localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
-						}
-					} else if sub, ok := scConfig.PubSubAPI.HasSubscription(d.Address); ok {
-						if sub.EndPointURI != nil {
-							restClient := restclient.New()
-							if d.Data.Type() == "HW_EVENT" {
-								e := event.(hwevent.Event)
-								e.ID = sub.ID // set ID to the subscriptionID
-								if err := restClient.PostHwEvent(sub.EndPointURI, e); err != nil {
-									log.Errorf("error posting request at %s : %s", sub.EndPointURI, err)
-									localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
-								} else {
-									localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
-								}
+			switch d.Data.Type() {
+			case channel.HWEvent:
+				event, err := v1hwevent.GetCloudNativeEvents(*d.Data)
+				if err != nil {
+					log.Errorf("error marshalling event data when reading from amqp %v\n %#v", err, d)
+					log.Infof("data %#v", d.Data)
+				} else if d.Type == channel.EVENT {
+					if d.Status == channel.NEW {
+						if d.ProcessEventFn != nil { // always leave event to handle by default method for events
+							if err := d.ProcessEventFn(event); err != nil {
+								log.Errorf("error processing data %v", err)
+								localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
+							}
+						} else if sub, ok := scConfig.PubSubAPI.HasSubscription(d.Address); ok {
+							if sub.EndPointURI != nil {
+								restClient := restclient.New()
+								event.ID = sub.ID // set ID to the subscriptionID
+								err := restClient.PostHwEvent(sub.EndPointURI, event)
+								postHandler(err, sub.EndPointURI, d.Address)
 							} else {
-								e := event.(ceevent.Event)
-								e.ID = sub.ID // set ID to the subscriptionID
-								if err := restClient.PostEvent(sub.EndPointURI, e); err != nil {
-									log.Errorf("error posting request at %s : %s", sub.EndPointURI, err)
-									localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
-								} else {
-									localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
-								}
-
+								log.Warnf("endpoint uri not given, posting event to log %#v for address %s\n", event, d.Address)
+								localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
 							}
 						} else {
-							log.Warnf("endpoint uri not given, posting event to log %#v for address %s\n", event, d.Address)
-							localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
+							log.Warnf("subscription not found, posting event %#v to log for address %s\n", event, d.Address)
+							localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
 						}
-					} else {
-						log.Warnf("subscription not found, posting event %#v to log for address %s\n", event, d.Address)
-						localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
-					}
-				} else if d.Status == channel.SUCCESS || d.Status == channel.FAILED { // event sent ,ack back to publisher
-					//Send back the acknowledgement to publisher
-					if pub, ok := scConfig.PubSubAPI.HasPublisher(d.Address); ok {
-						if d.Status == channel.SUCCESS {
-							localmetrics.UpdateEventAckCount(d.Address, localmetrics.SUCCESS)
-						} else {
-							localmetrics.UpdateEventAckCount(d.Address, localmetrics.FAILED)
-						}
-						if pub.EndPointURI != nil {
-							log.Debugf("posting event status %s to publisher %s", channel.Status(d.Status), pub.Resource)
-							restClient := restclient.New()
-							_ = restClient.Post(pub.EndPointURI,
-								[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, d.Status)))
-						}
-					} else {
-						log.Warnf("could not send ack to publisher ,`publisher` for address %s not found", d.Address)
-						localmetrics.UpdateEventAckCount(d.Address, localmetrics.FAILED)
+					} else if d.Status == channel.SUCCESS || d.Status == channel.FAILED { // event sent ,ack back to publisher
+						postProcessFn(d.Address, d.Status)
 					}
 				}
-			} else if d.Type == channel.STATUS {
-				if d.Status == channel.SUCCESS || d.Status == channel.FAILED {
+			default:
+				event, err := v1event.GetCloudNativeEvents(*d.Data)
+				if err != nil {
+					log.Errorf("error marshalling event data when reading from amqp %v\n %#v", err, d)
+					log.Infof("data %#v", d.Data)
+				} else if d.Type == channel.EVENT {
+					if d.Status == channel.NEW {
+						if d.ProcessEventFn != nil { // always leave event to handle by default method for events
+							if err := d.ProcessEventFn(event); err != nil {
+								log.Errorf("error processing data %v", err)
+								localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
+							}
+						} else if sub, ok := scConfig.PubSubAPI.HasSubscription(d.Address); ok {
+							if sub.EndPointURI != nil {
+								restClient := restclient.New()
+								event.ID = sub.ID // set ID to the subscriptionID
+								err := restClient.PostEvent(sub.EndPointURI, event)
+								postHandler(err, sub.EndPointURI, d.Address)
+							} else {
+								log.Warnf("endpoint uri not given, posting event to log %#v for address %s\n", event, d.Address)
+								localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
+							}
+						} else {
+							log.Warnf("subscription not found, posting event %#v to log for address %s\n", event, d.Address)
+							localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
+						}
+					} else if d.Status == channel.SUCCESS || d.Status == channel.FAILED { // event sent ,ack back to publisher
+						postProcessFn(d.Address, d.Status)
+					}
+				} else if d.Type == channel.STATUS {
 					if d.Status == channel.SUCCESS {
 						localmetrics.UpdateStatusAckCount(d.Address, localmetrics.SUCCESS)
 					} else {
@@ -240,7 +258,7 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 						localmetrics.UpdateStatusAckCount(d.Address, localmetrics.FAILED)
 					}
 				}
-			}
+			} // end switch
 		case <-scConfig.CloseCh:
 			return
 		}
