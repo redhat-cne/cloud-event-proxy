@@ -5,11 +5,11 @@ metadata:
   namespace: openshift-ptp
 data:
   # clock state to stay in holdover state in secs
-  ptp_holdoverTimeout: "5"
+  ptp_holdover_timeout: "5"
   # max offset in nano secs
-  ptp_maxOffsetThreshold: "99"
+  ptp_maxoffset_threshold: "99"
   # min offset in nano secs
-  ptp_minOffsetThreshold: "-99"
+  ptp_minoffset_threshold: "-99"
   #Example Mount this configmap
   #envFrom:
   #  - configMapRef:
