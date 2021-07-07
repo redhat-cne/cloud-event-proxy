@@ -37,6 +37,10 @@ spec:
           env:
             - name: HW_PLUGIN
               value: "true"
+            - name: PTP_PLUGIN
+              value: "false"
+            - name: MOCK_PLUGIN
+              value: "false"
             - name: HW_EVENT_PORT
               value: "9087"
             - name: MY_NODE_NAME
@@ -56,7 +60,7 @@ spec:
                 fieldRef:
                   fieldPath: status.podIP
             - name: AMQP_NAMESPACE
-              value: "amqp"
+              value: "amqp-interconnect"
         - name: kube-rbac-proxy
           image: quay.io/coreos/kube-rbac-proxy:v0.5.0
           imagePullPolicy: Always

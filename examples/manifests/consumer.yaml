@@ -49,8 +49,12 @@ spec:
           env:
             - name: HW_PLUGIN
               value: "true"
+            - name: PTP_PLUGIN
+              value: "false"
+            - name: MOCK_PLUGIN
+              value: "false"
             - name: AMQP_NAMESPACE
-              value: "amqp"
+              value: "amqp-interconnect"
             - name: NODE_NAME
               valueFrom:
                 fieldRef:

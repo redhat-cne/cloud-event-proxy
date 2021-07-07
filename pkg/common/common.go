@@ -152,7 +152,7 @@ func CreateEvent(pubSubID, eventType string, data ceevent.Data) (ceevent.Event, 
 }
 
 // CreateHwEvent create an hw event
-func CreateHwEvent(pubSubID, eventType string, data hwevent.Data) (hwevent.Event, error) {
+func CreateHwEvent(pubSubID, eventType string, data hwevent.Data, t time.Time) (hwevent.Event, error) {
 	// create an hw event
 	if pubSubID == "" {
 		return hwevent.Event{}, fmt.Errorf("id is a required field")
@@ -163,7 +163,7 @@ func CreateHwEvent(pubSubID, eventType string, data hwevent.Data) (hwevent.Event
 	event := v1hwevent.CloudNativeEvent()
 	event.ID = pubSubID
 	event.Type = eventType
-	event.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
+	event.SetTime(t)
 	event.SetDataContentType(hwevent.ApplicationJSON)
 	event.SetData(data)
 	return event, nil
@@ -219,6 +219,29 @@ func PublishHwEvent(scConfig *SCConfiguration, e hwevent.Event) error {
 	log.Debugf("published hw event %s", e)
 
 	return nil
+}
+
+// PublishHwEventViaAPI ... publish hw events by not using http request  but direct api
+func PublishHwEventViaAPI(scConfig *SCConfiguration, e hwevent.Event) error {
+	pub, err := scConfig.PubSubAPI.GetPublisher(e.ID)
+	if err != nil {
+		localmetrics.UpdateEventPublishedCount(e.ID, localmetrics.FAIL, 1)
+		return fmt.Errorf("no publisher data for id %s found to publish event for", e.ID)
+	}
+	hwEvent, err := e.NewCloudEvent(&pub)
+	if err != nil {
+		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
+		return fmt.Errorf("error converting to CloudEvents %s", err)
+	}
+	scConfig.EventInCh <- &channel.DataChan{
+		Type:    channel.EVENT,
+		Data:    hwEvent,
+		Address: pub.GetResource(),
+	}
+	log.Debugf("event sent %s", e.String())
+	localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.SUCCESS, 1)
+	return nil
+
 }
 
 // APIHealthCheck .. rest api should be ready before starting to consume api
