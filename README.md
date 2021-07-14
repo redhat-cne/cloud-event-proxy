@@ -1,5 +1,8 @@
 # cloud-event-proxy
- Cloud Native Events  manager
+  The cloud-event-proxy project provides a mechanism for events from the K8s infrastructure to be delivered to CNFs with low-latency.  
+  The initial event functionality focuses on the operation of the PTP synchronization protocol, but the mechanism can be extended for any infrastructure event that requires low-latency.  
+  The mechanism is an integral part of k8s/OCP RAN deployments where the PTP protocol is used to provide timing synchronization for the RAN software elements
+
 
  [![go-doc](https://godoc.org/github.com/redhat-cne/cloud-event-proxy?status.svg)](https://godoc.org/github.com/redhat-cne/cloud-event-proxy)
  [![Go Report Card](https://goreportcard.com/badge/github.com/redhat-cne/cloud-event-proxy)](https://goreportcard.com/report/github.com/redhat-cne/cloud-event-proxy)
