@@ -10,7 +10,7 @@ COPY . .
 
 RUN hack/build-go.sh
 
-FROM openshift/origin-base AS bin
+FROM registry.access.redhat.com/ubi8/ubi-minimal:latest AS bin
 COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/build/cloud-event-proxy /
 COPY --from=builder go/src/github.com/redhat-cne/cloud-event-proxy/plugins/*.so /plugins/
 
