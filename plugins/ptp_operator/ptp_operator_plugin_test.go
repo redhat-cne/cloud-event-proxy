@@ -40,8 +40,8 @@ var (
 	scConfig              *common.SCConfiguration
 	channelBufferSize     int    = 10
 	storePath                    = "../../.."
-	resourceAddress       string = "/cluster/node/ptp"
-	resourceStatusAddress string = "/cluster/node/ptp/status"
+	resourceAddress       string = "/cluster/node/test_node/ptp"
+	resourceStatusAddress string = "/cluster/node/test_node/ptp/status"
 	apiPort               int    = 8990
 	c                     chan os.Signal
 )

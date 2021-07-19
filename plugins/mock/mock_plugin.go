@@ -56,7 +56,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		if err != nil {
 			log.Errorf("failed sending mock event on status pings %s", err)
 		} else {
-			_ = common.PublishEvent(config, re)
+			_ = common.PublishEventViaAPI(config, re)
 		}
 		d.Type = channel.STATUS
 		return nil
@@ -76,7 +76,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 				mEvent.Type = channel.PTPStatus
 				mEvent.Data.Values[0].Value = ceEvent.LOCKED
 				mEvent.Data.Values[1].Value = -200
-				if err = common.PublishEvent(config, mEvent); err != nil {
+				if err = common.PublishEventViaAPI(config, mEvent); err != nil {
 					log.Errorf("error publishing events %s", err)
 				}
 			} else {

@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/redhat-cne/rest-api/pkg/localmetrics"
+
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	restapi "github.com/redhat-cne/rest-api"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
@@ -179,6 +181,29 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 	log.Debugf("published cloud native event %s", e.String())
 
 	return nil
+}
+
+// PublishEventViaAPI ... publish events by not using http request  but direct api
+func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error {
+	pub, err := scConfig.PubSubAPI.GetPublisher(cneEvent.ID)
+	if err != nil {
+		localmetrics.UpdateEventPublishedCount(cneEvent.ID, localmetrics.FAIL, 1)
+		return fmt.Errorf("no publisher data for id %s found to publish event for", cneEvent.ID)
+	}
+	ceEvent, err := cneEvent.NewCloudEvent(&pub)
+	if err != nil {
+		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
+		return fmt.Errorf("error converting to CloudEvents %s", err)
+	}
+	scConfig.EventInCh <- &channel.DataChan{
+		Type:    channel.EVENT,
+		Data:    ceEvent,
+		Address: pub.GetResource(),
+	}
+	log.Debugf("event sent %s", cneEvent.String())
+	localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.SUCCESS, 1)
+	return nil
+
 }
 
 // PublishHwEvent publishes hw event

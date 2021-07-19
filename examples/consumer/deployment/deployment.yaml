@@ -39,6 +39,8 @@ spec:
                   fieldPath: spec.nodeName
             - name: CONSUMER_TYPE
               value: "PTP"
+            - name: ENABLE_STATUS_CHECK
+              value: "true"
         - name: cloud-native-event-sidecar
           image: quay.io/aneeshkp/cloud-event-proxy
           args:
