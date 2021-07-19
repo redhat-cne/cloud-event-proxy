@@ -38,6 +38,10 @@ else
 KUSTOMIZE=$(shell which kustomize)
 endif
 
+deps-update:
+	go mod tidy && \
+	go mod vendor
+
 build:build-plugins test
 	go fmt ./...
 	make lint
