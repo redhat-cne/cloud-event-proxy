@@ -21,6 +21,8 @@ import (
 	"os"
 	"sync"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"github.com/redhat-cne/sdk-go/pkg/event"
 
@@ -31,6 +33,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	ptpMetrics "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
+	cneEvent "github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
@@ -39,7 +42,7 @@ import (
 var (
 	resourceAddress string = "/cluster/node/%s/ptp"
 	config          *common.SCConfiguration
-	eventProcessor  *ptpMetrics.PTPEventManager
+	eventManager    *ptpMetrics.PTPEventManager
 )
 
 // Start ptp plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
@@ -50,6 +53,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		log.Error("cannot find NODE_NAME environment variable")
 		return fmt.Errorf("cannot find NODE_NAME environment variable %s", nodeName)
 	}
+
 	config = configuration
 	// register metrics type
 	ptpMetrics.RegisterMetrics(nodeName)
@@ -62,26 +66,78 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		return err
 	}
 	log.Printf("Created publisher %v", pub)
-	eventProcessor = ptpMetrics.NewPTPEventManager(pub.ID, nodeName, config)
+	eventManager = ptpMetrics.NewPTPEventManager(pub.ID, nodeName, config)
 
 	wg.Add(1)
 	go listenToSocket(wg)
+	go eventManager.PtpConfigUpdates.WatchConfigUpdate(nodeName, configuration.CloseCh)
+
+	// update node profile when configmap changes
+	go func() {
+		for {
+			select {
+			case <-eventManager.PtpConfigUpdates.UpdateCh:
+				log.Infof("updating ptp profile changes %d", len(eventManager.PtpConfigUpdates.NodeProfiles))
+				//clean up
+				if len(eventManager.PtpConfigUpdates.NodeProfiles) == 0 {
+					for iface := range eventManager.Stats {
+						eventManager.PublishEvent(cneEvent.FREERUN, 0, iface, channel.PTPEvent) // change to locked
+						ptpMetrics.UpdateDeletedPTPMetrics(iface)
+						eventManager.DeleteStats(iface)
+						eventManager.PtpConfigUpdates.DeletePTPThreshold(iface)
+					}
+				} else {
+					//cleanup
+					for key := range eventManager.Stats { // remove stats if not matching
+						found := false
+						for _, np := range eventManager.PtpConfigUpdates.NodeProfiles {
+							if *np.Interface == key {
+								found = true
+							}
+						}
+						if !found { // clean up and update metrics
+							log.Debugf("identified ptpfonfig for %s is deleted, removing stats ", key)
+							eventManager.PublishEvent(cneEvent.FREERUN, 0, key, channel.PTPEvent) // change to locked
+							ptpMetrics.UpdateDeletedPTPMetrics(key)
+							eventManager.DeleteStats(key)
+							eventManager.PtpConfigUpdates.DeletePTPThreshold(key)
+						}
+					}
+					//updates
+					eventManager.PtpConfigUpdates.UpdatePTPThreshold()
+					for key, np := range eventManager.PtpConfigUpdates.EventThreshold {
+						ptpMetrics.Threshold.With(prometheus.Labels{
+							"threshold": "MinOffsetThreshold", "node": nodeName, "iface": key}).Set(float64(np.MinOffsetThreshold))
+						ptpMetrics.Threshold.With(prometheus.Labels{
+							"threshold": "MaxOffsetThreshold", "node": nodeName, "iface": key}).Set(float64(np.MaxOffsetThreshold))
+						ptpMetrics.Threshold.With(prometheus.Labels{
+							"threshold": "HoldOverTimeout", "node": nodeName, "iface": key}).Set(float64(np.HoldOverTimeout))
+					}
+				}
+			case <-config.CloseCh:
+				return
+			}
+		}
+	}()
 
 	// 2.Create Status Listener
 	// method to be called when ping received
 	onReceiveOverrideFn := func(e v2.Event, d *channel.DataChan) error {
 		log.Info("got status check call,fire events for above publisher")
-		if len(eventProcessor.Stats) == 0 {
-			eventProcessor.PublishEvent(event.FREERUN, 0, "ptp-not-set", "PTP_STATUS")
+		if len(eventManager.Stats) == 0 {
+			eventManager.PublishEvent(event.FREERUN, 0, "ptp-not-set", "PTP_STATUS")
 		} else {
-			for i, s := range eventProcessor.Stats {
-				eventProcessor.PublishEvent(s.ClockState(), s.Offset(), i, "PTP_STATUS")
+			for i, s := range eventManager.Stats {
+				log.Infof(" publishing event for %s with clock state %s and offset %d", i, s.ClockState(), s.Offset())
+				eventManager.PublishEvent(s.ClockState(), s.Offset(), i, "PTP_STATUS")
 			}
 		}
 		d.Type = channel.STATUS
 		return nil
 	}
+	log.Infof("setting up status listener")
 	v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pub.Resource, "status"), onReceiveOverrideFn, fn)
+
 	return nil
 }
 func createPublisher(address string) (pub pubsub.PubSub, err error) {
@@ -123,6 +179,6 @@ func processMessages(c net.Conn) {
 			break
 		}
 		msg := scanner.Text()
-		eventProcessor.ExtractMetrics(msg)
+		eventManager.ExtractMetrics(msg)
 	}
 }

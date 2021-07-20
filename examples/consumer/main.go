@@ -43,6 +43,8 @@ const (
 	HW ConsumerTypeEnum = "HW"
 	// MOCK consumer
 	MOCK ConsumerTypeEnum = "MOCK"
+	// StatusCheckInterval for consumer to pull for status
+	StatusCheckInterval = 30
 )
 
 var (
@@ -67,6 +69,8 @@ func main() {
 		log.Error("cannot find NODE_NAME environment variable,setting to default `mock` node")
 		nodeName = "mock"
 	}
+
+	enableStatusCheck := common.GetBoolEnv("ENABLE_STATUS_CHECK")
 
 	var consumerType ConsumerTypeEnum
 	consumerTypeEnv := os.Getenv("CONSUMER_TYPE")
@@ -99,10 +103,12 @@ RETRY:
 	},
 	}
 
-	if consumerType == PTP {
-		createPublisherForStatusPing(subs[2].Resource) // ptp // disable this for testing else you will see context deadline error
-	} else if consumerType == MOCK {
-		createPublisherForStatusPing(subs[1].Resource) // mock
+	if enableStatusCheck {
+		if consumerType == PTP {
+			createPublisherForStatusPing(subs[2].Resource) // ptp // disable this for testing else you will see context deadline error
+		} else if consumerType == MOCK {
+			createPublisherForStatusPing(subs[1].Resource) // mock
+		}
 	}
 
 	for _, sub := range subs {
@@ -115,19 +121,23 @@ RETRY:
 		log.Infof("created subscription: %s\n", sub.String())
 	}
 
-	// ping  for status every five secs
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for range time.Tick(30 * time.Second) {
-			//only for PTP testing
-			if consumerType == PTP {
-				pingForStatus(subs[2].ID) // ptp // disable this for testing else you will see context deadline error
-			} else if consumerType == MOCK {
-				pingForStatus(subs[1].ID) // mock
+	// ping  for status every n secs
+
+	if enableStatusCheck {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for range time.Tick(StatusCheckInterval * time.Second) {
+				//only for PTP testing
+				if consumerType == PTP {
+					pingForStatus(subs[2].ID) // ptp // disable this for testing else you will see context deadline error
+				} else if consumerType == MOCK {
+					pingForStatus(subs[1].ID) // mock
+				}
 			}
-		}
-	}()
+		}()
+	}
+
 	log.Info("waiting for events")
 	wg.Wait()
 
@@ -189,7 +199,7 @@ func pingForStatus(resourceID string) {
 	if status != http.StatusAccepted {
 		log.Errorf("error pinging for status check %d to url %s", status, url.String())
 	} else {
-		log.Debugf("ping check  submitted (%d)", status)
+		log.Debugf("ping check submitted (%d)", status)
 	}
 }
 
