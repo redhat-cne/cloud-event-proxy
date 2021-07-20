@@ -1,0 +1,13 @@
+language: go
+
+go:
+  - 1.15
+
+before_install:
+  go get -u golang.org/x/lint/golint
+
+before_script:
+  - curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.40.0
+
+script:
+  - make build

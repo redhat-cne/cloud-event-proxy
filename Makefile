@@ -13,6 +13,7 @@ CONSUMER_IMG ?= quay.io/aneeshkp/cloud-native-event-consumer:$(VERSION)
 # Export GO111MODULE=on to enable project to be built from within GOPATH/src
 export GO111MODULE=on
 export CGO_ENABLED=1
+export GOFLAGS=-mod=vendor
 export COMMON_GO_ARGS=-race
 export GOOS=linux
 export GOARCH=amd64
@@ -38,40 +39,44 @@ else
 KUSTOMIZE=$(shell which kustomize)
 endif
 
+deps-update:
+	go mod tidy && \
+	go mod vendor
+
 build:build-plugins test
 	go fmt ./...
 	make lint
 	go build -o ./build/cloud-event-proxy cmd/main.go
 
 build-only:
-	go build -mod=readonly -o ./build/cloud-event-proxy cmd/main.go
+	go build -o ./build/cloud-event-proxy cmd/main.go
 
 build-examples:
-	go build -mod=readonly -o ./build/cloud-native-event-consumer ./examples/consumer/main.go
-	go build -mod=readonly -o ./build/cloud-native-event-producer ./examples/producer/main.go
+	go build -o ./build/cloud-native-event-consumer ./examples/consumer/main.go
+	go build -o ./build/cloud-native-event-producer ./examples/producer/main.go
 
 lint:
 	golint -set_exit_status `go list ./... | grep -v vendor`
 	golangci-lint run
 
 build-plugins:
-	go build -mod=readonly -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
-	go build -mod=readonly -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
-	go build -mod=readonly -o plugins/hw_event_plugin.so -buildmode=plugin plugins/hw_event/hw_event_plugin.go
-	go build -mod=readonly -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
+	go build  -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
+	go build  -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
+	go build  -o plugins/hw_event_plugin.so -buildmode=plugin plugins/hw_event/hw_event_plugin.go
+	go build  -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
 
 
 build-amqp-plugin:
-	go build -mod=readonly -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
+	go build -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 
 build-ptp-operator-plugin:
-	go build -mod=readonly -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
+	go build -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 
 build-hw-event-plugin:
-	go build -mod=readonly -o plugins/hw_event_plugin.so -buildmode=plugin plugins/hw_event/hw_event_plugin.go
+	go build -o plugins/hw_event_plugin.so -buildmode=plugin plugins/hw_event/hw_event_plugin.go
 
 build-mock-plugin:
-	go build -mod=readonly -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
+	go build -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
 
 run:
 	go run cmd/main.go
@@ -100,6 +105,6 @@ gha:
 	go build -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 	go build -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 	go build -o plugins/hw_event_plugin.so -buildmode=plugin plugins/hw_event/hw_event_plugin.go
-	go build -mod=readonly -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
+	go build -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
 	go test ./...  -coverprofile=cover.out
 

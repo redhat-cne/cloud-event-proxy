@@ -1,5 +1,5 @@
 FROM openshift/origin-release:golang-1.15 AS builder
-ENV GO111MODULE=on
+ENV GO111MODULE=off
 ENV CGO_ENABLED=1
 ENV COMMON_GO_ARGS=-race
 ENV GOOS=linux
