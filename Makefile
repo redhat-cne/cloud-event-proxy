@@ -16,7 +16,6 @@ export CGO_ENABLED=1
 export GOFLAGS=-mod=vendor
 export COMMON_GO_ARGS=-race
 export GOOS=linux
-export GOARCH=amd64
 
 ifeq (,$(shell go env GOBIN))
   GOBIN=$(shell go env GOPATH)/bin
