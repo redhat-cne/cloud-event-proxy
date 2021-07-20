@@ -17,10 +17,11 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus"
 	"net"
 	"os"
 	"sync"
+
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"github.com/redhat-cne/sdk-go/pkg/event"
@@ -104,14 +105,13 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 					}
 					//updates
 					eventManager.PtpConfigUpdates.UpdatePTPThreshold()
-					for _, np := range eventManager.PtpConfigUpdates.NodeProfiles {
+					for key, np := range eventManager.PtpConfigUpdates.EventThreshold {
 						ptpMetrics.Threshold.With(prometheus.Labels{
-							"threshold": "MinOffsetThreshold", "node": nodeName, "iface": *np.Interface}).Set(float64(np.PtpClockThreshold.MinOffsetThreshold))
+							"threshold": "MinOffsetThreshold", "node": nodeName, "iface": key}).Set(float64(np.MinOffsetThreshold))
 						ptpMetrics.Threshold.With(prometheus.Labels{
-							"threshold": "MaxOffsetThreshold", "node": nodeName, "iface": *np.Interface}).Set(float64(np.PtpClockThreshold.MaxOffsetThreshold))
+							"threshold": "MaxOffsetThreshold", "node": nodeName, "iface": key}).Set(float64(np.MaxOffsetThreshold))
 						ptpMetrics.Threshold.With(prometheus.Labels{
-							"threshold": "HoldOverTimeout", "node": nodeName, "iface": *np.Interface}).Set(float64(np.PtpClockThreshold.HoldOverTimeout))
-
+							"threshold": "HoldOverTimeout", "node": nodeName, "iface": key}).Set(float64(np.HoldOverTimeout))
 					}
 				}
 			case <-config.CloseCh:

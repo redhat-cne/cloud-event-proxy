@@ -11,13 +11,13 @@ import (
 func Test_Config(t *testing.T) {
 
 	testCases := map[string]struct {
-		wantProfile []ptpConfig.PtpClockThreshold
+		wantProfile []*ptpConfig.PtpClockThreshold
 		profilePath string
 		nodeName    string
 		len         int
 	}{
 		"single": {
-			wantProfile: []ptpConfig.PtpClockThreshold{{
+			wantProfile: []*ptpConfig.PtpClockThreshold{{
 				HoldOverTimeout:    30,
 				MaxOffsetThreshold: 100,
 				MinOffsetThreshold: -100,
@@ -27,7 +27,7 @@ func Test_Config(t *testing.T) {
 			len:         1,
 		},
 		"mixed": {
-			wantProfile: []ptpConfig.PtpClockThreshold{
+			wantProfile: []*ptpConfig.PtpClockThreshold{
 				{
 					HoldOverTimeout:    10,
 					MaxOffsetThreshold: 50,
@@ -44,7 +44,7 @@ func Test_Config(t *testing.T) {
 			len:         2,
 		},
 		"none": {
-			wantProfile: []ptpConfig.PtpClockThreshold{},
+			wantProfile: []*ptpConfig.PtpClockThreshold{},
 			profilePath: "../_testprofile",
 			nodeName:    "none",
 			len:         0,
@@ -67,7 +67,7 @@ func Test_Config(t *testing.T) {
 			} else {
 				for i, p := range ptpUpdate.NodeProfiles {
 					assert.Equal(t, tc.wantProfile[i], p.PtpClockThreshold)
-					assert.Equal(t, p.PtpClockThreshold, *(ptpUpdate.EventThreshold[*p.Interface]))
+					assert.Equal(t, p.PtpClockThreshold, ptpUpdate.EventThreshold[*p.Interface])
 				}
 			}
 		})

@@ -44,7 +44,7 @@ const (
 	// MOCK consumer
 	MOCK ConsumerTypeEnum = "MOCK"
 	// StatusCheckInterval for consumer to pull for status
-	StatusCheckInterval=30
+	StatusCheckInterval = 30
 )
 
 var (

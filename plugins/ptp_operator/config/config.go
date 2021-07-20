@@ -3,13 +3,14 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -24,9 +25,9 @@ const (
 
 // PtpProfile ...
 type PtpProfile struct {
-	Name              *string           `json:"name"`
-	Interface         *string           `json:"interface"`
-	PtpClockThreshold PtpClockThreshold `json:"ptpClockThreshold,omitempty"`
+	Name              *string            `json:"name"`
+	Interface         *string            `json:"interface"`
+	PtpClockThreshold *PtpClockThreshold `json:"ptpClockThreshold,omitempty"`
 }
 
 // PtpClockThreshold ...
@@ -97,23 +98,39 @@ func (l *LinuxPTPConfUpdate) DeletePTPThreshold(iface string) {
 // UpdatePTPThreshold .. update ptp threshold
 func (l *LinuxPTPConfUpdate) UpdatePTPThreshold() {
 	for _, profile := range l.NodeProfiles {
-		if _, found := l.EventThreshold[*profile.Interface]; !found {
-			l.SetDefaultPTPThreshold(*profile.Interface)
+		iface := *profile.Interface
+		if _, found := l.EventThreshold[iface]; !found {
+			l.SetDefaultPTPThreshold(iface)
 		}
-		if t, found := l.EventThreshold[*profile.Interface]; found {
-			if profile.PtpClockThreshold.MaxOffsetThreshold != 0 {
-				t.MaxOffsetThreshold = profile.PtpClockThreshold.MaxOffsetThreshold
-			}
-			if profile.PtpClockThreshold.MinOffsetThreshold != 0 {
-				t.MinOffsetThreshold = profile.PtpClockThreshold.MinOffsetThreshold
-			}
-			if profile.PtpClockThreshold.HoldOverTimeout != 0 {
-				t.HoldOverTimeout = profile.PtpClockThreshold.HoldOverTimeout
-			}
-			log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
-				*profile.Interface,t.HoldOverTimeout, t.MaxOffsetThreshold, t.MinOffsetThreshold)
+		if profile.PtpClockThreshold == nil {
+			l.SetDefaultPTPThreshold(iface)
+			continue
 		}
+		threshold := l.EventThreshold[iface]
+		if profile.PtpClockThreshold.MaxOffsetThreshold > 0 { // has to be greater than 0 nano secs
+			threshold.MaxOffsetThreshold = profile.PtpClockThreshold.MaxOffsetThreshold
+		} else {
+			threshold.MaxOffsetThreshold = maxOffsetThreshold
+			log.Infof("maxOffsetThreshold %d has to be > 0, now set to default %d", profile.PtpClockThreshold.MaxOffsetThreshold, maxOffsetThreshold)
+		}
+		if profile.PtpClockThreshold.MinOffsetThreshold > threshold.MaxOffsetThreshold {
+			threshold.MinOffsetThreshold = threshold.MaxOffsetThreshold - 1 // make it one nano secs less than max
+			log.Infof("minOffsetThreshold %d has to be > maxOffsetThreshold, now set to one less than maxOfssetThreshold %d",
+				profile.PtpClockThreshold.MinOffsetThreshold, maxOffsetThreshold)
+		} else {
+			threshold.MinOffsetThreshold = profile.PtpClockThreshold.MinOffsetThreshold
+		}
+		if profile.PtpClockThreshold.HoldOverTimeout <= 0 { //secs can't be negative or zero
+			threshold.HoldOverTimeout = holdoverTimeout
+			log.Infof("invalid holdOverTimeout %d in secs, setting to default %d holdOverTimeout", profile.PtpClockThreshold.HoldOverTimeout, holdoverTimeout)
+		} else {
+			threshold.HoldOverTimeout = profile.PtpClockThreshold.HoldOverTimeout
+		}
+		log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
+			*profile.Interface, threshold.HoldOverTimeout, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
+
 	}
+
 }
 
 // UpdateConfig ... update profile
@@ -178,7 +195,7 @@ func (l *LinuxPTPConfUpdate) WatchConfigUpdate(nodeName string, closeCh chan str
 	for {
 		select {
 		case <-tickerPull.C:
-			log.Infof("ticker pull for ptp profile updates")
+			log.Info("ticker pull for ptp profile updates")
 			nodeProfile := filepath.Join(l.profilePath, nodeName)
 			if _, err := os.Stat(nodeProfile); err != nil {
 				if os.IsNotExist(err) {
@@ -199,8 +216,8 @@ func (l *LinuxPTPConfUpdate) WatchConfigUpdate(nodeName string, closeCh chan str
 			if err != nil {
 				log.Errorf("error updating the node configuration using the profiles loaded: %v", err)
 			}
-		case sig := <-closeCh:
-			log.Info("signal received, shutting down", sig)
+		case <-closeCh:
+			log.Info("signal received, shutting down")
 			return
 		}
 	}
