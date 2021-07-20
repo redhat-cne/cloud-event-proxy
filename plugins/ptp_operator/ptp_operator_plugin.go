@@ -39,6 +39,10 @@ import (
 	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
 )
 
+const (
+	eventSocket = "/cloud-native/events.sock"
+)
+
 var (
 	resourceAddress string = "/cluster/node/%s/ptp"
 	config          *common.SCConfiguration
@@ -154,7 +158,7 @@ func createPublisher(address string) (pub pubsub.PubSub, err error) {
 func listenToSocket(wg *sync.WaitGroup) {
 	log.Info("establishing socket connection for metrics and events")
 	defer wg.Done()
-	l, err := ptpSocket.Listen("/tmp/metrics.sock")
+	l, err := ptpSocket.Listen(eventSocket)
 	if err != nil {
 		log.Errorf("error setting up socket %s", err)
 		return
