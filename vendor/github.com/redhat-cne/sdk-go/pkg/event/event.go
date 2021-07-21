@@ -59,9 +59,8 @@ type Event struct {
 	// DataSchema - A link to the schema that the `Data` attribute adheres to.
 	// +optional
 	DataSchema *types.URI `json:"dataSchema,omitempty"`
-
-	Data *Data `json:"data,omitempty" `
 	// +required
+	Data *Data `json:"data,omitempty" `
 }
 
 // String returns a pretty-printed representation of the Event.

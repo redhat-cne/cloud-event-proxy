@@ -69,24 +69,21 @@ type Event struct {
 	// DataSchema - A link to the schema that the `Data` attribute adheres to.
 	// +optional
 	DataSchema *types.URI `json:"dataSchema,omitempty"`
-
-	Data *Data `json:"data,omitempty" `
 	// +required
+	Data *Data `json:"data,omitempty" `
 }
 
 // String returns a pretty-printed representation of the Event.
 func (e Event) String() string {
 	b := strings.Builder{}
-	b.WriteString("  id: " + e.ID + "\n")
-	b.WriteString("  type: " + e.Type + "\n")
+	b.WriteString("id: " + e.ID + "\n")
+	b.WriteString("type: " + e.Type + "\n")
 	if e.Time != nil {
-		b.WriteString("  time: " + e.Time.String() + "\n")
+		b.WriteString("time: " + e.Time.String() + "\n")
 	}
 
-	b.WriteString("  data: \n")
-	b.WriteString("  version: " + e.Data.Version + "\n")
-	b.WriteString("  values: \n")
-	b.WriteString("  data: " + string(e.Data.Data) + "\n")
+	b.WriteString("data: \n")
+	b.WriteString(e.Data.String())
 
 	return b.String()
 }
