@@ -21,7 +21,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	hwevent "github.com/redhat-cne/sdk-go/pkg/hwevent"
@@ -104,8 +103,6 @@ func publishHwEvent(w http.ResponseWriter, r *http.Request) {
 		log.Errorf("error reading hw event: %v", err)
 		return
 	}
-	// Use time received to calculate lapse
-	timeReceived := types.Timestamp{Time: time.Now().UTC()}.Time
 
 	redfishEvent := hwevent.RedfishEvent{}
 	err = json.Unmarshal(bodyBytes, &redfishEvent)
@@ -131,7 +128,7 @@ func publishHwEvent(w http.ResponseWriter, r *http.Request) {
 	data.SetVersion("v1") //nolint:errcheck
 	data.SetData(&redfishEvent)
 
-	event, _ := common.CreateHwEvent(pub.ID, "HW_EVENT", data, timeReceived)
+	event, _ := common.CreateHwEvent(pub.ID, "HW_EVENT", data)
 	_ = common.PublishHwEventViaAPI(scConfig, event)
 }
 

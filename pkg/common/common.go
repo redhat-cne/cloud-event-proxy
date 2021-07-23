@@ -152,7 +152,7 @@ func CreateEvent(pubSubID, eventType string, data ceevent.Data) (ceevent.Event, 
 }
 
 // CreateHwEvent create an hw event
-func CreateHwEvent(pubSubID, eventType string, data hwevent.Data, t time.Time) (hwevent.Event, error) {
+func CreateHwEvent(pubSubID, eventType string, data hwevent.Data) (hwevent.Event, error) {
 	// create an hw event
 	if pubSubID == "" {
 		return hwevent.Event{}, fmt.Errorf("id is a required field")
@@ -163,7 +163,7 @@ func CreateHwEvent(pubSubID, eventType string, data hwevent.Data, t time.Time) (
 	event := v1hwevent.CloudNativeEvent()
 	event.ID = pubSubID
 	event.Type = eventType
-	event.SetTime(t)
+	event.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
 	event.SetDataContentType(hwevent.ApplicationJSON)
 	event.SetData(data)
 	return event, nil
