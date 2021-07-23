@@ -47,12 +47,6 @@ spec:
             - "--transport-host=amqp://amq-interconnect.$(AMQP_NAMESPACE).svc.cluster.local"
             - "--api-port=8080"
           env:
-            - name: HW_PLUGIN
-              value: "true"
-            - name: PTP_PLUGIN
-              value: "false"
-            - name: MOCK_PLUGIN
-              value: "false"
             - name: AMQP_NAMESPACE
               value: "amqp-interconnect"
             - name: NODE_NAME

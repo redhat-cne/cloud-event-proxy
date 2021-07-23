@@ -37,10 +37,6 @@ spec:
           env:
             - name: HW_PLUGIN
               value: "true"
-            - name: PTP_PLUGIN
-              value: "false"
-            - name: MOCK_PLUGIN
-              value: "false"
             - name: HW_EVENT_PORT
               value: "9087"
             - name: MY_NODE_NAME

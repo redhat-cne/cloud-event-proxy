@@ -20,6 +20,3 @@ images:
 - name: cloud-native-event-consumer
   newName: quay.io/aneeshkp/cloud-native-event-consumer
   newTag: latest
-- name: cloud-native-event-producer
-  newName: quay.io/aneeshkp/cloud-native-event-producer
-  newTag: latest
