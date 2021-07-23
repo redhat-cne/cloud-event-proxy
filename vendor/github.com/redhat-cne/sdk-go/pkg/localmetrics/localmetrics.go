@@ -103,7 +103,7 @@ func UpdateEventCreatedCount(address string, status MetricStatus, val int) {
 		prometheus.Labels{"address": address, "status": string(status)}).Add(float64(val))
 }
 
-// UpdateEventCreatedCount ...
+// UpdateStatusCheckCount ...
 func UpdateStatusCheckCount(address string, status MetricStatus, val int) {
 	amqpEventPublishedCount.With(
 		prometheus.Labels{"address": address, "status": string(status)}).Add(float64(val))

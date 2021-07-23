@@ -89,44 +89,45 @@ type EventRecord struct {
 // String returns a pretty-printed representation of the EventRecord.
 func (e EventRecord) String() string {
 	b := strings.Builder{}
+	b.WriteString("\n")
 	if e.Actions != nil {
-		b.WriteString("	Actions: " + string(e.Actions) + "\n")
+		b.WriteString("      Actions: " + string(e.Actions) + "\n")
 	}
 	if e.Context != "" {
-		b.WriteString("	Context: " + e.Context + "\n")
+		b.WriteString("      Context: " + e.Context + "\n")
 	}
 	// EventGroupId shows 0 by default
-	b.WriteString("	EventGroupId: " + strconv.Itoa(e.EventGroupID) + "\n")
+	b.WriteString("      EventGroupId: " + strconv.Itoa(e.EventGroupID) + "\n")
 	if e.EventID != "" {
-		b.WriteString("	EventId: " + e.EventID + "\n")
+		b.WriteString("      EventId: " + e.EventID + "\n")
 	}
 	if e.EventTimestamp != "" {
-		b.WriteString("	EventTimestamp: " + e.EventTimestamp + "\n")
+		b.WriteString("      EventTimestamp: " + e.EventTimestamp + "\n")
 	}
-	b.WriteString("	EventType: " + e.EventType + "\n")
-	b.WriteString("	MemberId: " + e.MemberID + "\n")
+	b.WriteString("      EventType: " + e.EventType + "\n")
+	b.WriteString("      MemberId: " + e.MemberID + "\n")
 	if e.Message != "" {
-		b.WriteString("	Message: " + e.Message + "\n")
+		b.WriteString("      Message: " + e.Message + "\n")
 	}
 	if e.MessageArgs != nil {
-		b.WriteString("	MessageArgs: ")
+		b.WriteString("      MessageArgs: ")
 		for _, arg := range e.MessageArgs {
 			b.WriteString(arg + ", ")
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("	MessageId: " + e.MessageID + "\n")
+	b.WriteString("      MessageId: " + e.MessageID + "\n")
 	if e.Oem != nil {
-		b.WriteString("	Oem: " + string(e.Oem) + "\n")
+		b.WriteString("      Oem: " + string(e.Oem) + "\n")
 	}
 	if e.OriginOfCondition != "" {
-		b.WriteString("	OriginOfCondition: " + e.OriginOfCondition + "\n")
+		b.WriteString("      OriginOfCondition: " + e.OriginOfCondition + "\n")
 	}
 	if e.Severity != "" {
-		b.WriteString("	Severity: " + e.Severity + "\n")
+		b.WriteString("      Severity: " + e.Severity + "\n")
 	}
 	if e.Resolution != "" {
-		b.WriteString("	Resolution: " + e.Resolution + "\n")
+		b.WriteString("      Resolution: " + e.Resolution + "\n")
 	}
 	return b.String()
 }
@@ -168,22 +169,22 @@ type RedfishEvent struct {
 func (e RedfishEvent) String() string {
 	b := strings.Builder{}
 	if e.OdataContext != "" {
-		b.WriteString("\n@odata.context: " + e.OdataContext + "\n")
+		b.WriteString("\n    @odata.context: " + e.OdataContext + "\n")
 	}
-	b.WriteString("@odata.type: " + e.OdataType + "\n")
+	b.WriteString("    @odata.type: " + e.OdataType + "\n")
 	if e.Actions != nil {
-		b.WriteString("Actions: " + string(e.Actions) + "\n")
+		b.WriteString("    Actions: " + string(e.Actions) + "\n")
 	}
 	if e.Context != "" {
-		b.WriteString("Context: " + e.Context + "\n")
+		b.WriteString("    Context: " + e.Context + "\n")
 	}
-	b.WriteString("Id: " + e.ID + "\n")
-	b.WriteString("Name: " + e.Name + "\n")
+	b.WriteString("    Id: " + e.ID + "\n")
+	b.WriteString("    Name: " + e.Name + "\n")
 	if e.Oem != nil {
-		b.WriteString("Oem: " + string(e.Oem) + "\n")
+		b.WriteString("    Oem: " + string(e.Oem) + "\n")
 	}
 	for i, e := range e.Events {
-		b.WriteString("Events[" + strconv.Itoa(i) + "]:\n")
+		b.WriteString("    Events[" + strconv.Itoa(i) + "]:")
 		b.WriteString(e.String())
 	}
 	return b.String()
@@ -203,8 +204,8 @@ type Data struct {
 // String returns a pretty-printed representation of the Data.
 func (d Data) String() string {
 	b := strings.Builder{}
-	b.WriteString("version: " + d.Version + "\n")
-	b.WriteString("data:\n")
+	b.WriteString("\n  version: " + d.Version + "\n")
+	b.WriteString("  data:")
 	b.WriteString(d.Data.String())
 	return b.String()
 }
