@@ -444,7 +444,7 @@ func (q *Router) SendTo(wg *sync.WaitGroup, address string, e *cloudevents.Event
 			return
 		}
 		wg.Add(1)
-		go func(q *Router, sender *Protocol,eventType channel.Type, address string, e *cloudevents.Event, wg *sync.WaitGroup) {
+		go func(q *Router, sender *Protocol, eventType channel.Type, address string, e *cloudevents.Event, wg *sync.WaitGroup) {
 			defer wg.Done()
 			ctx, cancel := context.WithTimeout(context.Background(), q.cancelTimeout)
 			defer cancel()
@@ -502,7 +502,7 @@ func (q *Router) SendTo(wg *sync.WaitGroup, address string, e *cloudevents.Event
 					Type:    eventType,
 				}
 			}
-		}(q, sender,eventType, address, e, wg)
+		}(q, sender, eventType, address, e, wg)
 	}
 }
 
@@ -521,7 +521,7 @@ func (q *Router) setReceiver(wg *sync.WaitGroup, d *channel.DataChan) error {
 			ProcessEventFn: d.ProcessEventFn,
 		}
 		if d.OnReceiveOverrideFn != nil {
-			if err := d.OnReceiveOverrideFn(e,&out); err != nil {
+			if err := d.OnReceiveOverrideFn(e, &out); err != nil {
 				out.Status = channel.FAILED
 				localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED, 1)
 			} else {
