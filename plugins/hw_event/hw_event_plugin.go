@@ -31,7 +31,6 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/types"
 
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
-	v1hwevent "github.com/redhat-cne/sdk-go/v1/hwevent"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 	log "github.com/sirupsen/logrus"
 )
@@ -192,18 +191,10 @@ func publishHwEvent(w http.ResponseWriter, r *http.Request) {
 		log.Errorf("error reading hw event %v", err)
 		return
 	}
-
-	redfishEvent := hwevent.RedfishEvent{}
-	err = json.Unmarshal(bodyBytes, &redfishEvent)
-	if err != nil {
-		log.Errorf("failed to unmarshal hw event: %v", err)
-		return
+	data := hwevent.Data{
+		Version: "v1",
+		Data:    bodyBytes,
 	}
-
-	data := v1hwevent.CloudNativeData()
-	data.SetVersion("v1") //nolint:errcheck
-	data.SetData(&redfishEvent)
-
 	event, _ := common.CreateHwEvent(pub.ID, "HW_EVENT", data)
 	_ = common.PublishHwEvent(scConfig, event)
 }
