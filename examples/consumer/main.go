@@ -72,6 +72,7 @@ func main() {
 		log.Error("cannot find NODE_NAME environment variable,setting to default `mock` node")
 		nodeName = "mock"
 	}
+	resourceAddressHwEvent = fmt.Sprintf("/cluster/node/%s/redfish/event", nodeName)
 
 	enableStatusCheck := common.GetBoolEnv("ENABLE_STATUS_CHECK")
 

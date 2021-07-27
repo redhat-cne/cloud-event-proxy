@@ -18,21 +18,9 @@ import (
 	"sync"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
-	hwproxy "github.com/redhat-cne/hw-event-proxy/hw-event-proxy"
-	log "github.com/sirupsen/logrus"
 )
 
 // Start hw event plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
 func Start(wg *sync.WaitGroup, config *common.SCConfiguration, fn func(e interface{}) error) error { //nolint:deadcode,unused
-	scConfig := hwproxy.SCConfiguration{}
-	scConfig.EventInCh = config.EventInCh
-	scConfig.PubSubAPI = config.PubSubAPI
-	scConfig.BaseURL = config.BaseURL
-
-	err := hwproxy.Start(wg, &scConfig, fn) //nocheck
-	if err != nil {
-		log.Errorf("failed to start hw-event-proxy: %v", err)
-		return err
-	}
 	return nil
 }
