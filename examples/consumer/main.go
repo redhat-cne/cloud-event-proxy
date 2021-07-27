@@ -250,11 +250,6 @@ func processHwEvent(data []byte) {
 	// Note that there is no UnixMillis, so to get the
 	// milliseconds since epoch you'll need to manually
 	// divide from nanoseconds.
-	timeCreated, err := time.Parse(time.RFC3339, e.Data.Data.Events[0].EventTimestamp)
-	if err != nil {
-		fmt.Println("Error while parsing EventTimestamp :", err)
-	}
-	log.Debugf("timeCreated: %v", timeCreated)
-	latency := (time.Now().UnixNano() - timeCreated.UnixNano()) / 1000000
+	latency := (time.Now().UnixNano() - e.Time.UnixNano()) / 1000000
 	log.Debugf("Latency for hardware event: %v ms\n", latency)
 }

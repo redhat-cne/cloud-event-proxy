@@ -127,13 +127,6 @@ func main() {
 		}
 	}
 
-	if common.GetBoolEnv("HW_PLUGIN") {
-		err := pl.LoadHwEventPlugin(&wg, scConfig, nil)
-		if err != nil {
-			log.Fatalf("error loading hw plugin %v", err)
-		}
-	}
-
 	if common.GetBoolEnv("MOCK_PLUGIN") {
 		err := pl.LoadMockPlugin(&wg, scConfig, nil)
 		if err != nil {

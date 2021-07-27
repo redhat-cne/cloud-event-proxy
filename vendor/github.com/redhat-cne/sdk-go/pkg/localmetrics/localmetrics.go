@@ -74,6 +74,7 @@ var (
 			Name: "cne_amqp_status_check_published",
 			Help: "Metric to get number of status check published by the transport",
 		}, []string{"address", "status"})
+
 )
 
 // RegisterMetrics ...
@@ -103,11 +104,12 @@ func UpdateEventCreatedCount(address string, status MetricStatus, val int) {
 		prometheus.Labels{"address": address, "status": string(status)}).Add(float64(val))
 }
 
-// UpdateStatusCheckCount ...
+// UpdateEventCreatedCount ...
 func UpdateStatusCheckCount(address string, status MetricStatus, val int) {
 	amqpEventPublishedCount.With(
 		prometheus.Labels{"address": address, "status": string(status)}).Add(float64(val))
 }
+
 
 // UpdateSenderCreatedCount ...
 func UpdateSenderCreatedCount(address string, status MetricStatus, val int) {
