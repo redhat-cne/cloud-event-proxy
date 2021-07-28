@@ -6,8 +6,6 @@ resources:
 - roles.yaml
 - service.yaml
 - consumer.yaml
-- route.yaml
-- hw-event-proxy.yaml
 replicas:
 - count: 1
   name: cloud-native-consumer-deployment

@@ -13,10 +13,6 @@ make run
 ```shell
 make run-consumer
 ```
-### Producer
-```shell
-make run-producer
-```
 
 ## Building images 
 
@@ -44,10 +40,9 @@ make run-producer
 ```shell
 podman push localhost/cloud-event-proxy:${TAG} quay.io/aneeshkp/cloud-event-proxy:latest
 podman push localhost/cloud-native-event-consumer:${TAG}quay.io/aneeshkp/cloud-native-event-consumer:latest
-podman push localhost/cloud-native-event-producer:${TAG} quay.io/aneeshkp/cloud-native-event-producer:latest
 ```
 
-Use producer.yaml,consumer.yaml and service.yaml from examples/manifests folder to deploy to a cluster.
+Use consumer.yaml and service.yaml from examples/manifests folder to deploy to a cluster.
 Make sure you update the image path.
 
 
@@ -65,7 +60,6 @@ mv kustomize /usr/local/bin/
 ```shell
 export version=latest 
 export SIDECAR_IMG=quay.io/aneeshkp/cloud-event-proxy
-export  PRODUCER_IMG=quay.io/aneeshkp/cloud-native-event-producer
 export  CONSUMER_IMG=quay.io/aneeshkp/cloud-native-event-consumer
 ```
 
@@ -80,7 +74,7 @@ Make sure amq-interconnect pods are running before the next step.
 oc get pods -n `<AMQP_NAMESPAVCE>`
 ```
 
-In producer.yaml and consumer.yaml, change the `transport-host` args for `cloud-native-event-sidecar` container from
+In consumer.yaml, change the `transport-host` args for `cloud-native-event-sidecar` container from
 ```
 - "--transport-host=amqp://amq-interconnect"
 ```
