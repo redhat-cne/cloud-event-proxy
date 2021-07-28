@@ -57,7 +57,7 @@ var (
 
 	resourceAddressMock    string = "/cluster/node/mock"
 	resourceAddressPTP     string = "/cluster/node/%s/ptp"
-	resourceAddressHwEvent string = "/hw-event"
+	resourceAddressHwEvent string = "/cluster/node/%s/redfish/event"
 )
 
 func main() {
