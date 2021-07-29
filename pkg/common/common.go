@@ -28,11 +28,9 @@ import (
 	restapi "github.com/redhat-cne/rest-api"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
-	"github.com/redhat-cne/sdk-go/pkg/hwevent"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
-	v1hwevent "github.com/redhat-cne/sdk-go/v1/hwevent"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 	log "github.com/sirupsen/logrus"
 )
@@ -151,24 +149,6 @@ func CreateEvent(pubSubID, eventType string, data ceevent.Data) (ceevent.Event, 
 	return event, nil
 }
 
-// CreateHwEvent create an hw event
-func CreateHwEvent(pubSubID, eventType string, data hwevent.Data) (hwevent.Event, error) {
-	// create an hw event
-	if pubSubID == "" {
-		return hwevent.Event{}, fmt.Errorf("id is a required field")
-	}
-	if eventType == "" {
-		return hwevent.Event{}, fmt.Errorf("eventType  is a required field")
-	}
-	event := v1hwevent.CloudNativeEvent()
-	event.ID = pubSubID
-	event.Type = eventType
-	event.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
-	event.SetDataContentType(hwevent.ApplicationJSON)
-	event.SetData(data)
-	return event, nil
-}
-
 // PublishEvent publishes event
 func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 	url := fmt.Sprintf("%s%s", scConfig.BaseURL.String(), "create/event")
@@ -204,21 +184,6 @@ func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error
 	localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.SUCCESS, 1)
 	return nil
 
-}
-
-// PublishHwEvent publishes hw event
-func PublishHwEvent(scConfig *SCConfiguration, e hwevent.Event) error {
-	//create publisher
-	url := fmt.Sprintf("%s%s", scConfig.BaseURL.String(), "create/hwevent")
-	rc := restclient.New()
-	err := rc.PostHwEvent(types.ParseURI(url), e)
-	if err != nil {
-		log.Errorf("error posting hw events %v", err)
-		return err
-	}
-	log.Debugf("published hw event %s", e)
-
-	return nil
 }
 
 // APIHealthCheck .. rest api should be ready before starting to consume api

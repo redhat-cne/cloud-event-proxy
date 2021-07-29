@@ -27,6 +27,7 @@ import (
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
+	"github.com/redhat-cne/sdk-go/pkg/hwevent"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
@@ -35,6 +36,8 @@ import (
 
 // ConsumerTypeEnum enum to choose consumer type
 type ConsumerTypeEnum string
+
+var consumerType ConsumerTypeEnum
 
 const (
 	// PTP consumer
@@ -54,7 +57,7 @@ var (
 
 	resourceAddressMock    string = "/cluster/node/mock"
 	resourceAddressPTP     string = "/cluster/node/%s/ptp"
-	resourceAddressHwEvent string = "/hw-event"
+	resourceAddressHwEvent string = "/cluster/node/%s/redfish/event"
 )
 
 func main() {
@@ -69,10 +72,10 @@ func main() {
 		log.Error("cannot find NODE_NAME environment variable,setting to default `mock` node")
 		nodeName = "mock"
 	}
+	resourceAddressHwEvent = fmt.Sprintf("/cluster/node/%s/redfish/event", nodeName)
 
 	enableStatusCheck := common.GetBoolEnv("ENABLE_STATUS_CHECK")
 
-	var consumerType ConsumerTypeEnum
 	consumerTypeEnv := os.Getenv("CONSUMER_TYPE")
 	if consumerTypeEnv == "" {
 		consumerType = MOCK
@@ -218,6 +221,9 @@ func getEvent(w http.ResponseWriter, req *http.Request) {
 	}
 	e := string(bodyBytes)
 	if e != "" {
+		if consumerType == HW {
+			processHwEvent(bodyBytes)
+		}
 		log.Debugf("received event %s", string(bodyBytes))
 	} else {
 		w.WriteHeader(http.StatusNoContent)
@@ -236,4 +242,14 @@ func ackEvent(w http.ResponseWriter, req *http.Request) {
 	} else {
 		w.WriteHeader(http.StatusNoContent)
 	}
+}
+
+func processHwEvent(data []byte) {
+	var e hwevent.Event
+	json.Unmarshal(data, &e)
+	// Note that there is no UnixMillis, so to get the
+	// milliseconds since epoch you'll need to manually
+	// divide from nanoseconds.
+	latency := (time.Now().UnixNano() - e.Time.UnixNano()) / 1000000
+	log.Debugf("Latency for hardware event: %v ms\n", latency)
 }
