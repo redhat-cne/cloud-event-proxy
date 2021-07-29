@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ const (
 	maxOffsetThreshold int64 = 100 //in nano secs
 	minOffsetThreshold int64 = -100
 	holdoverTimeout    int64 = 5
+	ignorePtp4lSection       = "global"
 )
 
 // PtpProfile ...
@@ -28,6 +30,10 @@ type PtpProfile struct {
 	Name              *string            `json:"name"`
 	Interface         *string            `json:"interface"`
 	PtpClockThreshold *PtpClockThreshold `json:"ptpClockThreshold,omitempty"`
+	Ptp4lOpts         *string            `json:"ptp4lOpts,omitempty"`
+	Phc2sysOpts       *string            `json:"phc2sysOpts,omitempty"`
+	Ptp4lConf         *string            `json:"ptp4lConf,omitempty"`
+	Interfaces        []*string
 }
 
 // PtpClockThreshold ...
@@ -75,6 +81,24 @@ func NewLinuxPTPConfUpdate() *LinuxPTPConfUpdate {
 	return ptpProfileUpdate
 }
 
+// GetInterface ... return interfaces
+func (p *PtpProfile) GetInterface() []*string {
+	var interfaces []*string
+	var singleInterface string
+	if p.Interface != nil {
+		singleInterface = *p.Interface
+		interfaces = append(interfaces, &singleInterface)
+	}
+	sectionHead := regexp.MustCompile(`\[([^\[\]]*)\]`)
+	matches := sectionHead.FindAllStringSubmatch(*p.Ptp4lConf, -1)
+	for _, v := range matches {
+		if v[1] != ignorePtp4lSection && v[1] != singleInterface {
+			interfaces = append(interfaces, &v[1])
+		}
+	}
+	return interfaces
+}
+
 // SetDefaultPTPThreshold ... creates default record
 func (l *LinuxPTPConfUpdate) SetDefaultPTPThreshold(iface string) {
 	l.lock.Lock()
@@ -98,37 +122,37 @@ func (l *LinuxPTPConfUpdate) DeletePTPThreshold(iface string) {
 // UpdatePTPThreshold .. update ptp threshold
 func (l *LinuxPTPConfUpdate) UpdatePTPThreshold() {
 	for _, profile := range l.NodeProfiles {
-		iface := *profile.Interface
-		if _, found := l.EventThreshold[iface]; !found {
-			l.SetDefaultPTPThreshold(iface)
+		for _, iface := range profile.Interfaces {
+			if _, found := l.EventThreshold[*iface]; !found {
+				l.SetDefaultPTPThreshold(*iface)
+			}
+			if profile.PtpClockThreshold == nil {
+				l.SetDefaultPTPThreshold(*iface)
+				continue
+			}
+			threshold := l.EventThreshold[*iface]
+			if profile.PtpClockThreshold.MaxOffsetThreshold > 0 { // has to be greater than 0 nano secs
+				threshold.MaxOffsetThreshold = profile.PtpClockThreshold.MaxOffsetThreshold
+			} else {
+				threshold.MaxOffsetThreshold = maxOffsetThreshold
+				log.Infof("maxOffsetThreshold %d has to be > 0, now set to default %d", profile.PtpClockThreshold.MaxOffsetThreshold, maxOffsetThreshold)
+			}
+			if profile.PtpClockThreshold.MinOffsetThreshold > threshold.MaxOffsetThreshold {
+				threshold.MinOffsetThreshold = threshold.MaxOffsetThreshold - 1 // make it one nano secs less than max
+				log.Infof("minOffsetThreshold %d has to be > maxOffsetThreshold, now set to one less than maxOfssetThreshold %d",
+					profile.PtpClockThreshold.MinOffsetThreshold, maxOffsetThreshold)
+			} else {
+				threshold.MinOffsetThreshold = profile.PtpClockThreshold.MinOffsetThreshold
+			}
+			if profile.PtpClockThreshold.HoldOverTimeout <= 0 { //secs can't be negative or zero
+				threshold.HoldOverTimeout = holdoverTimeout
+				log.Infof("invalid holdOverTimeout %d in secs, setting to default %d holdOverTimeout", profile.PtpClockThreshold.HoldOverTimeout, holdoverTimeout)
+			} else {
+				threshold.HoldOverTimeout = profile.PtpClockThreshold.HoldOverTimeout
+			}
+			log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
+				*iface, threshold.HoldOverTimeout, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
 		}
-		if profile.PtpClockThreshold == nil {
-			l.SetDefaultPTPThreshold(iface)
-			continue
-		}
-		threshold := l.EventThreshold[iface]
-		if profile.PtpClockThreshold.MaxOffsetThreshold > 0 { // has to be greater than 0 nano secs
-			threshold.MaxOffsetThreshold = profile.PtpClockThreshold.MaxOffsetThreshold
-		} else {
-			threshold.MaxOffsetThreshold = maxOffsetThreshold
-			log.Infof("maxOffsetThreshold %d has to be > 0, now set to default %d", profile.PtpClockThreshold.MaxOffsetThreshold, maxOffsetThreshold)
-		}
-		if profile.PtpClockThreshold.MinOffsetThreshold > threshold.MaxOffsetThreshold {
-			threshold.MinOffsetThreshold = threshold.MaxOffsetThreshold - 1 // make it one nano secs less than max
-			log.Infof("minOffsetThreshold %d has to be > maxOffsetThreshold, now set to one less than maxOfssetThreshold %d",
-				profile.PtpClockThreshold.MinOffsetThreshold, maxOffsetThreshold)
-		} else {
-			threshold.MinOffsetThreshold = profile.PtpClockThreshold.MinOffsetThreshold
-		}
-		if profile.PtpClockThreshold.HoldOverTimeout <= 0 { //secs can't be negative or zero
-			threshold.HoldOverTimeout = holdoverTimeout
-			log.Infof("invalid holdOverTimeout %d in secs, setting to default %d holdOverTimeout", profile.PtpClockThreshold.HoldOverTimeout, holdoverTimeout)
-		} else {
-			threshold.HoldOverTimeout = profile.PtpClockThreshold.HoldOverTimeout
-		}
-		log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
-			*profile.Interface, threshold.HoldOverTimeout, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
-
 	}
 
 }
@@ -143,6 +167,10 @@ func (l *LinuxPTPConfUpdate) UpdateConfig(nodeProfilesJSON []byte) error {
 		log.Info("load ptp profiles")
 		l.appliedNodeProfileJSON = nodeProfilesJSON
 		l.NodeProfiles = nodeProfiles
+		for index, np := range l.NodeProfiles {
+			//duplicate nodeprofiles
+			l.NodeProfiles[index].Interfaces = np.GetInterface()
+		}
 		l.UpdateCh <- true
 		return nil
 	}
@@ -171,6 +199,7 @@ func tryToLoadConfig(nodeProfilesJSON []byte) ([]PtpProfile, bool) {
 	var ptpConfig []PtpProfile
 	err := json.Unmarshal(nodeProfilesJSON, &ptpConfig)
 	if err != nil {
+		log.Errorf("error reading nodeprofile %s", err)
 		return nil, false
 	}
 
@@ -182,6 +211,7 @@ func tryToLoadOldConfig(nodeProfilesJSON []byte) ([]PtpProfile, bool) {
 	ptpConfig := &PtpProfile{}
 	err := json.Unmarshal(nodeProfilesJSON, ptpConfig)
 	if err != nil {
+		log.Errorf("error reading nodeprofile %s", err)
 		return nil, false
 	}
 

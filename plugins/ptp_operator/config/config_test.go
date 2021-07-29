@@ -8,43 +8,71 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_Config(t *testing.T) {
+var (
+	profile string = "profile0"
+	inface0 string = "ens5f0"
+	inface1 string = "ens5f1"
+)
 
+func Test_Config(t *testing.T) {
 	testCases := map[string]struct {
-		wantProfile []*ptpConfig.PtpClockThreshold
+		wantProfile []*ptpConfig.PtpProfile
 		profilePath string
 		nodeName    string
 		len         int
 	}{
+		"section": {
+			wantProfile: []*ptpConfig.PtpProfile{{
+				Name:      &profile,
+				Interface: &inface1,
+				PtpClockThreshold: &ptpConfig.PtpClockThreshold{
+					HoldOverTimeout:    5,
+					MaxOffsetThreshold: 3000,
+					MinOffsetThreshold: -3000,
+				},
+			}},
+			profilePath: "../_testprofile",
+			nodeName:    "section",
+			len:         1,
+		},
 		"single": {
-			wantProfile: []*ptpConfig.PtpClockThreshold{{
-				HoldOverTimeout:    30,
-				MaxOffsetThreshold: 100,
-				MinOffsetThreshold: -100,
+			wantProfile: []*ptpConfig.PtpProfile{{
+				Name:      &profile,
+				Interface: &inface1,
+				PtpClockThreshold: &ptpConfig.PtpClockThreshold{
+					HoldOverTimeout:    30,
+					MaxOffsetThreshold: 100,
+					MinOffsetThreshold: -100,
+				},
 			}},
 			profilePath: "../_testprofile",
 			nodeName:    "single",
 			len:         1,
 		},
 		"mixed": {
-			wantProfile: []*ptpConfig.PtpClockThreshold{
-				{
+			wantProfile: []*ptpConfig.PtpProfile{{
+				Name:      &profile,
+				Interface: &inface0,
+				PtpClockThreshold: &ptpConfig.PtpClockThreshold{
 					HoldOverTimeout:    10,
 					MaxOffsetThreshold: 50,
 					MinOffsetThreshold: -50,
-				}, {
-
+				},
+			}, {
+				Name:      &profile,
+				Interface: &inface1,
+				PtpClockThreshold: &ptpConfig.PtpClockThreshold{
 					HoldOverTimeout:    30,
 					MaxOffsetThreshold: 100,
 					MinOffsetThreshold: -100,
 				},
-			},
+			}},
 			profilePath: "../_testprofile",
 			nodeName:    "mixed",
 			len:         2,
 		},
 		"none": {
-			wantProfile: []*ptpConfig.PtpClockThreshold{},
+			wantProfile: []*ptpConfig.PtpProfile{},
 			profilePath: "../_testprofile",
 			nodeName:    "none",
 			len:         0,
@@ -61,13 +89,20 @@ func Test_Config(t *testing.T) {
 			<-ptpUpdate.UpdateCh
 			ptpUpdate.UpdatePTPThreshold()
 			assert.Equal(t, tc.len, len(ptpUpdate.NodeProfiles))
-			if tc.nodeName == "none" {
+			if tc.nodeName == "section" {
+				for i, p := range ptpUpdate.NodeProfiles {
+					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, p.PtpClockThreshold)
+					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, ptpUpdate.EventThreshold[*p.Interfaces[0]])
+					assert.Equal(t, *tc.wantProfile[i].Interface, *p.Interfaces[0])
+				}
+			} else if tc.nodeName == "none" {
 				assert.Equal(t, []ptpConfig.PtpProfile{}, ptpUpdate.NodeProfiles)
 				assert.Equal(t, []ptpConfig.PtpProfile{}, ptpUpdate.NodeProfiles)
 			} else {
 				for i, p := range ptpUpdate.NodeProfiles {
-					assert.Equal(t, tc.wantProfile[i], p.PtpClockThreshold)
-					assert.Equal(t, p.PtpClockThreshold, ptpUpdate.EventThreshold[*p.Interface])
+					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, p.PtpClockThreshold)
+					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, ptpUpdate.EventThreshold[*p.Interface])
+					assert.Equal(t, *tc.wantProfile[i].Interface, *p.Interface)
 				}
 			}
 		})

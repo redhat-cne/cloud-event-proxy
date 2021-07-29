@@ -95,8 +95,11 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 					for key := range eventManager.Stats { // remove stats if not matching
 						found := false
 						for _, np := range eventManager.PtpConfigUpdates.NodeProfiles {
-							if *np.Interface == key {
-								found = true
+							for _, v := range np.Interfaces {
+								if *v == key {
+									found = true
+									break
+								}
 							}
 						}
 						if !found { // clean up and update metrics
