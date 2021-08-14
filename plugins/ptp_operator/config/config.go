@@ -46,8 +46,8 @@ type PtpClockThreshold struct {
 	MinOffsetThreshold int64 `json:"minOffsetThreshold,omitempty"`
 }
 
-// LinuxPTPConfUpdate for ptp-conf update
-type LinuxPTPConfUpdate struct {
+// LinuxPTPConfigMapUpdate for ptp-conf update
+type LinuxPTPConfigMapUpdate struct {
 	lock                   sync.RWMutex
 	UpdateCh               chan bool
 	NodeProfiles           []PtpProfile
@@ -58,8 +58,8 @@ type LinuxPTPConfUpdate struct {
 }
 
 // NewLinuxPTPConfUpdate -- profile updater
-func NewLinuxPTPConfUpdate() *LinuxPTPConfUpdate {
-	ptpProfileUpdate := &LinuxPTPConfUpdate{
+func NewLinuxPTPConfUpdate() *LinuxPTPConfigMapUpdate {
+	ptpProfileUpdate := &LinuxPTPConfigMapUpdate{
 		lock:           sync.RWMutex{},
 		UpdateCh:       make(chan bool),
 		profilePath:    DefaultProfilePath,
@@ -100,7 +100,7 @@ func (p *PtpProfile) GetInterface() []*string {
 }
 
 // SetDefaultPTPThreshold ... creates default record
-func (l *LinuxPTPConfUpdate) SetDefaultPTPThreshold(iface string) {
+func (l *LinuxPTPConfigMapUpdate) SetDefaultPTPThreshold(iface string) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
 	l.EventThreshold[iface] = &PtpClockThreshold{
@@ -111,7 +111,7 @@ func (l *LinuxPTPConfUpdate) SetDefaultPTPThreshold(iface string) {
 }
 
 // DeletePTPThreshold ... delete threshold for the interface
-func (l *LinuxPTPConfUpdate) DeletePTPThreshold(iface string) {
+func (l *LinuxPTPConfigMapUpdate) DeletePTPThreshold(iface string) {
 	if _, found := l.EventThreshold[iface]; found {
 		l.lock.Lock()
 		defer l.lock.Unlock()
@@ -120,7 +120,7 @@ func (l *LinuxPTPConfUpdate) DeletePTPThreshold(iface string) {
 }
 
 // UpdatePTPThreshold .. update ptp threshold
-func (l *LinuxPTPConfUpdate) UpdatePTPThreshold() {
+func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 	for _, profile := range l.NodeProfiles {
 		for _, iface := range profile.Interfaces {
 			if _, found := l.EventThreshold[*iface]; !found {
@@ -158,7 +158,7 @@ func (l *LinuxPTPConfUpdate) UpdatePTPThreshold() {
 }
 
 // UpdateConfig ... update profile
-func (l *LinuxPTPConfUpdate) UpdateConfig(nodeProfilesJSON []byte) error {
+func (l *LinuxPTPConfigMapUpdate) UpdateConfig(nodeProfilesJSON []byte) error {
 	if string(l.appliedNodeProfileJSON) == string(nodeProfilesJSON) {
 		return nil
 	}
@@ -218,8 +218,8 @@ func tryToLoadOldConfig(nodeProfilesJSON []byte) ([]PtpProfile, bool) {
 	return []PtpProfile{*ptpConfig}, true
 }
 
-// WatchConfigUpdate watch for ptp config update
-func (l *LinuxPTPConfUpdate) WatchConfigUpdate(nodeName string, closeCh chan struct{}) {
+// WatchConfigMapUpdate watch for ptp config update
+func (l *LinuxPTPConfigMapUpdate) WatchConfigMapUpdate(nodeName string, closeCh chan struct{}) {
 	tickerPull := time.NewTicker(time.Duration(l.intervalUpdate) * time.Second)
 	defer tickerPull.Stop()
 	for {
