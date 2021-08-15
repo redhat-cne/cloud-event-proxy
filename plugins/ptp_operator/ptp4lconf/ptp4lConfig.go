@@ -11,12 +11,12 @@ import (
 	"strings"
 )
 
-var(
+var (
 	ptpConfigFileRegEx = regexp.MustCompile(`ptp4l.[0-9]*.config`)
-	sectionHead = regexp.MustCompile(`\[([^\[\]]*)\]`)
+	sectionHead        = regexp.MustCompile(`\[([^\[\]]*)\]`)
 )
-const (
 
+const (
 	ignorePtp4lSection = "global"
 )
 
@@ -121,6 +121,7 @@ type Watcher struct {
 	fsWatcher *fsnotify.Watcher
 	close     chan struct{}
 }
+
 //Close ...
 func (w *Watcher) Close() {
 	close(w.close)
@@ -182,7 +183,7 @@ func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpd
 			}
 		}
 	}()
-	err=w.fsWatcher.Add(dirToWatch)
+	err = w.fsWatcher.Add(dirToWatch)
 	return w, err
 
 }
@@ -230,4 +231,3 @@ func filename(path string) string {
 func checkIfPtP4lConf(filename string) bool {
 	return ptpConfigFileRegEx.MatchString(filename)
 }
-

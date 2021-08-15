@@ -17,10 +17,11 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
 	"net"
 	"os"
 	"sync"
+
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
 
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -127,8 +128,11 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 						for _, ifaces := range ptp4lConfig.Interfaces {
 							if !isExists(ifaces.Name) {
 								log.Errorf("config updated and interface  not exists, deleting %s", ifaces.Name)
+								t := eventManager.PtpThreshold(ifaces.Name)
+								close(t.Close) // close any holdover go routines
+
 								eventManager.PublishEvent(cneEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, ifaces.Name, channel.PTPEvent)
-								ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, ifaces.Name, cneEvent.FREERUN)
+								ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, []string{ifaces.Name}, cneEvent.FREERUN)
 								ptpMetrics.UpdateDeletedPTPMetrics(ifaces.Name, phc2sysProcessName)
 								eventManager.DeleteStats(ptpTypes.IFace(ifaces.Name))
 								eventManager.PtpConfigMapUpdates.DeletePTPThreshold(ifaces.Name)
@@ -136,10 +140,9 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 							}
 						}
 					}
-
 					var ptpInterfaces []*ptp4lconf.PTPInterface
 					for index, iface := range newInterfaces {
-						role := ptpTypes.PASSIVE
+						role := ptpTypes.UNKNOWN
 						if p, e := ptp4lConfig.ByInterface(*iface); e == nil && p.PortID == index+1 { //maintain role
 							role = p.Role
 						} //else new config order is not same
@@ -163,8 +166,11 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 					ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
 					if ptpConfig, ok := eventManager.Ptp4lConfigInterfaces[ptpConfigFileName]; ok {
 						for _, iface := range ptpConfig.Interfaces {
+							if t, ok := eventManager.PtpConfigMapUpdates.EventThreshold[iface.Name]; ok {
+								close(t.Close) // close any holdover go routines
+							}
 							eventManager.PublishEvent(cneEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, iface.Name, channel.PTPEvent)
-							ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, iface.Name, cneEvent.FREERUN)
+							ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, []string{iface.Name}, cneEvent.FREERUN)
 							ptpMetrics.UpdateDeletedPTPMetrics(iface.Name, phc2sysProcessName)
 							eventManager.DeleteStats(ptpTypes.IFace(iface.Name))
 							ptpMetrics.UpdateInterfaceRoleMetrics(ptp4lProcessName, iface.Name, ptpTypes.UNKNOWN)
@@ -219,9 +225,19 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		if len(eventManager.Stats) == 0 {
 			eventManager.PublishEvent(event.FREERUN, 0, "ptp-not-set", "PTP_STATUS")
 		} else {
+			var publishStatus bool
 			for i, s := range eventManager.Stats {
-				log.Infof(" publishing event for %s with clock state %s and offset %d", string(i), s.SyncState(), s.Offset())
-				eventManager.PublishEvent(s.SyncState(), s.Offset(), string(i), "PTP_STATUS")
+				publishStatus = true // do not publish status for current slave interface
+				// CLOCK_REALTIME  data will be published instead
+				if e, ok := eventManager.Ptp4lConfigInterfaces[ptpTypes.ConfigName(s.ConfigName())]; ok {
+					if iface, err := e.ByRole(ptpTypes.SLAVE); err == nil && iface.Name == string(i) { //skip SLAVE status
+						publishStatus = false //CLOCK_REALTIME stats will be published instead
+					}
+				}
+				if publishStatus {
+					log.Infof(" publishing event for %s with clock state %s and offset %d", string(i), s.SyncState(), s.Offset())
+					eventManager.PublishEvent(s.SyncState(), s.Offset(), string(i), "PTP_STATUS")
+				}
 			}
 		}
 		d.Type = channel.STATUS

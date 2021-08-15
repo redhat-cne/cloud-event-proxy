@@ -29,6 +29,7 @@ func Test_Config(t *testing.T) {
 					HoldOverTimeout:    5,
 					MaxOffsetThreshold: 3000,
 					MinOffsetThreshold: -3000,
+					Close:              make(chan struct{}),
 				},
 			}},
 			profilePath: "../_testprofile",
@@ -43,6 +44,7 @@ func Test_Config(t *testing.T) {
 					HoldOverTimeout:    30,
 					MaxOffsetThreshold: 100,
 					MinOffsetThreshold: -100,
+					Close:              make(chan struct{}),
 				},
 			}},
 			profilePath: "../_testprofile",
@@ -57,6 +59,7 @@ func Test_Config(t *testing.T) {
 					HoldOverTimeout:    10,
 					MaxOffsetThreshold: 50,
 					MinOffsetThreshold: -50,
+					Close:              make(chan struct{}),
 				},
 			}, {
 				Name:      &profile,
@@ -65,6 +68,7 @@ func Test_Config(t *testing.T) {
 					HoldOverTimeout:    30,
 					MaxOffsetThreshold: 100,
 					MinOffsetThreshold: -100,
+					Close:              make(chan struct{}),
 				},
 			}},
 			profilePath: "../_testprofile",
@@ -91,7 +95,9 @@ func Test_Config(t *testing.T) {
 			assert.Equal(t, tc.len, len(ptpUpdate.NodeProfiles))
 			if tc.nodeName == "section" {
 				for i, p := range ptpUpdate.NodeProfiles {
+					tc.wantProfile[i].PtpClockThreshold.Close = p.PtpClockThreshold.Close
 					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, p.PtpClockThreshold)
+					tc.wantProfile[i].PtpClockThreshold.Close = ptpUpdate.EventThreshold[*p.Interfaces[0]].Close
 					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, ptpUpdate.EventThreshold[*p.Interfaces[0]])
 					assert.Equal(t, *tc.wantProfile[i].Interface, *p.Interfaces[0])
 				}
@@ -100,7 +106,9 @@ func Test_Config(t *testing.T) {
 				assert.Equal(t, []ptpConfig.PtpProfile{}, ptpUpdate.NodeProfiles)
 			} else {
 				for i, p := range ptpUpdate.NodeProfiles {
+					tc.wantProfile[i].PtpClockThreshold.Close = p.PtpClockThreshold.Close
 					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, p.PtpClockThreshold)
+					tc.wantProfile[i].PtpClockThreshold.Close = ptpUpdate.EventThreshold[*p.Interfaces[0]].Close
 					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, ptpUpdate.EventThreshold[*p.Interface])
 					assert.Equal(t, *tc.wantProfile[i].Interface, *p.Interface)
 				}

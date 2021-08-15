@@ -56,7 +56,6 @@ func Test_Config(t *testing.T) {
 	w, err := ptp4lconf.NewPtp4lConfigWatcher(dirToWatch, notifyConfigUpdates)
 	assert.Nil(t, err)
 	ptpConfigEvent := <-notifyConfigUpdates
-	log.Info("waitwwing...")
 	//assert
 	assert.Equal(t, ptp4l0Conf, *ptpConfigEvent.Name)
 	assert.Equal(t, initialText, *ptpConfigEvent.Ptp4lConf)

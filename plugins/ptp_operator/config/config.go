@@ -1,5 +1,20 @@
 package config
 
+// Copyright 2020 The Cloud Native Events Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// config reads ptp configmap (not ptp4l.x.config, but k8s configmap)  and update threshold values for all interfaces
+
 import (
 	"encoding/json"
 	"fmt"
@@ -14,9 +29,13 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var (
+	sectionHead = regexp.MustCompile(`\[([^\[\]]*)\]`)
+)
+
 const (
-	// DefaultUpdateInterval for watching ptpconfig update
-	DefaultUpdateInterval = 45
+	// DefaultUpdateInterval for watching ptpconfigmap update
+	DefaultUpdateInterval = 60
 	// DefaultProfilePath  default ptp profile path
 	DefaultProfilePath       = "/etc/linuxptp"
 	maxOffsetThreshold int64 = 100 //in nano secs
@@ -44,6 +63,8 @@ type PtpClockThreshold struct {
 	MaxOffsetThreshold int64 `json:"maxOffsetThreshold,omitempty"`
 	// min offset in nano secs
 	MinOffsetThreshold int64 `json:"minOffsetThreshold,omitempty"`
+	// Close  any  previous holdover
+	Close chan struct{} `json:"close,omitempty"`
 }
 
 // LinuxPTPConfigMapUpdate for ptp-conf update
@@ -81,7 +102,7 @@ func NewLinuxPTPConfUpdate() *LinuxPTPConfigMapUpdate {
 	return ptpProfileUpdate
 }
 
-// GetInterface ... return interfaces
+// GetInterface ... return interfaces from configmap
 func (p *PtpProfile) GetInterface() []*string {
 	var interfaces []*string
 	var singleInterface string
@@ -89,7 +110,6 @@ func (p *PtpProfile) GetInterface() []*string {
 		singleInterface = *p.Interface
 		interfaces = append(interfaces, &singleInterface)
 	}
-	sectionHead := regexp.MustCompile(`\[([^\[\]]*)\]`)
 	matches := sectionHead.FindAllStringSubmatch(*p.Ptp4lConf, -1)
 	for _, v := range matches {
 		if v[1] != ignorePtp4lSection && v[1] != singleInterface {
@@ -107,14 +127,16 @@ func (l *LinuxPTPConfigMapUpdate) SetDefaultPTPThreshold(iface string) {
 		HoldOverTimeout:    holdoverTimeout,
 		MaxOffsetThreshold: maxOffsetThreshold,
 		MinOffsetThreshold: minOffsetThreshold,
+		Close:              make(chan struct{}),
 	}
 }
 
 // DeletePTPThreshold ... delete threshold for the interface
 func (l *LinuxPTPConfigMapUpdate) DeletePTPThreshold(iface string) {
-	if _, found := l.EventThreshold[iface]; found {
+	if t, found := l.EventThreshold[iface]; found {
 		l.lock.Lock()
 		defer l.lock.Unlock()
+		close(t.Close) // close any go routine associated with this threshold
 		delete(l.EventThreshold, iface)
 	}
 }
@@ -259,5 +281,6 @@ func GetDefaultThreshold() PtpClockThreshold {
 		HoldOverTimeout:    holdoverTimeout,
 		MaxOffsetThreshold: maxOffsetThreshold,
 		MinOffsetThreshold: minOffsetThreshold,
+		Close:              make(chan struct{}),
 	}
 }

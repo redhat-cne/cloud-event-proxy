@@ -8,9 +8,9 @@ type (
 	//PtpPortRole ...
 	PtpPortRole int
 	//IFace ...
-	IFace       string
+	IFace string
 	//ConfigName ...
-	ConfigName  string
+	ConfigName string
 )
 
 const (
