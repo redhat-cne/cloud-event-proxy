@@ -55,10 +55,14 @@ func Test_Config(t *testing.T) {
 	notifyConfigUpdates := make(chan *ptp4lconf.PtpConfigUpdate)
 	w, err := ptp4lconf.NewPtp4lConfigWatcher(dirToWatch, notifyConfigUpdates)
 	assert.Nil(t, err)
-	ptpConfigEvent := <-notifyConfigUpdates
-	//assert
-	assert.Equal(t, ptp4l0Conf, *ptpConfigEvent.Name)
-	assert.Equal(t, initialText, *ptpConfigEvent.Ptp4lConf)
+	select {
+	case ptpConfigEvent := <-notifyConfigUpdates:
+		//assert
+		assert.Equal(t, ptp4l0Conf, *ptpConfigEvent.Name)
+		assert.Equal(t, initialText, *ptpConfigEvent.Ptp4lConf)
+	case <-time.After(1 * time.Second):
+		log.Infof("timeout...")
+	}
 
 	//Update config
 	newText := fmt.Sprintf("%d", time.Now().UnixNano())
@@ -67,17 +71,33 @@ func Test_Config(t *testing.T) {
 	assert.Nil(t, err)
 	log.Info("waiting...")
 	// WriteFile creates two events it might be an issue with test only
-	<-notifyConfigUpdates
-	ptpConfigEvent = <-notifyConfigUpdates
+	select {
+	case <-notifyConfigUpdates:
+		//assert
+	case <-time.After(1 * time.Second):
+		log.Infof("timeout...")
+	}
 
-	assert.Equal(t, ptp4l0Conf, *ptpConfigEvent.Name)
-	assert.Equal(t, newText, *ptpConfigEvent.Ptp4lConf)
+	select {
+	case ptpConfigEvent := <-notifyConfigUpdates:
+		//assert
+		assert.Equal(t, ptp4l0Conf, *ptpConfigEvent.Name)
+		assert.Equal(t, newText, *ptpConfigEvent.Ptp4lConf)
+	case <-time.After(1 * time.Second):
+		log.Infof("timeout...")
+	}
+
 	cleanUp()
-	ptpConfigEvent = <-notifyConfigUpdates
-	log.Println(ptpConfigEvent.String())
-	assert.Nil(t, err)
-	assert.Equal(t, ptp4l0Conf, *ptpConfigEvent.Name)
-	assert.True(t, ptpConfigEvent.Removed)
+	select {
+	case ptpConfigEvent := <-notifyConfigUpdates:
+		//assert
+		log.Println(ptpConfigEvent.String())
+		assert.Nil(t, err)
+		assert.Equal(t, ptp4l0Conf, *ptpConfigEvent.Name)
+		assert.True(t, ptpConfigEvent.Removed)
+	case <-time.After(1 * time.Second):
+		log.Infof("timeout...")
+	}
 
 	w.Close()
 
