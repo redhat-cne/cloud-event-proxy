@@ -132,7 +132,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 								close(t.Close) // close any holdover go routines
 
 								eventManager.PublishEvent(cneEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, ifaces.Name, channel.PTPEvent)
-								ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, []string{ifaces.Name}, cneEvent.FREERUN)
+								ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, ifaces.Name, cneEvent.FREERUN)
 								ptpMetrics.UpdateDeletedPTPMetrics(ifaces.Name, phc2sysProcessName)
 								eventManager.DeleteStats(ptpTypes.IFace(ifaces.Name))
 								eventManager.PtpConfigMapUpdates.DeletePTPThreshold(ifaces.Name)
@@ -170,7 +170,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 								close(t.Close) // close any holdover go routines
 							}
 							eventManager.PublishEvent(cneEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, iface.Name, channel.PTPEvent)
-							ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, []string{iface.Name}, cneEvent.FREERUN)
+							ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, iface.Name, cneEvent.FREERUN)
 							ptpMetrics.UpdateDeletedPTPMetrics(iface.Name, phc2sysProcessName)
 							eventManager.DeleteStats(ptpTypes.IFace(iface.Name))
 							ptpMetrics.UpdateInterfaceRoleMetrics(ptp4lProcessName, iface.Name, ptpTypes.UNKNOWN)
@@ -230,7 +230,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 				publishStatus = true // do not publish status for current slave interface
 				// CLOCK_REALTIME  data will be published instead
 				if e, ok := eventManager.Ptp4lConfigInterfaces[ptpTypes.ConfigName(s.ConfigName())]; ok {
-					if iface, err := e.ByRole(ptpTypes.SLAVE); err == nil && iface.Name == string(i) { //skip SLAVE status
+					if iface, err := e.ByRole(ptpTypes.SLAVE); err == nil && string(i) == iface.Name { //skip SLAVE status
 						publishStatus = false //CLOCK_REALTIME stats will be published instead
 					}
 				}

@@ -25,13 +25,16 @@ import (
 )
 
 const (
-	ptpNamespace       = "openshift"
-	ptpSubsystem       = "ptp"
+	ptpNamespace = "openshift"
+	ptpSubsystem = "ptp"
+
 	phc2sysProcessName = "phc2sys"
 	ptp4lProcessName   = "ptp4l"
-	unLocked           = "s0"
-	clockStep          = "s1"
-	locked             = "s2"
+
+	unLocked  = "s0"
+	clockStep = "s1"
+	locked    = "s2"
+
 	//FreeRunOffsetValue when sync state is FREERUN
 	FreeRunOffsetValue = -9999999999999999
 	//ClockRealTime is the slave
@@ -368,13 +371,13 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		interfaceName, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster := extractSummaryMetrics(processName, output)
 		switch interfaceName {
 		case ClockRealTime:
-			UpdatePTPMasterMetrics(processName, []string{interfaceName}, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
+			UpdatePTPMasterMetrics(processName, interfaceName, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
 		case MasterClockType:
-			UpdatePTPMasterMetrics(processName, []string{interfaceName}, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
+			UpdatePTPMasterMetrics(processName, interfaceName, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
 		case "":
 			//do nothing
 		default:
-			UpdatePTPSystemMetrics(processName, []string{interfaceName}, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
+			UpdatePTPSystemMetrics(processName, interfaceName, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
 		}
 	} else if strings.Contains(output, " offset ") {
 		//ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay    374976
@@ -395,36 +398,40 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		p.Stats[interfaceType].frequencyAdjustment = int64(frequencyAdjustment)
 		p.Stats[interfaceType].delayFromMaster = int64(delayFromMaster)
 		ifaceTypes := []types.IFace{interfaceType}
-		ifaces := []string{interfaceName}
 		switch interfaceName {
 		case ClockRealTime: //CLOCK_REALTIME is active slave interface
 			// copy  ClockRealTime value to current slave interface
 			p.GenPhc2SysEvent(ifaceTypes, int64(offsetFromMaster), syncState)
+
 			if ptpInterface, err = ptp4lCfg.ByRole(types.SLAVE); err == nil {
-				UpdateSyncStateMetrics(processName, []string{ptpInterface.Name}, p.Stats[interfaceType].lastSyncState)
+				UpdateSyncStateMetrics(processName, ptpInterface.Name, p.Stats[interfaceType].lastSyncState)
 			}
-			UpdateSyncStateMetrics(processName, ifaces, p.Stats[interfaceType].lastSyncState)
-			UpdatePTPMasterMetrics(processName, ifaces, offsetFromMaster, float64(p.Stats[interfaceType].getMaxAbs()),
+
+			UpdateSyncStateMetrics(processName, interfaceName, p.Stats[interfaceType].lastSyncState)
+			UpdatePTPMasterMetrics(processName, interfaceName, offsetFromMaster, float64(p.Stats[interfaceType].getMaxAbs()),
 				frequencyAdjustment, delayFromMaster)
+
 		case MasterClockType: // this ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay
+
 			p.Stats[interfaceType].addValue(int64(offsetFromMaster))
-			UpdatePTPMasterMetrics(processName, ifaces, offsetFromMaster, float64(p.Stats[interfaceType].getMaxAbs()),
+			UpdatePTPMasterMetrics(processName, interfaceName, offsetFromMaster, float64(p.Stats[interfaceType].getMaxAbs()),
 				frequencyAdjustment, delayFromMaster)
-			return
+
 		default:
 			if ptpInterface, err = ptp4lCfg.ByInterface(interfaceName); err != nil {
 				log.Error(err)
-				return
+				break
 			}
 			if ptpInterface.Role != types.FAULTY { //if its faulty leave it to last state(HOLDOVER  or FREERUN)
 				p.GenPhc2SysEvent(ifaceTypes, int64(offsetFromMaster), syncState)
 			}
-			UpdateSyncStateMetrics(processName, ifaces, p.Stats[interfaceType].lastSyncState)
-			UpdatePTPSystemMetrics(processName, ifaces, offsetFromMaster, float64(p.Stats[interfaceType].getMaxAbs()),
+			UpdateSyncStateMetrics(processName, interfaceName, p.Stats[interfaceType].lastSyncState)
+			UpdatePTPSystemMetrics(processName, interfaceName, offsetFromMaster, float64(p.Stats[interfaceType].getMaxAbs()),
 				frequencyAdjustment, delayFromMaster)
 
 		}
-	} else if ptp4lProcessName == processName { //all we get from ptp4l is stats
+	}
+	if ptp4lProcessName == processName { //all we get from ptp4l is stats
 		if strings.Contains(output, " port ") {
 			portID, role, syncState := extractPTP4lEventState(output)
 			if portID == 0 || role == types.UNKNOWN {
@@ -439,66 +446,69 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				ptpInterface.Name, portID, ptpInterface.Role, role)
 
 			lastRole := ptpInterface.Role
-			ifPtp := ptpInterface.Name
-			ifPtpType := types.IFace(ptpInterface.Name)
+			iface := ptpInterface.Name
+			ifaceType := types.IFace(ptpInterface.Name)
 
 			if ptpInterface.Role != role {
 				if lastRole == types.FAULTY { // cancel any HOLDOVER timeout
-					if t, ok := p.PtpConfigMapUpdates.EventThreshold[ifPtp]; ok {
-						log.Infof("canceliing holder go routine")
+					if t, ok := p.PtpConfigMapUpdates.EventThreshold[iface]; ok {
+						log.Infof("interface %s is not anymore faulty, cancel holdover", iface)
 						close(t.Close) // close any holdover go routines
 					}
 				}
-				log.Infof("update interface %s with portid %d from role %s to  role %s", ifPtp, portID, lastRole, role)
+				log.Infof("update interface %s with portid %d from role %s to  role %s", iface, portID, lastRole, role)
 				configNameType := types.ConfigName(ptp4lCfg.Name)
 				p.GetPTPConfig(configNameType).Interfaces[portID-1].UpdateRole(role)
 				// update role metrics
-				UpdateInterfaceRoleMetrics(processName, ifPtp, role)
+				UpdateInterfaceRoleMetrics(processName, iface, role)
 			}
 
 			if syncState == "" {
 				return
 			}
-			if _, found := p.Stats[ifPtpType]; !found {
-				p.Stats[ifPtpType] = NewStats(configName)
+			if _, found := p.Stats[ifaceType]; !found {
+				p.Stats[ifaceType] = NewStats(configName)
 			}
 
-			lastSyncState := p.Stats[ifPtpType].lastSyncState
-			offset := p.Stats[ifPtpType].Offset()
-			p.Stats[ifPtpType].lastSyncState = syncState
+			lastSyncState := p.Stats[ifaceType].lastSyncState
+			offset := p.Stats[ifaceType].Offset()
+			p.Stats[ifaceType].lastSyncState = syncState
 
 			if syncState != lastSyncState { // ptp4l events happened
-				p.PublishEvent(syncState, offset, ifPtp, channel.PTPEvent)
-				UpdateSyncStateMetrics(phc2sysProcessName, []string{ifPtp}, syncState)
+				p.PublishEvent(syncState, offset, iface, channel.PTPEvent)
+				UpdateSyncStateMetrics(phc2sysProcessName, iface, syncState)
 				if syncState == ceevent.HOLDOVER {
-					threshold := p.PtpThreshold(ifPtp)
-					go func(ptpManager *PTPEventManager, threshold ptpConfig.PtpClockThreshold, iface string, role types.PtpPortRole, c chan struct{}) {
+					threshold := p.PtpThreshold(iface)
+					go func(ptpManager *PTPEventManager, holdoverTimeout int64, faultyIface string, role types.PtpPortRole, c chan struct{}) {
 						defer func() {
+							log.Infof("exiting holdover for interface %s", faultyIface)
 							if r := recover(); r != nil {
 								fmt.Println("Recovered in f", r)
 							}
 						}()
+
 						select {
 						case <-c:
 							log.Infof("call recieved to close holderover timeout")
 							return
-						case <-time.After(time.Duration(threshold.HoldOverTimeout) * time.Second):
-							ifPtpType := types.IFace(ifPtp)
-							if s, found := p.Stats[ifPtpType]; found {
+						case <-time.After(time.Duration(holdoverTimeout) * time.Second):
+							faultyIfaceType := types.IFace(faultyIface)
+							log.Infof("time expired for interface %s", faultyIface)
+							if s, found := p.Stats[faultyIfaceType]; found {
 								if s.lastSyncState == ceevent.HOLDOVER {
 									log.Infof("HOLDOVER timeout after %d secs,setting clock state to FREERUN from HOLDOVER state for %s",
-										threshold.HoldOverTimeout, iface)
-									ptpManager.PublishEvent(ceevent.FREERUN, s.Offset(), iface, channel.PTPEvent)
-									UpdateSyncStateMetrics(phc2sysProcessName, []string{ifPtp}, ceevent.FREERUN)
+										holdoverTimeout, faultyIface)
+									ptpManager.PublishEvent(ceevent.FREERUN, s.Offset(), faultyIface, channel.PTPEvent)
+									UpdateSyncStateMetrics(phc2sysProcessName, faultyIface, ceevent.FREERUN)
 									s.lastSyncState = ceevent.FREERUN
 									//s.reset()
 								}
 							} else {
-								log.Errorf("failed to switch from holdover, could not find stats for interface %s", iface)
+								log.Errorf("failed to switch from holdover, could not find stats for interface %s", faultyIface)
 							}
 						}
 
-					}(p, threshold, ifPtp, lastRole, threshold.Close)
+					}(p, threshold.HoldOverTimeout, iface, lastRole, threshold.Close)
 				}
 			}
 		}
@@ -609,59 +619,52 @@ func (p *PTPEventManager) PublishEvent(state ceevent.SyncState, offsetFromMaster
 }
 
 // UpdatePTPMasterMetrics ...
-func UpdatePTPMasterMetrics(process string, ifaces []string, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster float64) {
-	for _, iface := range ifaces {
-		OffsetFromMaster.With(prometheus.Labels{
-			"process": process, "node": ptpNodeName, "iface": iface}).Set(offsetFromMaster)
+func UpdatePTPMasterMetrics(process, iface string, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster float64) {
+	OffsetFromMaster.With(prometheus.Labels{
+		"process": process, "node": ptpNodeName, "iface": iface}).Set(offsetFromMaster)
 
-		MaxOffsetFromMaster.With(prometheus.Labels{
-			"process": process, "node": ptpNodeName, "iface": iface}).Set(maxOffsetFromMaster)
+	MaxOffsetFromMaster.With(prometheus.Labels{
+		"process": process, "node": ptpNodeName, "iface": iface}).Set(maxOffsetFromMaster)
 
-		FrequencyAdjustment.With(prometheus.Labels{
-			"process": process, "node": ptpNodeName, "iface": iface}).Set(frequencyAdjustment)
+	FrequencyAdjustment.With(prometheus.Labels{
+		"process": process, "node": ptpNodeName, "iface": iface}).Set(frequencyAdjustment)
 
-		DelayFromMaster.With(prometheus.Labels{
-			"process": process, "node": ptpNodeName, "iface": iface}).Set(delayFromMaster)
-	}
+	DelayFromMaster.With(prometheus.Labels{
+		"process": process, "node": ptpNodeName, "iface": iface}).Set(delayFromMaster)
 }
 
 // UpdatePTPSystemMetrics ...
-func UpdatePTPSystemMetrics(process string, ifaces []string, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster float64) {
-	for _, iface := range ifaces {
-		OffsetFromSystem.With(prometheus.Labels{
-			"process": process, "node": ptpNodeName, "iface": iface}).Set(offsetFromMaster)
+func UpdatePTPSystemMetrics(process, iface string, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster float64) {
+	OffsetFromSystem.With(prometheus.Labels{
+		"process": process, "node": ptpNodeName, "iface": iface}).Set(offsetFromMaster)
 
-		MaxOffsetFromSystem.With(prometheus.Labels{
-			"process": process, "node": ptpNodeName, "iface": iface}).Set(maxOffsetFromMaster)
+	MaxOffsetFromSystem.With(prometheus.Labels{
+		"process": process, "node": ptpNodeName, "iface": iface}).Set(maxOffsetFromMaster)
 
-		FrequencyAdjustmentFromSystem.With(prometheus.Labels{
-			"process": process, "node": ptpNodeName, "iface": iface}).Set(frequencyAdjustment)
+	FrequencyAdjustmentFromSystem.With(prometheus.Labels{
+		"process": process, "node": ptpNodeName, "iface": iface}).Set(frequencyAdjustment)
 
-		DelayFromSystem.With(prometheus.Labels{
-			"process": process, "node": ptpNodeName, "iface": iface}).Set(delayFromMaster)
-	}
+	DelayFromSystem.With(prometheus.Labels{
+		"process": process, "node": ptpNodeName, "iface": iface}).Set(delayFromMaster)
 }
 
 // UpdateDeletedPTPMetrics ... update metrics for deleted ptp config
 func UpdateDeletedPTPMetrics(iface, processName string) {
-	UpdatePTPMasterMetrics(processName, []string{iface}, FreeRunOffsetValue, FreeRunOffsetValue, FreeRunOffsetValue, FreeRunOffsetValue)
+	UpdatePTPMasterMetrics(processName, iface, FreeRunOffsetValue, FreeRunOffsetValue, FreeRunOffsetValue, FreeRunOffsetValue)
 }
 
 // UpdateSyncStateMetrics ...
-func UpdateSyncStateMetrics(process string, ifaces []string, state ceevent.SyncState) {
-	for _, iface := range ifaces {
-		if state == ceevent.LOCKED {
-			MasterSyncState.With(prometheus.Labels{
-				"process": process, "node": ptpNodeName, "iface": iface}).Set(1)
-		} else if state == ceevent.FREERUN {
-			MasterSyncState.With(prometheus.Labels{
-				"process": process, "node": ptpNodeName, "iface": iface}).Set(0)
-		} else if state == ceevent.HOLDOVER {
-			MasterSyncState.With(prometheus.Labels{
-				"process": process, "node": ptpNodeName, "iface": iface}).Set(2)
-		}
+func UpdateSyncStateMetrics(process string, iface string, state ceevent.SyncState) {
+	if state == ceevent.LOCKED {
+		MasterSyncState.With(prometheus.Labels{
+			"process": process, "node": ptpNodeName, "iface": iface}).Set(1)
+	} else if state == ceevent.FREERUN {
+		MasterSyncState.With(prometheus.Labels{
+			"process": process, "node": ptpNodeName, "iface": iface}).Set(0)
+	} else if state == ceevent.HOLDOVER {
+		MasterSyncState.With(prometheus.Labels{
+			"process": process, "node": ptpNodeName, "iface": iface}).Set(2)
 	}
-
 }
 
 //UpdateInterfaceRoleMetrics ...
