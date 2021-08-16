@@ -757,6 +757,8 @@ func extractRegularMetrics(processName, output string) (interfaceName string, of
 	output = output[index:]
 	fields := strings.Fields(output)
 
+	//       0         1      2          3    4   5    6          7     8
+	//ptp4l.0.config master offset   -2162130 s2 freq +22451884  delay 374976
 	if len(fields) < 7 {
 		log.Errorf("%s failed to parse output %s: unexpected number of fields", processName, output)
 		return
@@ -834,8 +836,15 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 	}
 	output = output[index:]
 	fields := strings.Fields(output)
+	//port 1: delay timeout
+	if len(fields) < 2 {
+		log.Errorf("failed to parse output %s: unexpected number of fields", output)
+		return
+	}
+
 	portIndex := fields[1]
 	role = types.UNKNOWN
+
 	var e error
 	portID, e = strconv.Atoi(portIndex)
 	if e != nil {
@@ -843,6 +852,7 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 		portID = 0
 		return
 	}
+
 	clockState = ceevent.FREERUN
 
 	if strings.Contains(output, "UNCALIBRATED to SLAVE") {
