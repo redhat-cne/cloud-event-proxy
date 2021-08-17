@@ -161,8 +161,8 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 			}
 			if profile.PtpClockThreshold.MinOffsetThreshold > threshold.MaxOffsetThreshold {
 				threshold.MinOffsetThreshold = threshold.MaxOffsetThreshold - 1 // make it one nano secs less than max
-				log.Infof("minOffsetThreshold %d has to be < maxOffsetThreshold, now set to one less than maxOfssetThreshold %d",
-					profile.PtpClockThreshold.MinOffsetThreshold, maxOffsetThreshold)
+				log.Infof("minOffsetThreshold %d has to be < %d (maxOffsetThreshold), minOffsetThreshold now set to one less than maxOffsetThreshold %d",
+					profile.PtpClockThreshold.MinOffsetThreshold, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
 			} else {
 				threshold.MinOffsetThreshold = profile.PtpClockThreshold.MinOffsetThreshold
 			}
