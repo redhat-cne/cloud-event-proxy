@@ -154,7 +154,6 @@ func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpd
 					log.Error("could not read watcher events")
 					continue
 				}
-				log.Infof("event: %v", event)
 				if event.Op&fsnotify.Write == fsnotify.Write {
 					if checkIfPtP4lConf(event.Name) {
 						if ptpConfig, err := readConfig(event.Name); err == nil {
@@ -196,7 +195,6 @@ func readAllConfig(dir string) []*PtpConfigUpdate {
 	}
 	for _, file := range files {
 		if checkIfPtP4lConf(file.Name()) {
-			log.Info(file.Name())
 			if p, err := readConfig(filepath.Join(dir, file.Name())); err == nil {
 				ptpConfigs = append(ptpConfigs, p)
 			}
