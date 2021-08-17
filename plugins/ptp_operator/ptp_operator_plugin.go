@@ -21,6 +21,8 @@ import (
 	"os"
 	"sync"
 
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
+
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/redhat-cne/sdk-go/pkg/channel"
@@ -29,6 +31,7 @@ import (
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptpSocket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
+	ptpTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	log "github.com/sirupsen/logrus"
 
@@ -40,7 +43,10 @@ import (
 )
 
 const (
-	eventSocket = "/cloud-native/events.sock"
+	eventSocket        = "/cloud-native/events.sock"
+	ptpConfigDir       = "/var/run/"
+	phc2sysProcessName = "phc2sys"
+	ptp4lProcessName   = "ptp4l"
 )
 
 var (
@@ -74,42 +80,130 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 
 	wg.Add(1)
 	go listenToSocket(wg)
-	go eventManager.PtpConfigUpdates.WatchConfigUpdate(nodeName, configuration.CloseCh)
+	go eventManager.PtpConfigMapUpdates.WatchConfigMapUpdate(nodeName, configuration.CloseCh)
 
+	// watch for ptp 4l config changes
+	notifyConfigDirUpdates := make(chan *ptp4lconf.PtpConfigUpdate)
+	w, err := ptp4lconf.NewPtp4lConfigWatcher(ptpConfigDir, notifyConfigDirUpdates)
+	if err != nil {
+		log.Errorf("cannot monitor ptp4l configuation folder at %s : %s", ptpConfigDir, err)
+		return err
+	}
+
+	// update interface details when ptpconfig change found
+	go func() {
+		for {
+			select {
+			case ptpConfigEvent := <-notifyConfigDirUpdates:
+				if ptpConfigEvent == nil || ptpConfigEvent.Name == nil {
+					continue
+				}
+				log.Infof("updating ptp config changes for %s", *ptpConfigEvent.Name)
+				switch ptpConfigEvent.Removed {
+				case false: //create or modified
+					ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
+					newInterfaces := ptpConfigEvent.GetAllInterface()
+
+					if _, ok := eventManager.Ptp4lConfigInterfaces[ptpConfigFileName]; !ok { // config file name is the key here
+						eventManager.Ptp4lConfigInterfaces[ptpConfigFileName] = nil
+					}
+
+					if eventManager.Ptp4lConfigInterfaces[ptpConfigFileName] != nil &&
+						HasEqualInterface(newInterfaces, eventManager.Ptp4lConfigInterfaces[ptpConfigFileName].Interfaces) {
+						log.Infof("skipped update,interface not changed in ptl4lconfig")
+						continue
+					}
+
+					//cleanup
+					isExists := func(i string) bool {
+						for _, iface := range newInterfaces {
+							if iface != nil && i == *iface {
+								return true
+							}
+						}
+						return false
+					}
+					ptp4lConfig := eventManager.GetPTPConfig(ptpConfigFileName)
+					if ptp4lConfig != nil {
+						for _, ifaces := range ptp4lConfig.Interfaces {
+							if !isExists(ifaces.Name) {
+								log.Errorf("config updated and interface  not exists, deleting %s", ifaces.Name)
+								t := eventManager.PtpThreshold(ifaces.Name)
+								close(t.Close) // close any holdover go routines
+
+								eventManager.PublishEvent(cneEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, ifaces.Name, channel.PTPEvent)
+								ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, ifaces.Name, cneEvent.FREERUN)
+								ptpMetrics.UpdateDeletedPTPMetrics(ifaces.Name, phc2sysProcessName)
+								eventManager.DeleteStats(ptpTypes.IFace(ifaces.Name))
+								eventManager.PtpConfigMapUpdates.DeletePTPThreshold(ifaces.Name)
+								ptpMetrics.UpdateInterfaceRoleMetrics(ptp4lProcessName, ifaces.Name, ptpTypes.UNKNOWN)
+							}
+						}
+					}
+					var ptpInterfaces []*ptp4lconf.PTPInterface
+					for index, iface := range newInterfaces {
+						role := ptpTypes.UNKNOWN
+						if p, e := ptp4lConfig.ByInterface(*iface); e == nil && p.PortID == index+1 { //maintain role
+							role = p.Role
+						} //else new config order is not same
+						ptpInterface := &ptp4lconf.PTPInterface{
+							Name:     *iface,
+							PortID:   index + 1,
+							PortName: fmt.Sprintf("%s%d", "port ", index+1),
+							Role:     role,
+						}
+						ptpInterfaces = append(ptpInterfaces, ptpInterface)
+					}
+
+					ptp4lConfig = &ptp4lconf.PTP4lConfig{
+						Name:       string(ptpConfigFileName),
+						Interfaces: ptpInterfaces,
+					}
+
+					eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
+				case true:
+					//update metrics
+					ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
+					if ptpConfig, ok := eventManager.Ptp4lConfigInterfaces[ptpConfigFileName]; ok {
+						for _, iface := range ptpConfig.Interfaces {
+							if t, ok := eventManager.PtpConfigMapUpdates.EventThreshold[iface.Name]; ok {
+								close(t.Close) // close any holdover go routines
+							}
+							eventManager.PublishEvent(cneEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, iface.Name, channel.PTPEvent)
+							ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, iface.Name, cneEvent.FREERUN)
+							ptpMetrics.UpdateDeletedPTPMetrics(iface.Name, phc2sysProcessName)
+							eventManager.DeleteStats(ptpTypes.IFace(iface.Name))
+							ptpMetrics.UpdateInterfaceRoleMetrics(ptp4lProcessName, iface.Name, ptpTypes.UNKNOWN)
+							eventManager.PtpConfigMapUpdates.DeletePTPThreshold(iface.Name)
+						}
+					}
+					eventManager.DeletePTPConfig(ptpConfigFileName)
+				}
+			case <-config.CloseCh:
+				w.Close()
+				return
+			}
+		}
+	}()
+
+	// ONly update threshold.
+	//get threshold data on change of ptp config
 	// update node profile when configmap changes
 	go func() {
 		for {
 			select {
-			case <-eventManager.PtpConfigUpdates.UpdateCh:
-				log.Infof("updating ptp profile changes %d", len(eventManager.PtpConfigUpdates.NodeProfiles))
+			case <-eventManager.PtpConfigMapUpdates.UpdateCh:
+				log.Infof("updating ptp profile changes %d", len(eventManager.PtpConfigMapUpdates.NodeProfiles))
 				//clean up
-				if len(eventManager.PtpConfigUpdates.NodeProfiles) == 0 {
+				if len(eventManager.PtpConfigMapUpdates.NodeProfiles) == 0 {
 					for iface := range eventManager.Stats {
-						eventManager.PublishEvent(cneEvent.FREERUN, 0, iface, channel.PTPEvent) // change to locked
-						ptpMetrics.UpdateDeletedPTPMetrics(iface)
 						eventManager.DeleteStats(iface)
-						eventManager.PtpConfigUpdates.DeletePTPThreshold(iface)
+						eventManager.PtpConfigMapUpdates.DeletePTPThreshold(string(iface))
 					}
 				} else {
-					//cleanup
-					for key := range eventManager.Stats { // remove stats if not matching
-						found := false
-						for _, np := range eventManager.PtpConfigUpdates.NodeProfiles {
-							if *np.Interface == key {
-								found = true
-							}
-						}
-						if !found { // clean up and update metrics
-							log.Debugf("identified ptpfonfig for %s is deleted, removing stats ", key)
-							eventManager.PublishEvent(cneEvent.FREERUN, 0, key, channel.PTPEvent) // change to locked
-							ptpMetrics.UpdateDeletedPTPMetrics(key)
-							eventManager.DeleteStats(key)
-							eventManager.PtpConfigUpdates.DeletePTPThreshold(key)
-						}
-					}
 					//updates
-					eventManager.PtpConfigUpdates.UpdatePTPThreshold()
-					for key, np := range eventManager.PtpConfigUpdates.EventThreshold {
+					eventManager.PtpConfigMapUpdates.UpdatePTPThreshold()
+					for key, np := range eventManager.PtpConfigMapUpdates.EventThreshold {
 						ptpMetrics.Threshold.With(prometheus.Labels{
 							"threshold": "MinOffsetThreshold", "node": nodeName, "iface": key}).Set(float64(np.MinOffsetThreshold))
 						ptpMetrics.Threshold.With(prometheus.Labels{
@@ -131,9 +225,19 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		if len(eventManager.Stats) == 0 {
 			eventManager.PublishEvent(event.FREERUN, 0, "ptp-not-set", "PTP_STATUS")
 		} else {
+			var publishStatus bool
 			for i, s := range eventManager.Stats {
-				log.Infof(" publishing event for %s with clock state %s and offset %d", i, s.ClockState(), s.Offset())
-				eventManager.PublishEvent(s.ClockState(), s.Offset(), i, "PTP_STATUS")
+				publishStatus = true // do not publish status for current slave interface
+				// CLOCK_REALTIME  data will be published instead
+				if e, ok := eventManager.Ptp4lConfigInterfaces[ptpTypes.ConfigName(s.ConfigName())]; ok {
+					if iface, err := e.ByRole(ptpTypes.SLAVE); err == nil && string(i) == iface.Name { //skip SLAVE status
+						publishStatus = false //CLOCK_REALTIME stats will be published instead
+					}
+				}
+				if publishStatus {
+					log.Infof(" publishing event for %s with clock state %s and offset %d", string(i), s.SyncState(), s.Offset())
+					eventManager.PublishEvent(s.SyncState(), s.Offset(), string(i), "PTP_STATUS")
+				}
 			}
 		}
 		d.Type = channel.STATUS
@@ -185,4 +289,17 @@ func processMessages(c net.Conn) {
 		msg := scanner.Text()
 		eventManager.ExtractMetrics(msg)
 	}
+}
+
+//HasEqualInterface checks if configmap  changes has same interface
+func HasEqualInterface(a []*string, b []*ptp4lconf.PTPInterface) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i, v := range a {
+		if *v != b[i].Name {
+			return false
+		}
+	}
+	return true
 }

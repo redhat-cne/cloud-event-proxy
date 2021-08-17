@@ -1,11 +1,27 @@
 package config
 
+// Copyright 2020 The Cloud Native Events Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// config reads ptp configmap (not ptp4l.x.config, but k8s configmap)  and update threshold values for all interfaces
+
 import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sync"
 	"time"
 
@@ -13,14 +29,19 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+var (
+	sectionHead = regexp.MustCompile(`\[([^\[\]]*)\]`)
+)
+
 const (
-	// DefaultUpdateInterval for watching ptpconfig update
-	DefaultUpdateInterval = 45
+	// DefaultUpdateInterval for watching ptpconfigmap update
+	DefaultUpdateInterval = 60
 	// DefaultProfilePath  default ptp profile path
 	DefaultProfilePath       = "/etc/linuxptp"
 	maxOffsetThreshold int64 = 100 //in nano secs
 	minOffsetThreshold int64 = -100
 	holdoverTimeout    int64 = 5
+	ignorePtp4lSection       = "global"
 )
 
 // PtpProfile ...
@@ -28,6 +49,10 @@ type PtpProfile struct {
 	Name              *string            `json:"name"`
 	Interface         *string            `json:"interface"`
 	PtpClockThreshold *PtpClockThreshold `json:"ptpClockThreshold,omitempty"`
+	Ptp4lOpts         *string            `json:"ptp4lOpts,omitempty"`
+	Phc2sysOpts       *string            `json:"phc2sysOpts,omitempty"`
+	Ptp4lConf         *string            `json:"ptp4lConf,omitempty"`
+	Interfaces        []*string
 }
 
 // PtpClockThreshold ...
@@ -38,10 +63,12 @@ type PtpClockThreshold struct {
 	MaxOffsetThreshold int64 `json:"maxOffsetThreshold,omitempty"`
 	// min offset in nano secs
 	MinOffsetThreshold int64 `json:"minOffsetThreshold,omitempty"`
+	// Close  any  previous holdover
+	Close chan struct{} `json:"close,omitempty"`
 }
 
-// LinuxPTPConfUpdate for ptp-conf update
-type LinuxPTPConfUpdate struct {
+// LinuxPTPConfigMapUpdate for ptp-conf update
+type LinuxPTPConfigMapUpdate struct {
 	lock                   sync.RWMutex
 	UpdateCh               chan bool
 	NodeProfiles           []PtpProfile
@@ -52,8 +79,8 @@ type LinuxPTPConfUpdate struct {
 }
 
 // NewLinuxPTPConfUpdate -- profile updater
-func NewLinuxPTPConfUpdate() *LinuxPTPConfUpdate {
-	ptpProfileUpdate := &LinuxPTPConfUpdate{
+func NewLinuxPTPConfUpdate() *LinuxPTPConfigMapUpdate {
+	ptpProfileUpdate := &LinuxPTPConfigMapUpdate{
 		lock:           sync.RWMutex{},
 		UpdateCh:       make(chan bool),
 		profilePath:    DefaultProfilePath,
@@ -75,66 +102,85 @@ func NewLinuxPTPConfUpdate() *LinuxPTPConfUpdate {
 	return ptpProfileUpdate
 }
 
+// GetInterface ... return interfaces from configmap
+func (p *PtpProfile) GetInterface() []*string {
+	var interfaces []*string
+	var singleInterface string
+	if p.Interface != nil {
+		singleInterface = *p.Interface
+		interfaces = append(interfaces, &singleInterface)
+	}
+	matches := sectionHead.FindAllStringSubmatch(*p.Ptp4lConf, -1)
+	for _, v := range matches {
+		if v[1] != ignorePtp4lSection && v[1] != singleInterface {
+			interfaces = append(interfaces, &v[1])
+		}
+	}
+	return interfaces
+}
+
 // SetDefaultPTPThreshold ... creates default record
-func (l *LinuxPTPConfUpdate) SetDefaultPTPThreshold(iface string) {
+func (l *LinuxPTPConfigMapUpdate) SetDefaultPTPThreshold(iface string) {
 	l.lock.Lock()
 	defer l.lock.Unlock()
 	l.EventThreshold[iface] = &PtpClockThreshold{
 		HoldOverTimeout:    holdoverTimeout,
 		MaxOffsetThreshold: maxOffsetThreshold,
 		MinOffsetThreshold: minOffsetThreshold,
+		Close:              make(chan struct{}),
 	}
 }
 
 // DeletePTPThreshold ... delete threshold for the interface
-func (l *LinuxPTPConfUpdate) DeletePTPThreshold(iface string) {
-	if _, found := l.EventThreshold[iface]; found {
+func (l *LinuxPTPConfigMapUpdate) DeletePTPThreshold(iface string) {
+	if t, found := l.EventThreshold[iface]; found {
 		l.lock.Lock()
 		defer l.lock.Unlock()
+		close(t.Close) // close any go routine associated with this threshold
 		delete(l.EventThreshold, iface)
 	}
 }
 
 // UpdatePTPThreshold .. update ptp threshold
-func (l *LinuxPTPConfUpdate) UpdatePTPThreshold() {
+func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 	for _, profile := range l.NodeProfiles {
-		iface := *profile.Interface
-		if _, found := l.EventThreshold[iface]; !found {
-			l.SetDefaultPTPThreshold(iface)
+		for _, iface := range profile.Interfaces {
+			if _, found := l.EventThreshold[*iface]; !found {
+				l.SetDefaultPTPThreshold(*iface)
+			}
+			if profile.PtpClockThreshold == nil {
+				l.SetDefaultPTPThreshold(*iface)
+				continue
+			}
+			threshold := l.EventThreshold[*iface]
+			if profile.PtpClockThreshold.MaxOffsetThreshold > 0 { // has to be greater than 0 nano secs
+				threshold.MaxOffsetThreshold = profile.PtpClockThreshold.MaxOffsetThreshold
+			} else {
+				threshold.MaxOffsetThreshold = maxOffsetThreshold
+				log.Infof("maxOffsetThreshold %d has to be > 0, now set to default %d", profile.PtpClockThreshold.MaxOffsetThreshold, maxOffsetThreshold)
+			}
+			if profile.PtpClockThreshold.MinOffsetThreshold > threshold.MaxOffsetThreshold {
+				threshold.MinOffsetThreshold = threshold.MaxOffsetThreshold - 1 // make it one nano secs less than max
+				log.Infof("minOffsetThreshold %d has to be < %d (maxOffsetThreshold), minOffsetThreshold now set to one less than maxOffsetThreshold %d",
+					profile.PtpClockThreshold.MinOffsetThreshold, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
+			} else {
+				threshold.MinOffsetThreshold = profile.PtpClockThreshold.MinOffsetThreshold
+			}
+			if profile.PtpClockThreshold.HoldOverTimeout <= 0 { //secs can't be negative or zero
+				threshold.HoldOverTimeout = holdoverTimeout
+				log.Infof("invalid holdOverTimeout %d in secs, setting to default %d holdOverTimeout", profile.PtpClockThreshold.HoldOverTimeout, holdoverTimeout)
+			} else {
+				threshold.HoldOverTimeout = profile.PtpClockThreshold.HoldOverTimeout
+			}
+			log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
+				*iface, threshold.HoldOverTimeout, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
 		}
-		if profile.PtpClockThreshold == nil {
-			l.SetDefaultPTPThreshold(iface)
-			continue
-		}
-		threshold := l.EventThreshold[iface]
-		if profile.PtpClockThreshold.MaxOffsetThreshold > 0 { // has to be greater than 0 nano secs
-			threshold.MaxOffsetThreshold = profile.PtpClockThreshold.MaxOffsetThreshold
-		} else {
-			threshold.MaxOffsetThreshold = maxOffsetThreshold
-			log.Infof("maxOffsetThreshold %d has to be > 0, now set to default %d", profile.PtpClockThreshold.MaxOffsetThreshold, maxOffsetThreshold)
-		}
-		if profile.PtpClockThreshold.MinOffsetThreshold > threshold.MaxOffsetThreshold {
-			threshold.MinOffsetThreshold = threshold.MaxOffsetThreshold - 1 // make it one nano secs less than max
-			log.Infof("minOffsetThreshold %d has to be > maxOffsetThreshold, now set to one less than maxOfssetThreshold %d",
-				profile.PtpClockThreshold.MinOffsetThreshold, maxOffsetThreshold)
-		} else {
-			threshold.MinOffsetThreshold = profile.PtpClockThreshold.MinOffsetThreshold
-		}
-		if profile.PtpClockThreshold.HoldOverTimeout <= 0 { //secs can't be negative or zero
-			threshold.HoldOverTimeout = holdoverTimeout
-			log.Infof("invalid holdOverTimeout %d in secs, setting to default %d holdOverTimeout", profile.PtpClockThreshold.HoldOverTimeout, holdoverTimeout)
-		} else {
-			threshold.HoldOverTimeout = profile.PtpClockThreshold.HoldOverTimeout
-		}
-		log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
-			*profile.Interface, threshold.HoldOverTimeout, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
-
 	}
 
 }
 
 // UpdateConfig ... update profile
-func (l *LinuxPTPConfUpdate) UpdateConfig(nodeProfilesJSON []byte) error {
+func (l *LinuxPTPConfigMapUpdate) UpdateConfig(nodeProfilesJSON []byte) error {
 	if string(l.appliedNodeProfileJSON) == string(nodeProfilesJSON) {
 		return nil
 	}
@@ -143,6 +189,10 @@ func (l *LinuxPTPConfUpdate) UpdateConfig(nodeProfilesJSON []byte) error {
 		log.Info("load ptp profiles")
 		l.appliedNodeProfileJSON = nodeProfilesJSON
 		l.NodeProfiles = nodeProfiles
+		for index, np := range l.NodeProfiles {
+			//duplicate nodeprofiles
+			l.NodeProfiles[index].Interfaces = np.GetInterface()
+		}
 		l.UpdateCh <- true
 		return nil
 	}
@@ -171,6 +221,7 @@ func tryToLoadConfig(nodeProfilesJSON []byte) ([]PtpProfile, bool) {
 	var ptpConfig []PtpProfile
 	err := json.Unmarshal(nodeProfilesJSON, &ptpConfig)
 	if err != nil {
+		log.Errorf("error reading nodeprofile %s", err)
 		return nil, false
 	}
 
@@ -182,14 +233,15 @@ func tryToLoadOldConfig(nodeProfilesJSON []byte) ([]PtpProfile, bool) {
 	ptpConfig := &PtpProfile{}
 	err := json.Unmarshal(nodeProfilesJSON, ptpConfig)
 	if err != nil {
+		log.Errorf("error reading nodeprofile %s", err)
 		return nil, false
 	}
 
 	return []PtpProfile{*ptpConfig}, true
 }
 
-// WatchConfigUpdate watch for ptp config update
-func (l *LinuxPTPConfUpdate) WatchConfigUpdate(nodeName string, closeCh chan struct{}) {
+// WatchConfigMapUpdate watch for ptp config update
+func (l *LinuxPTPConfigMapUpdate) WatchConfigMapUpdate(nodeName string, closeCh chan struct{}) {
 	tickerPull := time.NewTicker(time.Duration(l.intervalUpdate) * time.Second)
 	defer tickerPull.Stop()
 	for {
@@ -229,5 +281,6 @@ func GetDefaultThreshold() PtpClockThreshold {
 		HoldOverTimeout:    holdoverTimeout,
 		MaxOffsetThreshold: maxOffsetThreshold,
 		MinOffsetThreshold: minOffsetThreshold,
+		Close:              make(chan struct{}),
 	}
 }
