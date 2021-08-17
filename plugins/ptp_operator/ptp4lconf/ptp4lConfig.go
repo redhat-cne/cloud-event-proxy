@@ -17,7 +17,7 @@ var (
 )
 
 const (
-	ignorePtp4lSection = "global"
+	ptp4lGlobalSection = "global"
 )
 
 //PtpConfigUpdate ...
@@ -46,7 +46,7 @@ func (p *PtpConfigUpdate) GetAllInterface() []*string {
 	if p.Ptp4lConf != nil {
 		matches := sectionHead.FindAllStringSubmatch(*p.Ptp4lConf, -1)
 		for _, v := range matches {
-			if v[1] != ignorePtp4lSection && !checkIfPtP4lConf(v[1]) {
+			if v[1] != ptp4lGlobalSection && !checkIfPtP4lConf(v[1]) {
 				interfaces = append(interfaces, &v[1])
 			}
 		}

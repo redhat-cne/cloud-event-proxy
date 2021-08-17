@@ -41,6 +41,10 @@ const (
 	ClockRealTime = "CLOCK_REALTIME"
 	//MasterClockType is teh slave sync slave clock to master
 	MasterClockType = "master"
+
+	// from the logs
+	processNameIndex = 0
+	configNameIndex  = 2
 )
 
 var (
@@ -353,15 +357,24 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
 	output := replacer.Replace(msg)
 	fields := strings.Fields(output)
+
+	// make sure configname is found in logs
+	indx := FindInLogForCfgFileIndex(output)
+	if indx == -1 {
+		log.Errorf("config name is not found in log outpt")
+		return
+	}
+
 	if len(fields) < 3 {
 		log.Errorf("ignoring log:log is not in required format ptp4l/phc2sys[time]: [config] %s", output)
 		return
 	}
-	processName := fields[0]
-	configName := fields[2]
+
+	processName := fields[processNameIndex]
+	configName := fields[configNameIndex]
 	ptp4lCfg := p.GetPTPConfig(types.ConfigName(configName))
 
-	if ptp4lCfg == nil { //TODO: Use PMC to update port and roles
+	if len(ptp4lCfg.Interfaces) == 0 { //TODO: Use PMC to update port and roles
 		log.Errorf("file watcher have not picked the files yet")
 		return
 	}
@@ -554,11 +567,11 @@ func (p *PTPEventManager) GenPhc2SysEvent(ifaces []types.IFace, offsetFromMaster
 					p.Stats[i].addValue(int64(offsetFromMaster)) // update off set when its in locked state and hold over only
 				}
 			}
-		case ceevent.HOLDOVER: // last state was holdover, since it is in locked now check if it qualifies to be locked
+		case ceevent.HOLDOVER:
 			//do nothing , the time out will switch holdover to FREERUN
 		default: // not yet used states
 			log.Warnf("%s unkown handled last ptp state %s", iface, lastClockState)
-			p.PublishEvent(clockState, offsetFromMaster, string(iface), channel.PTPEvent) // change to locked
+			p.PublishEvent(clockState, offsetFromMaster, string(iface), channel.PTPEvent) // change to unknown
 			for _, i := range ifaces {
 				p.Stats[i].lastSyncState = clockState
 				p.Stats[i].lastOffset = int64(offsetFromMaster)
@@ -576,7 +589,7 @@ func (p *PTPEventManager) GenPhc2SysEvent(ifaces []types.IFace, offsetFromMaster
 		}
 	default:
 		log.Warnf("%s unkown current ptp state %s", iface, clockState)
-		p.PublishEvent(clockState, offsetFromMaster, string(iface), channel.PTPEvent) // change to locked
+		p.PublishEvent(clockState, offsetFromMaster, string(iface), channel.PTPEvent) // change to unknown state
 		for _, i := range ifaces {
 			p.Stats[i].lastSyncState = clockState
 			p.Stats[i].lastOffset = int64(offsetFromMaster)
@@ -690,7 +703,7 @@ func extractSummaryMetrics(processName, output string) (iface string, offsetFrom
 
 	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
 	output = replacer.Replace(output)
-	indx = FindLogFileIndex(output)
+	indx = FindInLogForCfgFileIndex(output)
 	if indx == -1 {
 		log.Errorf("config name is not found in log outpt")
 		return
@@ -749,7 +762,7 @@ func extractRegularMetrics(processName, output string) (interfaceName string, of
 	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ", "phc", "")
 	output = replacer.Replace(output)
 
-	index := FindLogFileIndex(output)
+	index := FindInLogForCfgFileIndex(output)
 	if index == -1 {
 		log.Errorf("config name is not found in log outpt")
 		return
@@ -869,12 +882,11 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 	return
 }
 
-//FindLogFileIndex ...
-func FindLogFileIndex(out string) int {
+//FindInLogForCfgFileIndex ...
+func FindInLogForCfgFileIndex(out string) int {
 	match := ptpConfigFileRegEx.FindStringIndex(out)
 	if len(match) == 2 {
 		return match[0]
 	}
 	return -1
-
 }
