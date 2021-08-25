@@ -1,5 +1,9 @@
 # See the OWNERS docs at https://go.k8s.io/owners
 
+# BugZilla Component & SubComponent Details:
+component: "Cloud Native Events"
+subcomponent: "Cloud Event Proxy"
+
 filters:
   ".*":
     reviewers:
