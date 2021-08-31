@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -32,6 +31,7 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 	log "github.com/sirupsen/logrus"
+	"github.com/valyala/fasthttp"
 )
 
 // ConsumerTypeEnum enum to choose consumer type
@@ -206,41 +206,41 @@ func pingForStatus(resourceID string) {
 	}
 }
 
+func fastHTTPHandler(ctx *fasthttp.RequestCtx) {
+	switch string(ctx.Path()) {
+	case "/event":
+		getEvent(ctx)
+	case "/ack/event":
+		ackEvent(ctx)
+	default:
+		ctx.Error("Unsupported path %s", fasthttp.StatusNotFound)
+	}
+
+}
+
 // Consumer webserver
 func server() {
-	http.HandleFunc("/event", getEvent)
-	http.HandleFunc("/ack/event", ackEvent)
-	http.ListenAndServe(localAPIAddr, nil)
+	fasthttp.ListenAndServe(localAPIAddr, fastHTTPHandler)
 }
 
-func getEvent(w http.ResponseWriter, req *http.Request) {
-	defer req.Body.Close()
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		log.Errorf("error reading event %v", err)
-	}
-	e := string(bodyBytes)
-	if e != "" {
+func getEvent(ctx *fasthttp.RequestCtx) {
+	body := ctx.PostBody()
+	if len(body) > 0 {
 		if consumerType == HW {
-			processHwEvent(bodyBytes)
+			processHwEvent(body)
 		}
-		log.Debugf("received event %s", string(bodyBytes))
+		log.Debugf("received event %s", string(body))
 	} else {
-		w.WriteHeader(http.StatusNoContent)
+		ctx.SetStatusCode(http.StatusNoContent)
 	}
 }
 
-func ackEvent(w http.ResponseWriter, req *http.Request) {
-	defer req.Body.Close()
-	bodyBytes, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		log.Errorf("error reading acknowledgment  %v", err)
-	}
-	e := string(bodyBytes)
-	if e != "" {
-		log.Debugf("received ack %s", string(bodyBytes))
+func ackEvent(ctx *fasthttp.RequestCtx) {
+	body := ctx.PostBody()
+	if len(body) > 0 {
+		log.Debugf("received ack %s", string(body))
 	} else {
-		w.WriteHeader(http.StatusNoContent)
+		ctx.SetStatusCode(http.StatusNoContent)
 	}
 }
 
@@ -251,5 +251,6 @@ func processHwEvent(data []byte) {
 	// milliseconds since epoch you'll need to manually
 	// divide from nanoseconds.
 	latency := (time.Now().UnixNano() - e.Time.UnixNano()) / 1000000
-	log.Debugf("Latency for hardware event: %v ms\n", latency)
+	// set log to Info level for performance measurement
+	log.Infof("Latency for hardware event: %v ms\n", latency)
 }
