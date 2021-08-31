@@ -45,6 +45,10 @@ const (
 	// from the logs
 	processNameIndex = 0
 	configNameIndex  = 2
+
+	// from the logs
+	offset = "offset"
+	rms    = "rms"
 )
 
 var (
@@ -716,12 +720,12 @@ func extractSummaryMetrics(processName, output string) (iface string, offsetFrom
 	}
 
 	// when ptp4l log is missing interface name
-	if fields[1] == "rms" {
+	if fields[1] == rms {
 		fields = append(fields, "") // Making space for the new element
 		//  0             1     2
 		//ptp4l.0.config rms   53 max   74 freq -16642 +/-  40 delay  1089 +/-  20
 		copy(fields[2:], fields[1:]) // Shifting elements
-		fields[1] = "master"         // Copying/inserting the value
+		fields[1] = MasterClockType  // Copying/inserting the value
 		//  0             0       1   2
 		//ptp4l.0.config master rms   53 max   74 freq -16642 +/-  40 delay  1089 +/-  20
 	}
@@ -767,7 +771,7 @@ func extractRegularMetrics(processName, output string) (interfaceName string, of
 	//                                  1       2           3   4   5     6        7    8         9
 	//ptp4l 5196819.100 ptp4l.0.config master offset   -2162130 s2 freq +22451884 path delay    374976
 	output = strings.Replace(output, "path", "", 1)
-	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ", "phc", "")
+	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ", "phc", "", "sys", "")
 	output = replacer.Replace(output)
 
 	index := FindInLogForCfgFileIndex(output)
@@ -782,6 +786,11 @@ func extractRegularMetrics(processName, output string) (interfaceName string, of
 	//ptp4l.0.config master offset   -2162130 s2 freq +22451884  delay 374976
 	if len(fields) < 7 {
 		log.Errorf("%s failed to parse output %s: unexpected number of fields", processName, output)
+		return
+	}
+
+	if fields[2] != offset {
+		log.Errorf("%s failed to parse offset from master output %s error %s", processName, fields[1], "offset is not in right order")
 		return
 	}
 
