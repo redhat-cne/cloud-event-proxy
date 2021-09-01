@@ -1,12 +1,11 @@
 apiVersion: apps/v1
-kind: Deployment
+kind: DaemonSet
 metadata:
   name: cloud-native-consumer-deployment
   namespace: cloud-native-events
   labels:
     app: consumer
 spec:
-  replicas: 1
   selector:
     matchLabels:
       app: consumer
@@ -15,15 +14,8 @@ spec:
       labels:
         app: consumer
     spec:
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: app
-                    operator: In
-                    values:
-                      - local
+      nodeSelector:
+        node-role.kubernetes.io/worker-cnf: ""
       serviceAccountName: sidecar-consumer-sa
       containers:
         - name: cloud-native-event-consumer
@@ -31,7 +23,7 @@ spec:
           args:
             - "--local-api-addr=127.0.0.1:9089"
             - "--api-path=/api/cloudNotifications/v1/"
-            - "--api-addr=127.0.0.1:8080"
+            - "--api-addr=127.0.0.1:8089"
           env:
             - name: NODE_NAME
               valueFrom:
@@ -46,8 +38,8 @@ spec:
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
-            - "--transport-host=amqp://amq-interconnect.amqp-interconnect.svc.cluster.local"
-            - "--api-port=8080"
+            - "--transport-host=amqp://router.amqp-interconnect.svc.cluster.local"
+            - "--api-port=8089"
           env:
             - name: NODE_NAME
               valueFrom:
