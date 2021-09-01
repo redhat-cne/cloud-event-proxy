@@ -133,10 +133,14 @@ func (l *LinuxPTPConfigMapUpdate) SetDefaultPTPThreshold(iface string) {
 
 // DeletePTPThreshold ... delete threshold for the interface
 func (l *LinuxPTPConfigMapUpdate) DeletePTPThreshold(iface string) {
-	if t, found := l.EventThreshold[iface]; found {
+	defer func() {
+		if err := recover(); err != nil {
+			log.Errorf("restored from delete ptp threshold")
+		}
+	}()
+	if _, found := l.EventThreshold[iface]; found {
 		l.lock.Lock()
 		defer l.lock.Unlock()
-		close(t.Close) // close any go routine associated with this threshold
 		delete(l.EventThreshold, iface)
 	}
 }
