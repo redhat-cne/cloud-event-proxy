@@ -1,4 +1,4 @@
-# github.com/Azure/go-amqp v0.12.7
+# github.com/Azure/go-amqp v0.13.13
 github.com/Azure/go-amqp
 github.com/Azure/go-amqp/internal/testconn
 # github.com/BurntSushi/toml v0.3.1
@@ -7,9 +7,9 @@ github.com/BurntSushi/toml
 github.com/beorn7/perks/quantile
 # github.com/cespare/xxhash/v2 v2.1.1
 github.com/cespare/xxhash/v2
-# github.com/cloudevents/sdk-go/protocol/amqp/v2 v2.3.1-0.20210302080936-5c462007a5d5
+# github.com/cloudevents/sdk-go/protocol/amqp/v2 v2.5.0
 github.com/cloudevents/sdk-go/protocol/amqp/v2
-# github.com/cloudevents/sdk-go/v2 v2.4.1
+# github.com/cloudevents/sdk-go/v2 v2.5.0
 ## explicit
 github.com/cloudevents/sdk-go/v2
 github.com/cloudevents/sdk-go/v2/binding
@@ -37,7 +37,7 @@ github.com/golang/protobuf/ptypes
 github.com/golang/protobuf/ptypes/any
 github.com/golang/protobuf/ptypes/duration
 github.com/golang/protobuf/ptypes/timestamp
-# github.com/google/uuid v1.2.0
+# github.com/google/uuid v1.3.0
 github.com/google/uuid
 # github.com/gorilla/mux v1.8.0
 github.com/gorilla/mux
@@ -69,11 +69,11 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/redhat-cne/rest-api v0.1.0
+# github.com/redhat-cne/rest-api v0.1.1-0.20210903140629-30bab22b44d5
 ## explicit
 github.com/redhat-cne/rest-api
 github.com/redhat-cne/rest-api/pkg/localmetrics
-# github.com/redhat-cne/sdk-go v0.1.0
+# github.com/redhat-cne/sdk-go v0.1.1-0.20210903133956-db900ea5e2cf
 ## explicit
 github.com/redhat-cne/sdk-go/pkg/channel
 github.com/redhat-cne/sdk-go/pkg/errorhandler

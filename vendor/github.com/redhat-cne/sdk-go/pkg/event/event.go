@@ -55,13 +55,12 @@ type Event struct {
 	DataContentType *string `json:"dataContentType" example:"application/json"`
 	// Time - A Timestamp when the event happened.
 	// +required
-	Time *types.Timestamp `json:"time,omitempty" example:"2021-02-05T17:31:00Z"`
+	Time *types.Timestamp `json:"time" example:"2021-02-05T17:31:00Z"`
 	// DataSchema - A link to the schema that the `Data` attribute adheres to.
 	// +optional
 	DataSchema *types.URI `json:"dataSchema,omitempty"`
-
-	Data *Data `json:"data,omitempty" `
 	// +required
+	Data *Data `json:"data" `
 }
 
 // String returns a pretty-printed representation of the Event.

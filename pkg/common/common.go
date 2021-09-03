@@ -228,5 +228,4 @@ func InitLogger() {
 	}
 	// set global log level
 	log.SetLevel(ll)
-	log.SetLevel(log.DebugLevel)
 }

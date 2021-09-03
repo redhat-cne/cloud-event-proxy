@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -76,6 +77,12 @@ func main() {
 	// Including these stats kills performance when Prometheus polls with multiple targets
 	prometheus.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	prometheus.Unregister(collectors.NewGoCollector())
+
+	nodeIP := os.Getenv("NODE_IP")
+	if nodeIP != "" {
+		amqpHost = strings.Replace(amqpHost, "NODE_IP", nodeIP, 1)
+		log.Infof("amqp host path is set to %s",amqpHost)
+	}
 
 	scConfig = &common.SCConfiguration{
 		EventInCh:  make(chan *channel.DataChan, channelBufferSize),

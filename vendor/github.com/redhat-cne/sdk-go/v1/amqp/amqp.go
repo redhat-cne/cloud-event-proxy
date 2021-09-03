@@ -114,7 +114,7 @@ func CreateListener(inChan chan<- *channel.DataChan, address string) {
 
 //CreateNewStatusListener send status address information  on a channel to create it's listener object
 func CreateNewStatusListener(inChan chan<- *channel.DataChan, address string,
-	onReceiveOverrideFn func(e cloudevents.Event,dataChan *channel.DataChan) error,
+	onReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error,
 	processEventFn func(e interface{}) error) {
 	// go ahead and create QDR listener to this address
 	inChan <- &channel.DataChan{
