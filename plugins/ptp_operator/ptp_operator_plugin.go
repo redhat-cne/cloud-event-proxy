@@ -167,14 +167,18 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 					if ptpConfig, ok := eventManager.Ptp4lConfigInterfaces[ptpConfigFileName]; ok {
 						for _, iface := range ptpConfig.Interfaces {
 							if t, ok := eventManager.PtpConfigMapUpdates.EventThreshold[iface.Name]; ok {
-								close(t.Close) // close any holdover go routines
+								// Make sure that the function does close the channel
+								select {
+								case <-t.Close:
+								default:
+									close(t.Close) // close any holdover go routines
+								}
 							}
 							eventManager.PublishEvent(cneEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, iface.Name, channel.PTPEvent)
 							ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, iface.Name, cneEvent.FREERUN)
 							ptpMetrics.UpdateDeletedPTPMetrics(iface.Name, phc2sysProcessName)
 							eventManager.DeleteStats(ptpTypes.IFace(iface.Name))
 							ptpMetrics.UpdateInterfaceRoleMetrics(ptp4lProcessName, iface.Name, ptpTypes.UNKNOWN)
-							eventManager.PtpConfigMapUpdates.DeletePTPThreshold(iface.Name)
 						}
 					}
 					eventManager.DeletePTPConfig(ptpConfigFileName)

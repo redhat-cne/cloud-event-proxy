@@ -15,7 +15,7 @@ spec:
         app: consumer
     spec:
       nodeSelector:
-        node-role.kubernetes.io/worker-cnf: ""
+        node-role.kubernetes.io/worker: ""
       serviceAccountName: sidecar-consumer-sa
       containers:
         - name: cloud-native-event-consumer
@@ -38,13 +38,17 @@ spec:
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
-            - "--transport-host=amqp://router.amqp-interconnect.svc.cluster.local"
+            - "--transport-host=amqp://router.router.svc.cluster.local"
             - "--api-port=8089"
           env:
             - name: NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: NODE_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.hostIP
           volumeMounts:
             - name: pubsubstore
               mountPath: /store

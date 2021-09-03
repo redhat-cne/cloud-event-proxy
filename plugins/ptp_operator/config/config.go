@@ -30,7 +30,8 @@ import (
 )
 
 var (
-	sectionHead = regexp.MustCompile(`\[([^\[\]]*)\]`)
+	sectionHead        = regexp.MustCompile(`\[([^\[\]]*)\]`)
+	ptpConfigFileRegEx = regexp.MustCompile(`ptp4l.[0-9]*.config`)
 )
 
 const (
@@ -103,17 +104,18 @@ func NewLinuxPTPConfUpdate() *LinuxPTPConfigMapUpdate {
 }
 
 // GetInterface ... return interfaces from configmap
-func (p *PtpProfile) GetInterface() []*string {
-	var interfaces []*string
+func (p *PtpProfile) GetInterface() (interfaces []*string) {
 	var singleInterface string
 	if p.Interface != nil {
 		singleInterface = *p.Interface
 		interfaces = append(interfaces, &singleInterface)
 	}
-	matches := sectionHead.FindAllStringSubmatch(*p.Ptp4lConf, -1)
-	for _, v := range matches {
-		if v[1] != ignorePtp4lSection && v[1] != singleInterface {
-			interfaces = append(interfaces, &v[1])
+	if p.Ptp4lConf != nil {
+		matches := sectionHead.FindAllStringSubmatch(*p.Ptp4lConf, -1)
+		for _, v := range matches {
+			if v[1] != ignorePtp4lSection && v[1] != singleInterface && !ptpConfigFileRegEx.MatchString(v[1]) {
+				interfaces = append(interfaces, &v[1])
+			}
 		}
 	}
 	return interfaces
@@ -138,9 +140,14 @@ func (l *LinuxPTPConfigMapUpdate) DeletePTPThreshold(iface string) {
 			log.Errorf("restored from delete ptp threshold")
 		}
 	}()
-	if _, found := l.EventThreshold[iface]; found {
+	if t, found := l.EventThreshold[iface]; found {
 		l.lock.Lock()
 		defer l.lock.Unlock()
+		select {
+		case <-t.Close:
+		default:
+			close(t.Close) // close any holdover go routines
+		}
 		delete(l.EventThreshold, iface)
 	}
 }

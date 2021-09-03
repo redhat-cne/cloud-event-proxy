@@ -9,3 +9,4 @@ cover.out
 recordings
 .vscode
 .idea
+*.env
