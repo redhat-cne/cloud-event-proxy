@@ -168,7 +168,7 @@ import (
 
 v1amqp.CreateListener(eventInCh, sub.GetResource())
 ```
-### Events
+### PTP Events
 The following example shows a Cloud Native Events serialized as JSON:
 (Following json should be validated with Cloud native events' event_spec.json schema)
 
