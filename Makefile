@@ -82,12 +82,12 @@ test:
 
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
 deploy-example:kustomize
-	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-proxy=${SIDECAR_IMG} && $(KUSTOMIZE) edit set image && $(KUSTOMIZE) edit set image  cloud-native-event-consumer=${CONSUMER_IMG}
+	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-proxy=${SIDECAR_IMG} && $(KUSTOMIZE) edit set image cloud-native-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl apply -f -
 
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
 undeploy-example:kustomize
-	cd ./examples/manifests  && $(KUSTOMIZE) edit set image cloud-event-proxy=${SIDECAR_IMG} && $(KUSTOMIZE) edit set image  && $(KUSTOMIZE) edit set image  cloud-native-event-consumer=${CONSUMER_IMG}
+	cd ./examples/manifests  && $(KUSTOMIZE) edit set image cloud-event-proxy=${SIDECAR_IMG} && $(KUSTOMIZE) edit set image cloud-native-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl delete -f -
 
 # For GitHub Actions CI

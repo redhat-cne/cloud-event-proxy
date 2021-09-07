@@ -11,6 +11,7 @@ require (
 	github.com/redhat-cne/sdk-go v0.1.1-0.20210903133956-db900ea5e2cf
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
+	github.com/valyala/fasthttp v1.29.0
 	golang.org/x/lint v0.0.0-20210508222113-6edffad5e616 // indirect
 	golang.org/x/net v0.0.0-20210726213435-c6fcb2dbf985
 	golang.org/x/sys v0.0.0-20210809222454-d867a43fc93e // indirect

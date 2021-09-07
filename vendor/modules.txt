@@ -3,6 +3,8 @@ github.com/Azure/go-amqp
 github.com/Azure/go-amqp/internal/testconn
 # github.com/BurntSushi/toml v0.3.1
 github.com/BurntSushi/toml
+# github.com/andybalholm/brotli v1.0.2
+github.com/andybalholm/brotli
 # github.com/beorn7/perks v1.0.1
 github.com/beorn7/perks/quantile
 # github.com/cespare/xxhash/v2 v2.1.1
@@ -43,6 +45,10 @@ github.com/google/uuid
 github.com/gorilla/mux
 # github.com/json-iterator/go v1.1.11
 github.com/json-iterator/go
+# github.com/klauspost/compress v1.13.4
+github.com/klauspost/compress/flate
+github.com/klauspost/compress/gzip
+github.com/klauspost/compress/zlib
 # github.com/matttproud/golang_protobuf_extensions v1.0.1
 github.com/matttproud/golang_protobuf_extensions/pbutil
 # github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
@@ -97,6 +103,13 @@ github.com/sirupsen/logrus
 # github.com/stretchr/testify v1.7.0
 ## explicit
 github.com/stretchr/testify/assert
+# github.com/valyala/bytebufferpool v1.0.0
+github.com/valyala/bytebufferpool
+# github.com/valyala/fasthttp v1.29.0
+## explicit
+github.com/valyala/fasthttp
+github.com/valyala/fasthttp/fasthttputil
+github.com/valyala/fasthttp/stackless
 # go.uber.org/atomic v1.5.0
 go.uber.org/atomic
 # go.uber.org/multierr v1.3.0
