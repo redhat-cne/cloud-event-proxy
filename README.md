@@ -106,15 +106,15 @@ func main(){
 Cloud-Event-Proxy container running with rest api plugin will be running a webservice and exposing following end points.
 ```html
 
-POST /api/ocloudNotifications/v1/subscriptions
-POST /api/ocloudNotifications/v1/publishers
-GET /api/ocloudNotifications/v1/subscriptions
-GET /api/ocloudNotifications/v1/publishers
-GET /api/ocloudNotifications/v1/subscriptions/$subscriptionid
-GET /api/ocloudNotifications/v1/publishers/$publisherid
-GET /api/ocloudNotifications/v1/health
-POST /api/ocloudNotifications/v1/log
-POST /api/ocloudNotifications/v1/create/event
+POST /api/cloudNotifications/v1/subscriptions
+POST /api/cloudNotifications/v1/publishers
+GET /api/cloudNotifications/v1/subscriptions
+GET /api/cloudNotifications/v1/publishers
+GET /api/cloudNotifications/v1/subscriptions/$subscriptionid
+GET /api/cloudNotifications/v1/publishers/$publisherid
+GET /api/cloudNotifications/v1/health
+POST /api/cloudNotifications/v1/log
+POST /api/cloudNotifications/v1/create/event
 
 ```
 #### Code snippet to create pub/sub
