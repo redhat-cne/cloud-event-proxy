@@ -154,40 +154,44 @@ func (l *LinuxPTPConfigMapUpdate) DeletePTPThreshold(iface string) {
 
 // UpdatePTPThreshold .. update ptp threshold
 func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
+	var maxOffsetTh, minOffsetTh, holdOverTh int64
 	for _, profile := range l.NodeProfiles {
+		if profile.PtpClockThreshold.MaxOffsetThreshold > 0 { // has to be greater than 0 nano secs
+			maxOffsetTh = profile.PtpClockThreshold.MaxOffsetThreshold
+		} else {
+			maxOffsetTh = maxOffsetThreshold
+			log.Infof("maxOffsetThreshold %d has to be > 0, now set to default %d", profile.PtpClockThreshold.MaxOffsetThreshold, maxOffsetThreshold)
+		}
+		if profile.PtpClockThreshold.MinOffsetThreshold > maxOffsetTh {
+			minOffsetTh = maxOffsetTh - 1 // make it one nano secs less than max
+			log.Infof("minOffsetThreshold %d has to be < %d (maxOffsetThreshold), minOffsetThreshold now set to one less than maxOffsetThreshold %d",
+				profile.PtpClockThreshold.MinOffsetThreshold, maxOffsetTh, minOffsetTh)
+		} else {
+			minOffsetTh = profile.PtpClockThreshold.MinOffsetThreshold
+		}
+		if profile.PtpClockThreshold.HoldOverTimeout <= 0 { //secs can't be negative or zero
+			holdOverTh = holdoverTimeout
+			log.Infof("invalid holdOverTimeout %d in secs, setting to default %d holdOverTimeout", profile.PtpClockThreshold.HoldOverTimeout, holdoverTimeout)
+		} else {
+			holdOverTh = profile.PtpClockThreshold.HoldOverTimeout
+		}
+
 		for _, iface := range profile.Interfaces {
-			if _, found := l.EventThreshold[*iface]; !found {
-				l.SetDefaultPTPThreshold(*iface)
-			}
 			if profile.PtpClockThreshold == nil {
 				l.SetDefaultPTPThreshold(*iface)
 				continue
 			}
-			threshold := l.EventThreshold[*iface]
-			if profile.PtpClockThreshold.MaxOffsetThreshold > 0 { // has to be greater than 0 nano secs
-				threshold.MaxOffsetThreshold = profile.PtpClockThreshold.MaxOffsetThreshold
-			} else {
-				threshold.MaxOffsetThreshold = maxOffsetThreshold
-				log.Infof("maxOffsetThreshold %d has to be > 0, now set to default %d", profile.PtpClockThreshold.MaxOffsetThreshold, maxOffsetThreshold)
+			l.EventThreshold[*iface] = &PtpClockThreshold{
+				HoldOverTimeout:    holdOverTh,
+				MaxOffsetThreshold: maxOffsetTh,
+				MinOffsetThreshold: minOffsetTh,
+				Close:              make(chan struct{}),
 			}
-			if profile.PtpClockThreshold.MinOffsetThreshold > threshold.MaxOffsetThreshold {
-				threshold.MinOffsetThreshold = threshold.MaxOffsetThreshold - 1 // make it one nano secs less than max
-				log.Infof("minOffsetThreshold %d has to be < %d (maxOffsetThreshold), minOffsetThreshold now set to one less than maxOffsetThreshold %d",
-					profile.PtpClockThreshold.MinOffsetThreshold, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
-			} else {
-				threshold.MinOffsetThreshold = profile.PtpClockThreshold.MinOffsetThreshold
-			}
-			if profile.PtpClockThreshold.HoldOverTimeout <= 0 { //secs can't be negative or zero
-				threshold.HoldOverTimeout = holdoverTimeout
-				log.Infof("invalid holdOverTimeout %d in secs, setting to default %d holdOverTimeout", profile.PtpClockThreshold.HoldOverTimeout, holdoverTimeout)
-			} else {
-				threshold.HoldOverTimeout = profile.PtpClockThreshold.HoldOverTimeout
-			}
+
 			log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
-				*iface, threshold.HoldOverTimeout, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
+				*iface, holdOverTh, maxOffsetTh, minOffsetTh)
 		}
 	}
-
 }
 
 // UpdateConfig ... update profile
@@ -247,42 +251,45 @@ func tryToLoadOldConfig(nodeProfilesJSON []byte) ([]PtpProfile, bool) {
 		log.Errorf("error reading nodeprofile %s", err)
 		return nil, false
 	}
-
 	return []PtpProfile{*ptpConfig}, true
 }
 
 // WatchConfigMapUpdate watch for ptp config update
 func (l *LinuxPTPConfigMapUpdate) WatchConfigMapUpdate(nodeName string, closeCh chan struct{}) {
+	l.updatePtpConfig(nodeName)
 	tickerPull := time.NewTicker(time.Duration(l.intervalUpdate) * time.Second)
 	defer tickerPull.Stop()
 	for {
 		select {
 		case <-tickerPull.C:
 			log.Info("ticker pull for ptp profile updates")
-			nodeProfile := filepath.Join(l.profilePath, nodeName)
-			if _, err := os.Stat(nodeProfile); err != nil {
-				if os.IsNotExist(err) {
-					log.Infof("ptp profile doesn't exist for node: %v", nodeName)
-					l.UpdateCh <- true // if profile doesn't exist let the caller know
-					continue
-				} else {
-					log.Errorf("error stating node profile %v: %v", nodeName, err)
-					continue
-				}
-			}
-			nodeProfilesJSON, err := ioutil.ReadFile(nodeProfile)
-			if err != nil {
-				log.Errorf("error reading node profile: %v", nodeProfile)
-				continue
-			}
-			err = l.UpdateConfig(nodeProfilesJSON)
-			if err != nil {
-				log.Errorf("error updating the node configuration using the profiles loaded: %v", err)
-			}
+			l.updatePtpConfig(nodeName)
 		case <-closeCh:
 			log.Info("signal received, shutting down")
 			return
 		}
+	}
+}
+
+func (l *LinuxPTPConfigMapUpdate) updatePtpConfig(nodeName string) {
+	nodeProfile := filepath.Join(l.profilePath, nodeName)
+	if _, err := os.Stat(nodeProfile); err != nil {
+		if os.IsNotExist(err) {
+			log.Infof("ptp profile doesn't exist for node: %v", nodeName)
+			l.UpdateCh <- true // if profile doesn't exist let the caller know
+			return
+		}
+		log.Errorf("error stating node profile %v: %v", nodeName, err)
+		return
+	}
+	nodeProfilesJSON, err := ioutil.ReadFile(nodeProfile)
+	if err != nil {
+		log.Errorf("error reading node profile: %v", nodeProfile)
+		return
+	}
+	err = l.UpdateConfig(nodeProfilesJSON)
+	if err != nil {
+		log.Errorf("error updating the node configuration using the profiles loaded: %v", err)
 	}
 }
 
