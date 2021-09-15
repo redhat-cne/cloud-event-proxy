@@ -17,6 +17,7 @@ spec:
       nodeSelector:
         node-role.kubernetes.io/worker: ""
       serviceAccountName: sidecar-consumer-sa
+      dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: cloud-native-event-consumer
           image: quay.io/aneeshkp/cloud-native-event-consumer
