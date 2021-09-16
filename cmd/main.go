@@ -81,7 +81,7 @@ func main() {
 	nodeIP := os.Getenv("NODE_IP")
 	if nodeIP != "" {
 		amqpHost = strings.Replace(amqpHost, "NODE_IP", nodeIP, 1)
-		log.Infof("amqp host path is set to %s",amqpHost)
+		log.Infof("amqp host path is set to %s", amqpHost)
 	}
 
 	scConfig = &common.SCConfiguration{

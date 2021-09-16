@@ -239,7 +239,6 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 					}
 				}
 				if publishStatus {
-					log.Infof(" publishing event for %s with clock state %s and offset %d", string(i), s.SyncState(), s.Offset())
 					eventManager.PublishEvent(s.SyncState(), s.Offset(), string(i), "PTP_STATUS")
 				}
 			}
