@@ -106,7 +106,7 @@ func NewLinuxPTPConfUpdate() *LinuxPTPConfigMapUpdate {
 // GetInterface ... return interfaces from configmap
 func (p *PtpProfile) GetInterface() (interfaces []*string) {
 	var singleInterface string
-	if p.Interface != nil && *p.Interface!="" {
+	if p.Interface != nil && *p.Interface != "" {
 		singleInterface = *p.Interface
 		interfaces = append(interfaces, &singleInterface)
 	}
