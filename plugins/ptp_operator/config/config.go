@@ -156,16 +156,14 @@ func (l *LinuxPTPConfigMapUpdate) DeletePTPThreshold(iface string) {
 func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 	var maxOffsetTh, minOffsetTh, holdOverTh int64
 	for _, profile := range l.NodeProfiles {
-		if profile.PtpClockThreshold == nil {
-			holdOverTh = holdoverTimeout
-			maxOffsetTh = maxOffsetThreshold
-			minOffsetTh = minOffsetThreshold
-		} else {
+		holdOverTh = holdoverTimeout
+		maxOffsetTh = maxOffsetThreshold
+		minOffsetTh = minOffsetThreshold
+		if profile.PtpClockThreshold != nil {
 			if profile.PtpClockThreshold.MaxOffsetThreshold > 0 { // has to be greater than 0 nano secs
 				maxOffsetTh = profile.PtpClockThreshold.MaxOffsetThreshold
 			} else {
-				maxOffsetTh = maxOffsetThreshold
-				log.Infof("maxOffsetThreshold %d has to be > 0, now set to default %d", profile.PtpClockThreshold.MaxOffsetThreshold, maxOffsetThreshold)
+				log.Infof("maxOffsetThreshold %d has to be > 0, now set to default %d", profile.PtpClockThreshold.MaxOffsetThreshold, maxOffsetTh)
 			}
 			if profile.PtpClockThreshold.MinOffsetThreshold > maxOffsetTh {
 				minOffsetTh = maxOffsetTh - 1 // make it one nano secs less than max
@@ -174,11 +172,10 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 			} else {
 				minOffsetTh = profile.PtpClockThreshold.MinOffsetThreshold
 			}
-			if profile.PtpClockThreshold.HoldOverTimeout <= 0 { //secs can't be negative or zero
-				holdOverTh = holdoverTimeout
-				log.Infof("invalid holdOverTimeout %d in secs, setting to default %d holdOverTimeout", profile.PtpClockThreshold.HoldOverTimeout, holdoverTimeout)
-			} else {
+			if profile.PtpClockThreshold.HoldOverTimeout > 0 { //secs can't be negative or zero
 				holdOverTh = profile.PtpClockThreshold.HoldOverTimeout
+			} else {
+				log.Infof("invalid holdOverTimeout %d in secs, setting to default %d holdOverTimeout", profile.PtpClockThreshold.HoldOverTimeout, holdOverTh)
 			}
 		}
 
