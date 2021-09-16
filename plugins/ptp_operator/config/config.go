@@ -180,7 +180,7 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 		}
 
 		for _, iface := range profile.Interfaces {
-			if *iface != "" {
+			if iface != nil && *iface != "" {
 				l.EventThreshold[*iface] = &PtpClockThreshold{
 					HoldOverTimeout:    holdOverTh,
 					MaxOffsetThreshold: maxOffsetTh,
