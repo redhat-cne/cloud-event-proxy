@@ -106,7 +106,7 @@ func NewLinuxPTPConfUpdate() *LinuxPTPConfigMapUpdate {
 // GetInterface ... return interfaces from configmap
 func (p *PtpProfile) GetInterface() (interfaces []*string) {
 	var singleInterface string
-	if p.Interface != nil {
+	if p.Interface != nil && *p.Interface!="" {
 		singleInterface = *p.Interface
 		interfaces = append(interfaces, &singleInterface)
 	}
@@ -180,15 +180,16 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 		}
 
 		for _, iface := range profile.Interfaces {
-			l.EventThreshold[*iface] = &PtpClockThreshold{
-				HoldOverTimeout:    holdOverTh,
-				MaxOffsetThreshold: maxOffsetTh,
-				MinOffsetThreshold: minOffsetTh,
-				Close:              make(chan struct{}),
+			if *iface != "" {
+				l.EventThreshold[*iface] = &PtpClockThreshold{
+					HoldOverTimeout:    holdOverTh,
+					MaxOffsetThreshold: maxOffsetTh,
+					MinOffsetThreshold: minOffsetTh,
+					Close:              make(chan struct{}),
+				}
+				log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
+					*iface, holdOverTh, maxOffsetTh, minOffsetTh)
 			}
-
-			log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
-				*iface, holdOverTh, maxOffsetTh, minOffsetTh)
 		}
 	}
 }
