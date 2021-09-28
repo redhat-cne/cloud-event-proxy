@@ -168,11 +168,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 						for _, iface := range ptpConfig.Interfaces {
 							if t, ok := eventManager.PtpConfigMapUpdates.EventThreshold[iface.Name]; ok {
 								// Make sure that the function does close the channel
-								select {
-								case <-t.Close:
-								default:
-									close(t.Close) // close any holdover go routines
-								}
+								t.SafeClose()
 							}
 							eventManager.PublishEvent(cneEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, iface.Name, channel.PTPEvent)
 							ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, iface.Name, cneEvent.FREERUN)

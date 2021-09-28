@@ -68,6 +68,23 @@ type PtpClockThreshold struct {
 	Close chan struct{} `json:"close,omitempty"`
 }
 
+//SafeClose ... handle close channel
+func (pt *PtpClockThreshold) SafeClose() (justClosed bool) {
+	defer func() {
+		if recover() != nil {
+			// The return result can be altered
+			// in a defer function call.
+			justClosed = false
+		}
+	}()
+	select {
+	case <-pt.Close:
+	default:
+		close(pt.Close) // close any holdover go routines
+	}
+	return true // <=> justClosed = true; return
+}
+
 // LinuxPTPConfigMapUpdate for ptp-conf update
 type LinuxPTPConfigMapUpdate struct {
 	lock                   sync.RWMutex
