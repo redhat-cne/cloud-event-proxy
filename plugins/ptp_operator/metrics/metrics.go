@@ -475,7 +475,11 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			iface := ptpInterface.Name
 			ifaceType := types.IFace(ptpInterface.Name)
 
-			if ptpInterface.Role != role {
+			if _, found := p.Stats[ifaceType]; !found {
+				p.Stats[ifaceType] = NewStats(configName)
+			}
+
+			if lastRole != role {
 				if lastRole == types.FAULTY { // cancel any HOLDOVER timeout
 					if t, ok := p.PtpConfigMapUpdates.EventThreshold[iface]; ok {
 						log.Infof("interface %s is not anymore faulty, cancel holdover", iface)
@@ -492,9 +496,6 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			}
 			if syncState == "" {
 				return
-			}
-			if _, found := p.Stats[ifaceType]; !found {
-				p.Stats[ifaceType] = NewStats(configName)
 			}
 
 			lastSyncState := p.Stats[ifaceType].lastSyncState
@@ -555,7 +556,7 @@ func (p *PTPEventManager) GenPhc2SysEvent(iface string, ifaceType types.IFace, o
 	case ceevent.LOCKED:
 		switch lastClockState {
 		case ceevent.FREERUN: //last state was already sent for FreeRUN , but if its within then send again with new state
-			if offsetFromMaster < threshold.MaxOffsetThreshold && offsetFromMaster > threshold.MinOffsetThreshold { // within range
+			if isOffsetInRange(offsetFromMaster, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) { // within range
 				log.Infof(" publishing event for %s with last state %s and current clock state %s and offset %d", iface, p.Stats[ifaceType].lastSyncState, clockState, offsetFromMaster)
 				p.PublishEvent(clockState, offsetFromMaster, string(ifaceType), channel.PTPEvent) // change to locked
 				p.Stats[ifaceType].lastSyncState = clockState
@@ -563,20 +564,21 @@ func (p *PTPEventManager) GenPhc2SysEvent(iface string, ifaceType types.IFace, o
 				p.Stats[ifaceType].addValue(int64(offsetFromMaster)) // update off set when its in locked state and hold over only
 			}
 		case ceevent.LOCKED: // last state was in sync , check if it is out of sync now
-			if offsetFromMaster > threshold.MaxOffsetThreshold || offsetFromMaster < threshold.MinOffsetThreshold { // out of sync
+			if isOffsetInRange(offsetFromMaster, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
+				p.Stats[ifaceType].lastOffset = int64(offsetFromMaster)
+				p.Stats[ifaceType].addValue(int64(offsetFromMaster)) // update off set when its in locked state and hold over only
+			} else {
 				log.Infof(" publishing event for %s with last state %s and current clock state %s and offset %d", iface, p.Stats[ifaceType].lastSyncState, clockState, offsetFromMaster)
 				p.PublishEvent(ceevent.FREERUN, offsetFromMaster, string(ifaceType), channel.PTPEvent)
 				p.Stats[ifaceType].lastSyncState = ceevent.FREERUN
 				p.Stats[ifaceType].lastOffset = int64(offsetFromMaster)
-			} else {
-				p.Stats[ifaceType].lastOffset = int64(offsetFromMaster)
-				p.Stats[ifaceType].addValue(int64(offsetFromMaster)) // update off set when its in locked state and hold over only
 			}
+
 		case ceevent.HOLDOVER:
 			//do nothing , the time out will switch holdover to FREERUN
 		default: // not yet used states
 			log.Warnf("unknown %s sync state %s ,has last ptp state %s", ifaceType, clockState, lastClockState)
-			if offsetFromMaster > threshold.MaxOffsetThreshold || offsetFromMaster < threshold.MinOffsetThreshold {
+			if !isOffsetInRange(offsetFromMaster, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
 				clockState = ceevent.FREERUN
 			}
 			log.Infof(" publishing event for %s with last state %s and current clock state %s and offset %d", iface, p.Stats[ifaceType].lastSyncState, clockState, offsetFromMaster)
@@ -907,4 +909,13 @@ func FindInLogForCfgFileIndex(out string) int {
 		return match[0]
 	}
 	return -1
+}
+
+func isOffsetInRange(offsetFromMaster, maxOffsetThreshold, minOffsetThreshold int64) bool {
+	if offsetFromMaster < maxOffsetThreshold && offsetFromMaster > minOffsetThreshold {
+		return true
+	} else if offsetFromMaster > maxOffsetThreshold || offsetFromMaster < minOffsetThreshold {
+		return false
+	}
+	return false
 }
