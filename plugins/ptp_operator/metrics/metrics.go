@@ -478,8 +478,11 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			if _, found := p.Stats[ifaceType]; !found {
 				p.Stats[ifaceType] = NewStats(configName)
 			}
-
 			if lastRole != role {
+				/*
+				   If role changes from FAULTY to SLAVE/PASSIVE/MASTER , then cancel HOLDOVER timer
+				    and publish metrics
+				*/
 				if lastRole == types.FAULTY { // cancel any HOLDOVER timeout
 					if t, ok := p.PtpConfigMapUpdates.EventThreshold[iface]; ok {
 						log.Infof("interface %s is not anymore faulty, cancel holdover", iface)
@@ -494,13 +497,10 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				// update role metrics
 				UpdateInterfaceRoleMetrics(processName, iface, role)
 			}
-			if syncState == "" {
-				return
-			}
 
-			lastSyncState := p.Stats[ifaceType].lastSyncState
-
-			if syncState != lastSyncState && syncState == ceevent.HOLDOVER {
+			//Enter the HOLDOVER state: If current sycState is HOLDOVER(Role is at FAULTY) ,then spawn a go routine to hold the state until
+			// holdover timeout
+			if syncState != "" && syncState != p.Stats[ifaceType].lastSyncState && syncState == ceevent.HOLDOVER {
 				p.Stats[ifaceType].lastSyncState = syncState
 				p.PublishEvent(syncState, p.Stats[ifaceType].lastOffset, iface, channel.PTPEvent)
 				UpdateSyncStateMetrics(phc2sysProcessName, iface, syncState)
@@ -872,7 +872,7 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 	fields := strings.Fields(output)
 	//port 1: delay timeout
 	if len(fields) < 2 {
-		log.Errorf("failed to parse output %s: unexpected number of fields", output)
+		log.Infof("failed to parse output %s: unexpected number of fields", output)
 		return
 	}
 
