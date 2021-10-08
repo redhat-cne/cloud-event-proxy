@@ -134,7 +134,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 								eventManager.PublishEvent(cneEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, ifaces.Name, channel.PTPEvent)
 								ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, ifaces.Name, cneEvent.FREERUN)
 								ptpMetrics.UpdateDeletedPTPMetrics(ifaces.Name, phc2sysProcessName)
-								eventManager.DeleteStats(ptpTypes.IFace(ifaces.Name))
+								eventManager.DeleteStats(ptpConfigFileName, ptpTypes.IFace(ifaces.Name))
 								eventManager.PtpConfigMapUpdates.DeletePTPThreshold(ifaces.Name)
 								ptpMetrics.UpdateInterfaceRoleMetrics(ptp4lProcessName, ifaces.Name, ptpTypes.UNKNOWN)
 							}
@@ -173,7 +173,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 							eventManager.PublishEvent(cneEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, iface.Name, channel.PTPEvent)
 							ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, iface.Name, cneEvent.FREERUN)
 							ptpMetrics.UpdateDeletedPTPMetrics(iface.Name, phc2sysProcessName)
-							eventManager.DeleteStats(ptpTypes.IFace(iface.Name))
+							eventManager.DeleteStats(ptpConfigFileName, ptpTypes.IFace(iface.Name))
 							ptpMetrics.UpdateInterfaceRoleMetrics(ptp4lProcessName, iface.Name, ptpTypes.UNKNOWN)
 						}
 					}
@@ -196,9 +196,11 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 				log.Infof("updating ptp profile changes %d", len(eventManager.PtpConfigMapUpdates.NodeProfiles))
 				//clean up
 				if len(eventManager.PtpConfigMapUpdates.NodeProfiles) == 0 {
-					for iface := range eventManager.Stats {
-						eventManager.DeleteStats(iface)
-						eventManager.PtpConfigMapUpdates.DeletePTPThreshold(string(iface))
+					for cfg, ifaces := range eventManager.Stats {
+						for i := range ifaces {
+							eventManager.PtpConfigMapUpdates.DeletePTPThreshold(string(i))
+							eventManager.DeleteStats(cfg, i)
+						}
 					}
 				} else {
 					//updates
@@ -226,16 +228,18 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 			eventManager.PublishEvent(event.FREERUN, 0, "ptp-not-set", "PTP_STATUS")
 		} else {
 			var publishStatus bool
-			for i, s := range eventManager.Stats {
+			for c, ifaces := range eventManager.Stats {
 				publishStatus = true // do not publish status for current slave interface
-				// CLOCK_REALTIME  data will be published instead
-				if e, ok := eventManager.Ptp4lConfigInterfaces[ptpTypes.ConfigName(s.ConfigName())]; ok {
-					if iface, err := e.ByRole(ptpTypes.SLAVE); err == nil && string(i) == iface.Name { //skip SLAVE status
-						publishStatus = false //CLOCK_REALTIME stats will be published instead
+				for i, s := range ifaces {
+					// CLOCK_REALTIME  data will be published instead
+					if e, ok := eventManager.Ptp4lConfigInterfaces[c]; ok {
+						if iface, err := e.ByRole(ptpTypes.SLAVE); err == nil && string(i) == iface.Name { //skip SLAVE status
+							publishStatus = false //CLOCK_REALTIME stats will be published instead
+						}
 					}
-				}
-				if publishStatus {
-					eventManager.PublishEvent(s.SyncState(), s.Offset(), string(i), "PTP_STATUS")
+					if publishStatus {
+						eventManager.PublishEvent(s.SyncState(), s.Offset(), string(i), "PTP_STATUS")
+					}
 				}
 			}
 		}
