@@ -15,6 +15,8 @@
 package event
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -66,21 +68,38 @@ type Event struct {
 // String returns a pretty-printed representation of the Event.
 func (e Event) String() string {
 	b := strings.Builder{}
-	b.WriteString("  id: " + e.ID + "\n")
-	b.WriteString("  type: " + e.Type + "\n")
+	b.WriteString("  id: " + e.ID + "\r\n")
+	b.WriteString("  type: " + e.Type + "\r\n")
 	if e.Time != nil {
-		b.WriteString("  time: " + e.Time.String() + "\n")
+		b.WriteString("  time: " + e.Time.String() + "\r\n")
 	}
 
-	b.WriteString("  data: \n")
-	b.WriteString("  version: " + e.Data.Version + "\n")
-	b.WriteString("  values: \n")
+	b.WriteString("  data: \r\n")
+	b.WriteString("  version: " + e.Data.Version + "\r\n")
+	b.WriteString("  values: \r\n")
 	for _, v := range e.Data.Values {
-		b.WriteString("  value type : " + string(v.ValueType) + "\n")
-		b.WriteString("  data type : " + string(v.DataType) + "\n")
-		b.WriteString("  value : " + fmt.Sprintf("%v", v.Value) + "\n")
-		b.WriteString("  resource: " + v.GetResource() + "\n")
+		b.WriteString("  value type : " + string(v.ValueType) + "\r\n")
+		b.WriteString("  data type : " + string(v.DataType) + "\r\n")
+		b.WriteString("  value : " + fmt.Sprintf("%v", v.Value) + "\r\n")
+		b.WriteString("  resource: " + v.GetResource() + "\r\n")
 	}
+
+	return b.String()
+}
+
+// JSONString returns a pretty-printed representation of the Event.
+func (e Event) JSONString() string {
+	b := strings.Builder{}
+	var prettyJSON bytes.Buffer
+	eBytes, err := json.Marshal(e)
+	if err != nil {
+		return e.String()
+	}
+	err = json.Indent(&prettyJSON, eBytes, "  ", "  ")
+	if err != nil {
+		return e.String()
+	}
+	b.Write(prettyJSON.Bytes())
 
 	return b.String()
 }

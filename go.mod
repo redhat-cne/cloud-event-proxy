@@ -8,7 +8,7 @@ require (
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/prometheus/client_golang v1.11.0
 	github.com/redhat-cne/rest-api v0.1.1-0.20210903140629-30bab22b44d5
-	github.com/redhat-cne/sdk-go v0.1.1-0.20210903133956-db900ea5e2cf
+	github.com/redhat-cne/sdk-go v0.1.1-0.20210927021319-526cc32c66ed
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	github.com/valyala/fasthttp v1.29.0
