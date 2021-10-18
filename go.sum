@@ -147,6 +147,8 @@ github.com/redhat-cne/rest-api v0.1.1-0.20210903140629-30bab22b44d5 h1:RnGRD4Fce
 github.com/redhat-cne/rest-api v0.1.1-0.20210903140629-30bab22b44d5/go.mod h1:6J4nfhAebvhSjRKXNdepF6q9w3MM5WBfGPXwoO3VF8E=
 github.com/redhat-cne/sdk-go v0.1.1-0.20210903133956-db900ea5e2cf h1:TAOMcSBOVpb0mXB+imRHohaW3bS2po9b173DzoLh+MU=
 github.com/redhat-cne/sdk-go v0.1.1-0.20210903133956-db900ea5e2cf/go.mod h1:pXW8dkRq39/YFrrcYHziMc/9p8OWFIzrWLXDV2i3+lI=
+github.com/redhat-cne/sdk-go v0.1.1-0.20210927021319-526cc32c66ed h1:soN2DkaIDe2jXRX1KXSl0FJ3IxiyChj5ly+qtZ3njMI=
+github.com/redhat-cne/sdk-go v0.1.1-0.20210927021319-526cc32c66ed/go.mod h1:pXW8dkRq39/YFrrcYHziMc/9p8OWFIzrWLXDV2i3+lI=
 github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
 github.com/sirupsen/logrus v1.2.0/go.mod h1:LxeOpSwHxABJmUn/MG1IvRgCAasNZTLOkJPxbbu5VWo=
 github.com/sirupsen/logrus v1.4.2/go.mod h1:tLMulIdttU9McNUspp0xgXVQah82FyeX6MwdIuYE2rE=

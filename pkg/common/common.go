@@ -180,7 +180,7 @@ func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error
 		Data:    ceEvent,
 		Address: pub.GetResource(),
 	}
-	log.Debugf("event sent %s", cneEvent.String())
+	log.Debugf("event sent %s", cneEvent.JSONString())
 	localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.SUCCESS, 1)
 	return nil
 
