@@ -391,9 +391,19 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				frequencyAdjustment, delayFromMaster)
 		case MasterClockType: // this ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay
 			p.GenPhc2SysEvent(ptpStats[interfaceType], interfaceName, interfaceType, int64(offsetFromMaster), syncState)
-			UpdateSyncStateMetrics(processName, interfaceName, ptpStats[interfaceType].GetLastSyncState())
-			UpdatePTPMasterMetrics(processName, interfaceName, offsetFromMaster, float64(ptpStats[interfaceType].GetMaxAbs()),
+			// Report events for master  by masking the index  number of the slave interface
+			if ptpInterface, err = ptp4lCfg.ByRole(types.SLAVE); err == nil {
+				r:=[]rune(ptpInterface.Name)
+				ptpInterface.Name=string(r[:len(r)-1]) + "x"
+
+			}
+			p.GenPhc2SysEvent(ptpStats[interfaceType], ptpInterface.Name, interfaceType, int64(offsetFromMaster), syncState)
+			UpdateSyncStateMetrics(processName, ptpInterface.Name, ptpStats[interfaceType].GetLastSyncState())
+			UpdatePTPMasterMetrics(processName, ptpInterface.Name, offsetFromMaster, float64(ptpStats[interfaceType].GetMaxAbs()),
 				frequencyAdjustment, delayFromMaster)
+
+			ptpStats[interfaceType].AddValue(int64(offsetFromMaster))
+
 		default:
 			if ptpInterface, err = ptp4lCfg.ByInterface(interfaceName); err != nil {
 				log.Error(err)
