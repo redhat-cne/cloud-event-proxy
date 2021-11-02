@@ -50,6 +50,11 @@ const (
 	// from the logs
 	offset = "offset"
 	rms    = "rms"
+
+	// offset source
+	phc    = "phc"
+	sys    = "sys"
+	master = "master"
 )
 
 var (
@@ -384,13 +389,13 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		interfaceName, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster := extractSummaryMetrics(processName, output)
 		switch interfaceName {
 		case ClockRealTime:
-			UpdatePTPMetrics("phc", processName, interfaceName, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
+			UpdatePTPMetrics(phc, processName, interfaceName, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
 		case MasterClockType:
-			UpdatePTPMetrics("master", processName, interfaceName, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
+			UpdatePTPMetrics(master, processName, interfaceName, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
 		case "":
 			//do nothing
 		default:
-			UpdatePTPMetrics("sys", processName, interfaceName, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
+			UpdatePTPMetrics(sys, processName, interfaceName, offsetFromMaster, maxOffsetFromMaster, frequencyAdjustment, delayFromMaster)
 		}
 	} else if strings.Contains(output, " offset ") {
 		//ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay    374976
@@ -402,11 +407,11 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		if interfaceName == "" {
 			return // don't do if iface not known
 		}
-		offsetSource := MasterClockType
+		offsetSource := master
 		if strings.Contains(output, "sys offset") {
-			offsetSource = "system"
+			offsetSource =  sys
 		} else if strings.Contains(output, "phc offset") {
-			offsetSource = "phc"
+			offsetSource = phc
 		}
 
 		interfaceType := types.IFace(interfaceName)
@@ -653,7 +658,7 @@ func (p *PTPEventManager) PublishEvent(state ceevent.SyncState, offsetFromMaster
 // UpdatePTPMetrics ...
 func UpdatePTPMetrics(metricsType, process, iface string, offset, maxOffset, frequencyAdjustment, delay float64) {
 	switch metricsType {
-	case "phc":
+	case phc:
 		OffsetFromPhc.With(prometheus.Labels{
 			"process": process, "node": ptpNodeName, "iface": iface}).Set(offset)
 
@@ -666,7 +671,7 @@ func UpdatePTPMetrics(metricsType, process, iface string, offset, maxOffset, fre
 		DelayFromPhc.With(prometheus.Labels{
 			"process": process, "node": ptpNodeName, "iface": iface}).Set(delay)
 
-	case "sys":
+	case sys:
 		OffsetFromSystem.With(prometheus.Labels{
 			"process": process, "node": ptpNodeName, "iface": iface}).Set(offset)
 
