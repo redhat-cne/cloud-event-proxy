@@ -8,6 +8,8 @@ import (
 // Stats calculates stats  nolint:unused
 type Stats struct {
 	configName          string
+	offsetSource        string
+	processName         string
 	num                 int64
 	max                 int64
 	min                 int64
@@ -38,21 +40,43 @@ func (s *Stats) AddValue(val int64) {
 
 }
 
-// GetStdev ...
-func (s *Stats) GetStdev() float64 { //nolint:unused
+// StDev ...
+func (s *Stats) StDev() float64 { //nolint:unused
 	if s.num > 0 {
 		return math.Sqrt(float64(s.sumDiffSqr / s.num))
 	}
 	return 1
 }
 
-// GetMaxAbs ...
-func (s *Stats) GetMaxAbs() int64 {
+// MaxAbs ...
+func (s *Stats) MaxAbs() int64 {
 	if s.max > s.min {
 		return s.max
 	}
 	return s.min
 
+}
+
+// OffsetSource ...
+func (s *Stats) OffsetSource() string {
+	return s.offsetSource
+
+}
+
+// SetOffsetSource ...
+func (s *Stats) SetOffsetSource(os string) {
+	s.offsetSource = os
+}
+
+// ProcessName ...
+func (s *Stats) ProcessName() string {
+	return s.processName
+
+}
+
+// SetProcessName ...
+func (s *Stats) SetProcessName(processName string) {
+	s.processName = processName
 }
 
 // Offset return last known offset
@@ -85,42 +109,42 @@ func NewStats(configName string) *Stats {
 	return &Stats{configName: configName}
 }
 
-// FrequencyAdjustment ...
-func (s *Stats) FrequencyAdjustment(val int64) {
+// SetFrequencyAdjustment ...
+func (s *Stats) SetFrequencyAdjustment(val int64) {
 	s.frequencyAdjustment = val
 }
 
-// DelayFromMaster ...
-func (s *Stats) DelayFromMaster(val int64) {
+// SetDelayFromMaster ...
+func (s *Stats) SetDelayFromMaster(val int64) {
 	s.delayFromMaster = val
 }
 
-// LastOffset ...
-func (s *Stats) LastOffset(val int64) {
+// SetLastOffset ...
+func (s *Stats) SetLastOffset(val int64) {
 	s.lastOffset = val
 }
 
-// LastSyncState ...
-func (s *Stats) LastSyncState(val ceevent.SyncState) {
+// SetLastSyncState ...
+func (s *Stats) SetLastSyncState(val ceevent.SyncState) {
 	s.lastSyncState = val
 }
 
-// GetFrequencyAdjustment ...
-func (s *Stats) GetFrequencyAdjustment() int64 {
+// FrequencyAdjustment ...
+func (s *Stats) FrequencyAdjustment() int64 {
 	return s.frequencyAdjustment
 }
 
-// GetDelayFromMaster ...
-func (s *Stats) GetDelayFromMaster() int64 {
+// DelayFromMaster ...
+func (s *Stats) DelayFromMaster() int64 {
 	return s.delayFromMaster
 }
 
-// GetLastOffset ...
-func (s *Stats) GetLastOffset() int64 {
+// LastOffset ...
+func (s *Stats) LastOffset() int64 {
 	return s.lastOffset
 }
 
-// GetLastSyncState ...
-func (s *Stats) GetLastSyncState() ceevent.SyncState {
+// LastSyncState ...
+func (s *Stats) LastSyncState() ceevent.SyncState {
 	return s.lastSyncState
 }
