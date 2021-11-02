@@ -2,12 +2,13 @@ package metrics
 
 import (
 	"fmt"
-	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/stats"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/stats"
 
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
@@ -188,7 +189,7 @@ var (
 			Namespace: ptpNamespace,
 			Subsystem: ptpSubsystem,
 			Name:      "ptp_interface_role",
-			Help:      "0 = PASSIVE 1 = SLAVE 2 = MASTER 3 = FAULTY 4 =  UNKNOWN" ,
+			Help:      "0 = PASSIVE 1 = SLAVE 2 = MASTER 3 = FAULTY 4 =  UNKNOWN",
 		}, []string{"process", "node", "iface"})
 )
 
