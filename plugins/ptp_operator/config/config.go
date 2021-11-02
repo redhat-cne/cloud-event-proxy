@@ -279,7 +279,6 @@ func (l *LinuxPTPConfigMapUpdate) WatchConfigMapUpdate(nodeName string, closeCh 
 	for {
 		select {
 		case <-tickerPull.C:
-			log.Info("ticker pull for ptp profile updates")
 			l.updatePtpConfig(nodeName)
 		case <-closeCh:
 			log.Info("signal received, shutting down")
