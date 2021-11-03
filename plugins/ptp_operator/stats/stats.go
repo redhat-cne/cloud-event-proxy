@@ -17,7 +17,7 @@ type Stats struct {
 	sumSqr              int64
 	sumDiffSqr          int64
 	frequencyAdjustment int64
-	delayFromMaster     int64
+	delay               int64
 	lastOffset          int64
 	lastSyncState       ceevent.SyncState
 }
@@ -114,9 +114,9 @@ func (s *Stats) SetFrequencyAdjustment(val int64) {
 	s.frequencyAdjustment = val
 }
 
-// SetDelayFromMaster ...
-func (s *Stats) SetDelayFromMaster(val int64) {
-	s.delayFromMaster = val
+// SetDelay ...
+func (s *Stats) SetDelay(val int64) {
+	s.delay = val
 }
 
 // SetLastOffset ...
@@ -134,9 +134,9 @@ func (s *Stats) FrequencyAdjustment() int64 {
 	return s.frequencyAdjustment
 }
 
-// DelayFromMaster ...
-func (s *Stats) DelayFromMaster() int64 {
-	return s.delayFromMaster
+// Delay ...
+func (s *Stats) Delay() int64 {
+	return s.delay
 }
 
 // LastOffset ...
