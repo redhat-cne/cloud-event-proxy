@@ -25,6 +25,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
+	ceTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
+
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"github.com/redhat-cne/sdk-go/pkg/event"
 
@@ -125,6 +127,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 					}
 					ptp4lConfig := eventManager.GetPTPConfig(ptpConfigFileName)
 					if ptp4lConfig != nil {
+						ptpStats := eventManager.GetStats(ptpConfigFileName)
 						for _, ifaces := range ptp4lConfig.Interfaces {
 							if !isExists(ifaces.Name) {
 								log.Errorf("config updated and interface  not exists, deleting %s", ifaces.Name)
@@ -133,8 +136,10 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 
 								eventManager.PublishEvent(cneEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, ifaces.Name, channel.PTPEvent)
 								ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, ifaces.Name, cneEvent.FREERUN)
-								ptpMetrics.UpdateDeletedPTPMetrics(ifaces.Name, phc2sysProcessName)
-								eventManager.DeleteStats(ptpTypes.IFace(ifaces.Name))
+								if s, found := ptpStats[ceTypes.IFace(ifaces.Name)]; found {
+									ptpMetrics.UpdateDeletedPTPMetrics(s.OffsetSource(), ifaces.Name, s.ProcessName())
+									eventManager.DeleteStats(ptpConfigFileName, ptpTypes.IFace(ifaces.Name))
+								}
 								eventManager.PtpConfigMapUpdates.DeletePTPThreshold(ifaces.Name)
 								ptpMetrics.UpdateInterfaceRoleMetrics(ptp4lProcessName, ifaces.Name, ptpTypes.UNKNOWN)
 							}
@@ -164,6 +169,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 				case true:
 					//update metrics
 					ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
+					ptpStats := eventManager.GetStats(ptpConfigFileName)
 					if ptpConfig, ok := eventManager.Ptp4lConfigInterfaces[ptpConfigFileName]; ok {
 						for _, iface := range ptpConfig.Interfaces {
 							if t, ok := eventManager.PtpConfigMapUpdates.EventThreshold[iface.Name]; ok {
@@ -172,8 +178,10 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 							}
 							eventManager.PublishEvent(cneEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, iface.Name, channel.PTPEvent)
 							ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, iface.Name, cneEvent.FREERUN)
-							ptpMetrics.UpdateDeletedPTPMetrics(iface.Name, phc2sysProcessName)
-							eventManager.DeleteStats(ptpTypes.IFace(iface.Name))
+							if s, found := ptpStats[ceTypes.IFace(iface.Name)]; found {
+								ptpMetrics.UpdateDeletedPTPMetrics(s.ProcessName(), iface.Name, s.ProcessName())
+								eventManager.DeleteStats(ptpConfigFileName, ptpTypes.IFace(iface.Name))
+							}
 							ptpMetrics.UpdateInterfaceRoleMetrics(ptp4lProcessName, iface.Name, ptpTypes.UNKNOWN)
 						}
 					}
@@ -196,9 +204,11 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 				log.Infof("updating ptp profile changes %d", len(eventManager.PtpConfigMapUpdates.NodeProfiles))
 				//clean up
 				if len(eventManager.PtpConfigMapUpdates.NodeProfiles) == 0 {
-					for iface := range eventManager.Stats {
-						eventManager.DeleteStats(iface)
-						eventManager.PtpConfigMapUpdates.DeletePTPThreshold(string(iface))
+					for cfg, ifaces := range eventManager.Stats {
+						for i := range ifaces {
+							eventManager.PtpConfigMapUpdates.DeletePTPThreshold(string(i))
+							eventManager.DeleteStats(cfg, i)
+						}
 					}
 				} else {
 					//updates
@@ -226,16 +236,18 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 			eventManager.PublishEvent(event.FREERUN, 0, "ptp-not-set", "PTP_STATUS")
 		} else {
 			var publishStatus bool
-			for i, s := range eventManager.Stats {
+			for c, ifaces := range eventManager.Stats {
 				publishStatus = true // do not publish status for current slave interface
-				// CLOCK_REALTIME  data will be published instead
-				if e, ok := eventManager.Ptp4lConfigInterfaces[ptpTypes.ConfigName(s.ConfigName())]; ok {
-					if iface, err := e.ByRole(ptpTypes.SLAVE); err == nil && string(i) == iface.Name { //skip SLAVE status
-						publishStatus = false //CLOCK_REALTIME stats will be published instead
+				for i, s := range ifaces {
+					// CLOCK_REALTIME  data will be published instead
+					if e, ok := eventManager.Ptp4lConfigInterfaces[c]; ok {
+						if iface, err := e.ByRole(ptpTypes.SLAVE); err == nil && string(i) == iface.Name { //skip SLAVE status
+							publishStatus = false //CLOCK_REALTIME stats will be published instead
+						}
 					}
-				}
-				if publishStatus {
-					eventManager.PublishEvent(s.SyncState(), s.Offset(), string(i), "PTP_STATUS")
+					if publishStatus {
+						eventManager.PublishEvent(s.SyncState(), s.Offset(), string(i), "PTP_STATUS")
+					}
 				}
 			}
 		}

@@ -279,7 +279,7 @@ func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 				if e, err := v1event.GetCloudNativeEvents(*d.Data); err != nil {
 					log.Warnf("error marshalling event data")
 				} else {
-					log.Warnf("amqp disabled,no action taken(can't send to a desitination): logging new event %s\n", e.String())
+					log.Warnf("amqp disabled,no action taken(can't send to a desitination): logging new event %s\n", e.JSONString())
 				}
 				out := channel.DataChan{
 					Address:        d.Address,
