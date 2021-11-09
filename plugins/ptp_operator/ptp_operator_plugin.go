@@ -179,7 +179,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 							eventManager.PublishEvent(cneEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, iface.Name, channel.PTPEvent)
 							ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, iface.Name, cneEvent.FREERUN)
 							if s, found := ptpStats[ceTypes.IFace(iface.Name)]; found {
-								ptpMetrics.UpdateDeletedPTPMetrics(s.ProcessName(), iface.Name, s.ProcessName())
+								ptpMetrics.UpdateDeletedPTPMetrics(s.OffsetSource(), iface.Name, s.ProcessName())
 								eventManager.DeleteStats(ptpConfigFileName, ptpTypes.IFace(iface.Name))
 							}
 							ptpMetrics.UpdateInterfaceRoleMetrics(ptp4lProcessName, iface.Name, ptpTypes.UNKNOWN)
