@@ -12,7 +12,6 @@ github.com/Azure/go-autorest/autorest/adal v0.9.13 h1:Mp5hbtOePIzM8pJVRa3YLrWWmZ
 github.com/Azure/go-autorest/autorest/adal v0.9.13/go.mod h1:W/MM4U6nLxnIskrw4UwWzlHfGjwUS50aOsc/I3yuU8M=
 github.com/Azure/go-autorest/autorest/date v0.3.0 h1:7gUk1U5M/CQbp9WoqinNzJar+8KY+LPI6wiWrP/myHw=
 github.com/Azure/go-autorest/autorest/date v0.3.0/go.mod h1:BI0uouVdmngYNUzGWeSYnokU+TrmwEsOqdt8Y6sso74=
-github.com/Azure/go-autorest/autorest/mocks v0.4.1 h1:K0laFcLE6VLTOwNgSxaGbUcLPuGXlNkbVvq4cW4nIHk=
 github.com/Azure/go-autorest/autorest/mocks v0.4.1/go.mod h1:LTp+uSrOhSkaKrUy935gNZuuIPPVsHlr9DSOxSayd+k=
 github.com/Azure/go-autorest/autorest/to v0.4.0 h1:oXVqrxakqqV1UZdSazDOPOLvOIz+XA683u8EctwboHk=
 github.com/Azure/go-autorest/autorest/to v0.4.0/go.mod h1:fE8iZBn7LQR7zH/9XU2NcPR4o9jEImooCeWJcYV/zLE=
@@ -35,8 +34,9 @@ github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973/go.mod h1:Dwedo/Wpr24
 github.com/beorn7/perks v1.0.0/go.mod h1:KWe93zE9D1o94FZ5RNwFwVgaQK1VOXiVxmqh+CedLV8=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
-github.com/cespare/xxhash/v2 v2.1.1 h1:6MnRN8NT7+YBpUIWxHtefFZOKTAPgGjpQSxqLNn0+qY=
 github.com/cespare/xxhash/v2 v2.1.1/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
+github.com/cespare/xxhash/v2 v2.1.2 h1:YRXhKfTDauu4ajMg1TPgFO5jnlC2HCbmLXMcTG5cbYE=
+github.com/cespare/xxhash/v2 v2.1.2/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/cloudevents/sdk-go/protocol/amqp/v2 v2.5.0 h1:8KA672U9JK1TiHBOC2LYDQqeDByOMlsek/Pz4XI62aY=
 github.com/cloudevents/sdk-go/protocol/amqp/v2 v2.5.0/go.mod h1:3D4Ins/HbJDMkn4ZJSR9IRT5+jdPmO7FDZwXKrRCBks=
 github.com/cloudevents/sdk-go/v2 v2.5.0 h1:Ts6aLHbBUJfcNcZ4ouAfJ4+Np7SE1Yf2w4ADKRCd7Fo=
@@ -145,7 +145,6 @@ github.com/prometheus/procfs v0.6.0 h1:mxy4L2jP6qMonqmq+aTtOx1ifVWUgG/TAmntgbh3x
 github.com/prometheus/procfs v0.6.0/go.mod h1:cz+aTbrPOrUb4q7XlbU9ygM+/jj0fzG6c1xBZuNvfVA=
 github.com/redhat-cne/rest-api v0.1.1-0.20210903140629-30bab22b44d5 h1:RnGRD4FcelavVjyLX4o9wAYLjbmeIRedui9QFodNPjk=
 github.com/redhat-cne/rest-api v0.1.1-0.20210903140629-30bab22b44d5/go.mod h1:6J4nfhAebvhSjRKXNdepF6q9w3MM5WBfGPXwoO3VF8E=
-github.com/redhat-cne/sdk-go v0.1.1-0.20210903133956-db900ea5e2cf h1:TAOMcSBOVpb0mXB+imRHohaW3bS2po9b173DzoLh+MU=
 github.com/redhat-cne/sdk-go v0.1.1-0.20210903133956-db900ea5e2cf/go.mod h1:pXW8dkRq39/YFrrcYHziMc/9p8OWFIzrWLXDV2i3+lI=
 github.com/redhat-cne/sdk-go v0.1.1-0.20210927021319-526cc32c66ed h1:soN2DkaIDe2jXRX1KXSl0FJ3IxiyChj5ly+qtZ3njMI=
 github.com/redhat-cne/sdk-go v0.1.1-0.20210927021319-526cc32c66ed/go.mod h1:pXW8dkRq39/YFrrcYHziMc/9p8OWFIzrWLXDV2i3+lI=
