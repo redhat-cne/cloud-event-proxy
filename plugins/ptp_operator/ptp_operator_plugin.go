@@ -235,19 +235,18 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		if len(eventManager.Stats) == 0 {
 			eventManager.PublishEvent(event.FREERUN, 0, "ptp-not-set", "PTP_STATUS")
 		} else {
-			var publishStatus bool
 			for c, ifaces := range eventManager.Stats {
-				publishStatus = true // do not publish status for current slave interface
+				ptp4lCfg := eventManager.Ptp4lConfigInterfaces[c]
 				for i, s := range ifaces {
-					// CLOCK_REALTIME  data will be published instead
-					if e, ok := eventManager.Ptp4lConfigInterfaces[c]; ok {
-						if iface, err := e.ByRole(ptpTypes.SLAVE); err == nil && string(i) == iface.Name { //skip SLAVE status
-							publishStatus = false //CLOCK_REALTIME stats will be published instead
+					if i == ptpMetrics.MasterClockType && ptp4lCfg != nil { // if its master stats then replace with slave interface(masked) +X
+						ptpInterface, _ := ptp4lCfg.ByRole(ptpTypes.SLAVE)
+						if ptpInterface.Name != "" {
+							r := []rune(ptpInterface.Name)
+							iName := string(r[:len(r)-1]) + "x"
+							i = ptpTypes.IFace(fmt.Sprintf("%s/%s", iName, ptpMetrics.MasterClockType))
 						}
 					}
-					if publishStatus {
-						eventManager.PublishEvent(s.SyncState(), s.Offset(), string(i), "PTP_STATUS")
-					}
+					eventManager.PublishEvent(s.SyncState(), s.Offset(), string(i), "PTP_STATUS")
 				}
 			}
 		}
