@@ -30,7 +30,6 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 
 	"github.com/redhat-cne/sdk-go/v1/event"
-	v1hwevent "github.com/redhat-cne/sdk-go/v1/hwevent"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -294,41 +293,6 @@ func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ceEvent, err := cneEvent.NewCloudEvent(&pub)
-	if err != nil {
-		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
-		respondWithError(w, err.Error())
-	} else {
-		s.dataOut <- &channel.DataChan{
-			Type:    channel.EVENT,
-			Data:    ceEvent,
-			Address: pub.GetResource(),
-		}
-		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.SUCCESS, 1)
-		respondWithMessage(w, http.StatusAccepted, "Event sent")
-	}
-}
-
-// publishHwEvent gets hardware events and converts it to cloud event and publishes to a transport to send
-// it to the consumer
-func (s *Server) publishHwEvent(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-	bodyBytes, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		respondWithError(w, err.Error())
-		return
-	}
-	hwEvent := v1hwevent.CloudNativeEvent()
-	if err = json.Unmarshal(bodyBytes, &hwEvent); err != nil {
-		respondWithError(w, err.Error())
-		return
-	} // check if publisher is found
-	pub, err := s.pubSubAPI.GetPublisher(hwEvent.ID)
-	if err != nil {
-		localmetrics.UpdateEventPublishedCount(hwEvent.ID, localmetrics.FAIL, 1)
-		respondWithError(w, fmt.Sprintf("no publisher data for id %s found to publish event for", hwEvent.ID))
-		return
-	}
-	ceEvent, err := hwEvent.NewCloudEvent(&pub)
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
 		respondWithError(w, err.Error())

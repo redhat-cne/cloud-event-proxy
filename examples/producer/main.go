@@ -18,19 +18,21 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
-	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
-	cneevent "github.com/redhat-cne/sdk-go/pkg/event"
-	"github.com/redhat-cne/sdk-go/pkg/pubsub"
-	"github.com/redhat-cne/sdk-go/pkg/types"
-	v1event "github.com/redhat-cne/sdk-go/v1/event"
-	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"sync"
 	"time"
+
+	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
+	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
+	cneevent "github.com/redhat-cne/sdk-go/pkg/event"
+	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
+	"github.com/redhat-cne/sdk-go/pkg/pubsub"
+	"github.com/redhat-cne/sdk-go/pkg/types"
+	v1event "github.com/redhat-cne/sdk-go/v1/event"
+	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -45,7 +47,7 @@ func main() {
 	common.InitLogger()
 	flag.StringVar(&localAPIAddr, "local-api-addr", "localhost:9088", "The address the local api binds to .")
 	flag.StringVar(&apiPath, "api-path", "/api/cloudNotifications/v1/", "The rest api path.")
-	flag.StringVar(&apiAddr, "api-addr", "localhost:8080", "The address the framework api endpoint binds to.")
+	flag.StringVar(&apiAddr, "api-addr", "localhost:8089", "The address the framework api endpoint binds to.")
 	flag.Parse()
 
 	var wg sync.WaitGroup
@@ -83,7 +85,7 @@ RETRY:
 			for _, pub := range pubs {
 				event := v1event.CloudNativeEvent()
 				event.SetID(pub.ID)
-				event.Type = "ptp_status_type"
+				event.Type = string(ptp.PtpStateChange)
 				event.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
 				event.SetDataContentType(cneevent.ApplicationJSON)
 				data := cneevent.Data{
@@ -92,7 +94,7 @@ RETRY:
 						Resource:  pub.Resource,
 						DataType:  cneevent.NOTIFICATION,
 						ValueType: cneevent.ENUMERATION,
-						Value:     cneevent.ACQUIRING_SYNC,
+						Value:     ptp.ACQUIRING_SYNC,
 					},
 					},
 				}

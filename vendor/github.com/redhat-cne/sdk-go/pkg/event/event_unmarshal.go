@@ -1,12 +1,15 @@
 package event
 
 import (
+	"encoding/json"
+	"fmt"
 	"io"
 	"strconv"
 	"sync"
 
 	jsoniter "github.com/json-iterator/go"
 
+	"github.com/redhat-cne/sdk-go/pkg/event/redfish"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 )
 
@@ -42,7 +45,7 @@ func ReadDataJSON(out *Data, reader io.Reader) error {
 	return readDataJSONFromIterator(out, iterator)
 }
 
-// readJSONFromIterator allows you to read the bytes reader as an event
+// readDataJSONFromIterator allows you to read the bytes reader as an event
 func readDataJSONFromIterator(out *Data, iterator *jsoniter.Iterator) error {
 	var (
 		// Universally parseable fields.
@@ -86,6 +89,7 @@ func readJSONFromIterator(out *Event, iterator *jsoniter.Iterator) error {
 		typ  string
 		time *types.Timestamp
 		data *Data
+		err  error
 
 		// These fields require knowledge about the specversion to be parsed.
 		//schemaurl jsoniter.Any
@@ -106,7 +110,10 @@ func readJSONFromIterator(out *Event, iterator *jsoniter.Iterator) error {
 		case "time":
 			time = readTimestamp(iterator)
 		case "data":
-			data, _ = readData(iterator)
+			data, err = readData(iterator)
+			if err != nil {
+				return err
+			}
 		case "version":
 
 		case "values":
@@ -141,7 +148,7 @@ func readDataValue(iter *jsoniter.Iterator) ([]DataValue, error) {
 	var values []DataValue
 	var err error
 	for iter.ReadArray() {
-		var cacheValue string
+		var cacheValue interface{}
 		dv := DataValue{}
 		for dvField := iter.ReadObject(); dvField != ""; dvField = iter.ReadObject() {
 			switch dvField {
@@ -152,15 +159,29 @@ func readDataValue(iter *jsoniter.Iterator) ([]DataValue, error) {
 			case "valueType":
 				dv.ValueType = ValueType(iter.ReadString())
 			case "value":
-				cacheValue = iter.ReadString()
+				cacheValue = iter.Read()
 			default:
 				iter.Skip()
 			}
 		}
+
 		if dv.ValueType == DECIMAL {
-			dv.Value, err = strconv.ParseFloat(cacheValue, 64)
+			dv.Value, err = strconv.ParseFloat(cacheValue.(string), 64)
+		} else if dv.ValueType == ENUMERATION {
+			dv.Value = cacheValue.(string)
+		} else if dv.ValueType == REDFISH_EVENT {
+			jsonRedfishEvent, err := json.Marshal(cacheValue)
+			if err != nil {
+				return values, err
+			}
+
+			e := redfish.Event{}
+			if err := json.Unmarshal(jsonRedfishEvent, &e); err != nil {
+				return values, err
+			}
+			dv.Value = e
 		} else {
-			dv.Value = SyncState(cacheValue)
+			return values, fmt.Errorf("value type %v is not supported", dv.ValueType)
 		}
 		values = append(values, dv)
 	}

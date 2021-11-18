@@ -28,7 +28,7 @@ import (
 	ceTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
 
 	"github.com/redhat-cne/sdk-go/pkg/channel"
-	"github.com/redhat-cne/sdk-go/pkg/event"
+	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
@@ -38,7 +38,6 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	ptpMetrics "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
-	cneEvent "github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
@@ -134,8 +133,8 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 								t := eventManager.PtpThreshold(ifaces.Name)
 								close(t.Close) // close any holdover go routines
 
-								eventManager.PublishEvent(cneEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, ifaces.Name, channel.PTPEvent)
-								ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, ifaces.Name, cneEvent.FREERUN)
+								eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, ifaces.Name, ptp.PtpStateChange)
+								ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, ifaces.Name, ptp.FREERUN)
 								if s, found := ptpStats[ceTypes.IFace(ifaces.Name)]; found {
 									ptpMetrics.UpdateDeletedPTPMetrics(s.OffsetSource(), ifaces.Name, s.ProcessName())
 									eventManager.DeleteStats(ptpConfigFileName, ptpTypes.IFace(ifaces.Name))
@@ -176,8 +175,8 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 								// Make sure that the function does close the channel
 								t.SafeClose()
 							}
-							eventManager.PublishEvent(cneEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, iface.Name, channel.PTPEvent)
-							ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, iface.Name, cneEvent.FREERUN)
+							eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, iface.Name, ptp.PtpStateChange)
+							ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, iface.Name, ptp.FREERUN)
 							if s, found := ptpStats[ceTypes.IFace(iface.Name)]; found {
 								ptpMetrics.UpdateDeletedPTPMetrics(s.OffsetSource(), iface.Name, s.ProcessName())
 								eventManager.DeleteStats(ptpConfigFileName, ptpTypes.IFace(iface.Name))
@@ -233,7 +232,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	onReceiveOverrideFn := func(e v2.Event, d *channel.DataChan) error {
 		log.Info("got status check call,fire events for above publisher")
 		if len(eventManager.Stats) == 0 {
-			eventManager.PublishEvent(event.FREERUN, 0, "ptp-not-set", "PTP_STATUS")
+			eventManager.PublishEvent(ptp.FREERUN, 0, "ptp-not-set", ptp.PtpStateChange)
 		} else {
 			for c, ifaces := range eventManager.Stats {
 				ptp4lCfg := eventManager.Ptp4lConfigInterfaces[c]
@@ -246,7 +245,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 							i = ptpTypes.IFace(fmt.Sprintf("%s/%s", iName, ptpMetrics.MasterClockType))
 						}
 					}
-					eventManager.PublishEvent(s.SyncState(), s.Offset(), string(i), "PTP_STATUS")
+					eventManager.PublishEvent(s.SyncState(), s.Offset(), string(i), ptp.PtpStateChange)
 				}
 			}
 		}

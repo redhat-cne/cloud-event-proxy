@@ -44,7 +44,6 @@ import (
 	sdkMetrics "github.com/redhat-cne/sdk-go/pkg/localmetrics"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
-	v1hwevent "github.com/redhat-cne/sdk-go/v1/hwevent"
 	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
 )
 
@@ -65,7 +64,7 @@ func main() {
 	flag.StringVar(&metricsAddr, "metrics-addr", ":9091", "The address the metric endpoint binds to.")
 	flag.StringVar(&storePath, "store-path", ".", "The path to store publisher and subscription info.")
 	flag.StringVar(&amqpHost, "transport-host", "amqp:localhost:5672", "The transport bus hostname or service name.")
-	flag.IntVar(&apiPort, "api-port", 8080, "The address the rest api endpoint binds to.")
+	flag.IntVar(&apiPort, "api-port", 8089, "The address the rest api endpoint binds to.")
 
 	flag.Parse()
 
@@ -190,75 +189,42 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 	for { //nolint:gosimple
 		select { //nolint:gosimple
 		case d := <-scConfig.EventOutCh: // do something that is put out by QDR
-			switch d.Data.Type() {
-			case channel.HWEvent:
-				event, err := v1hwevent.GetCloudNativeEvents(*d.Data)
-				if err != nil {
-					log.Errorf("error marshalling event data when reading from amqp %v\n %#v", err, d)
-					log.Infof("data %#v", d.Data)
-				} else if d.Type == channel.EVENT {
-					if d.Status == channel.NEW {
-						if d.ProcessEventFn != nil { // always leave event to handle by default method for events
-							if err := d.ProcessEventFn(event); err != nil {
-								log.Errorf("error processing data %v", err)
-								localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
-							}
-						} else if sub, ok := scConfig.PubSubAPI.HasSubscription(d.Address); ok {
-							if sub.EndPointURI != nil {
-								restClient := restclient.New()
-								event.ID = sub.ID // set ID to the subscriptionID
-								err := restClient.PostHwEvent(sub.EndPointURI, event)
-								postHandler(err, sub.EndPointURI, d.Address)
-							} else {
-								log.Warnf("endpoint uri not given, posting event to log %#v for address %s\n", event, d.Address)
-								localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
-							}
-						} else {
-							log.Warnf("subscription not found, posting event %#v to log for address %s\n", event, d.Address)
+			event, err := v1event.GetCloudNativeEvents(*d.Data)
+			if err != nil {
+				log.Errorf("error marshalling event data when reading from amqp %v\n %#v", err, d)
+				log.Infof("data %#v", d.Data)
+			} else if d.Type == channel.EVENT {
+				if d.Status == channel.NEW {
+					if d.ProcessEventFn != nil { // always leave event to handle by default method for events
+						if err := d.ProcessEventFn(event); err != nil {
+							log.Errorf("error processing data %v", err)
 							localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
 						}
-					} else if d.Status == channel.SUCCESS || d.Status == channel.FAILED { // event sent ,ack back to publisher
-						postProcessFn(d.Address, d.Status)
-					}
-				}
-			default:
-				event, err := v1event.GetCloudNativeEvents(*d.Data)
-				if err != nil {
-					log.Errorf("error marshalling event data when reading from amqp %v\n %#v", err, d)
-					log.Infof("data %#v", d.Data)
-				} else if d.Type == channel.EVENT {
-					if d.Status == channel.NEW {
-						if d.ProcessEventFn != nil { // always leave event to handle by default method for events
-							if err := d.ProcessEventFn(event); err != nil {
-								log.Errorf("error processing data %v", err)
-								localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
-							}
-						} else if sub, ok := scConfig.PubSubAPI.HasSubscription(d.Address); ok {
-							if sub.EndPointURI != nil {
-								restClient := restclient.New()
-								event.ID = sub.ID // set ID to the subscriptionID
-								err := restClient.PostEvent(sub.EndPointURI, event)
-								postHandler(err, sub.EndPointURI, d.Address)
-							} else {
-								log.Warnf("endpoint uri not given, posting event to log %#v for address %s\n", event, d.Address)
-								localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
-							}
+					} else if sub, ok := scConfig.PubSubAPI.HasSubscription(d.Address); ok {
+						if sub.EndPointURI != nil {
+							restClient := restclient.New()
+							event.ID = sub.ID // set ID to the subscriptionID
+							err := restClient.PostEvent(sub.EndPointURI, event)
+							postHandler(err, sub.EndPointURI, d.Address)
 						} else {
-							log.Warnf("subscription not found, posting event %#v to log for address %s\n", event, d.Address)
-							localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
+							log.Warnf("endpoint uri not given, posting event to log %#v for address %s\n", event, d.Address)
+							localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
 						}
-					} else if d.Status == channel.SUCCESS || d.Status == channel.FAILED { // event sent ,ack back to publisher
-						postProcessFn(d.Address, d.Status)
-					}
-				} else if d.Type == channel.STATUS {
-					if d.Status == channel.SUCCESS {
-						localmetrics.UpdateStatusAckCount(d.Address, localmetrics.SUCCESS)
 					} else {
-						log.Errorf("failed to receive status request to address %s", d.Address)
-						localmetrics.UpdateStatusAckCount(d.Address, localmetrics.FAILED)
+						log.Warnf("subscription not found, posting event %#v to log for address %s\n", event, d.Address)
+						localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
 					}
+				} else if d.Status == channel.SUCCESS || d.Status == channel.FAILED { // event sent ,ack back to publisher
+					postProcessFn(d.Address, d.Status)
 				}
-			} // end switch
+			} else if d.Type == channel.STATUS {
+				if d.Status == channel.SUCCESS {
+					localmetrics.UpdateStatusAckCount(d.Address, localmetrics.SUCCESS)
+				} else {
+					log.Errorf("failed to receive status request to address %s", d.Address)
+					localmetrics.UpdateStatusAckCount(d.Address, localmetrics.FAILED)
+				}
+			}
 		case <-scConfig.CloseCh:
 			return
 		}

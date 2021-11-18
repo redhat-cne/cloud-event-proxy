@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/redhat-cne/sdk-go/pkg/event"
-	"github.com/redhat-cne/sdk-go/pkg/hwevent"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	log "github.com/sirupsen/logrus"
 
@@ -56,19 +55,6 @@ func (r *Rest) PostEvent(url *types.URI, e event.Event) error {
 		return err
 	}
 
-	if status := r.Post(url, b); status == http.StatusBadRequest {
-		return fmt.Errorf("post returned status %d", status)
-	}
-	return nil
-}
-
-// PostHwEvent post a hardware event to the give url and check for error
-func (r *Rest) PostHwEvent(url *types.URI, e hwevent.Event) error {
-	b, err := json.Marshal(e)
-	if err != nil {
-		log.Errorf("error marshalling event %v", e)
-		return err
-	}
 	if status := r.Post(url, b); status == http.StatusBadRequest {
 		return fmt.Errorf("post returned status %d", status)
 	}

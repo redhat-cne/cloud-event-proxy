@@ -286,8 +286,6 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/badReq"
 	api.HandleFunc("/create/event", s.publishEvent).Methods(http.MethodPost)
 
-	api.HandleFunc("/create/hwevent", s.publishHwEvent).Methods(http.MethodPost)
-
 	err := r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
 		pathTemplate, err := route.GetPathTemplate()
 		if err == nil {

@@ -37,6 +37,8 @@ const (
 	ENUMERATION ValueType = "enumeration"
 	// DECIMAL ...
 	DECIMAL ValueType = "decimal64.3"
+	// REDFISH_EVENT ...
+	REDFISH_EVENT ValueType = "redfish-event"
 )
 
 // Data ... cloud native events data
@@ -45,15 +47,27 @@ const (
 //	"version": "v1.0",
 //	"values": [{
 //		"resource": "/cluster/node/ptp",
-//		"data_type": "notification",
-//		"value_type": "enumeration",
+//		"dataType": "notification",
+//		"valueType": "enumeration",
 //		"value": "ACQUIRING-SYNC"
 //		}, {
 //		"resource": "/cluster/node/clock",
-//		"data_type": "metric",
-// 		"value_type": "decimal64.3",
+//		"dataType": "metric",
+//		"valueType": "decimal64.3",
 //		"value": 100.3
-//		}]
+//		}, {
+//		"resource": "/cluster/node/temp",
+//		"dataType": "notification",
+//		"valueType": "redfish-event",
+//		"value": {
+// 		    "@odata.context": "/redfish/v1/$metadata#Event.Event",
+// 		    "@odata.type": "#Event.v1_3_0.Event",
+// 		    "Context": "any string is valid",
+// 		    "Events": [{"EventId": "2162", "MemberId": "615703", "MessageId": "TMP0100"}],
+// 		    "Id": "5e004f5a-e3d1-11eb-ae9c-3448edf18a38",
+// 		    "Name": "Event Array"
+//		}
+//	}]
 //}
 type Data struct {
 	Version string      `json:"version" example:"v1"`
@@ -64,8 +78,8 @@ type Data struct {
 // DataValue Json payload is as follows,
 //{
 //	"resource": "/cluster/node/ptp",
-//	"data_type": "notification",
-//	"value_type": "enumeration",
+//	"dataType": "notification",
+//	"valueType": "enumeration",
 //	"value": "ACQUIRING-SYNC"
 //}
 type DataValue struct {

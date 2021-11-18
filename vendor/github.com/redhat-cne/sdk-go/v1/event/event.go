@@ -23,9 +23,8 @@ import (
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/google/uuid"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
-	"github.com/redhat-cne/sdk-go/pkg/pubsub"
-
 	"github.com/redhat-cne/sdk-go/pkg/event"
+	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 )
 
 // PublishCloudEventToLog .. publish event data to a log
@@ -35,7 +34,7 @@ func PublishCloudEventToLog(e cloudevents.Event) {
 
 // CloudNativeEvent gets Cloud Native Event object
 func CloudNativeEvent() event.Event {
-	return event.Event{Type: channel.Event}
+	return event.Event{}
 }
 
 // CloudNativeData gets Cloud Native Event object

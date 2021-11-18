@@ -1,8 +1,9 @@
 package stats
 
 import (
-	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
 	"math"
+
+	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 )
 
 // Stats calculates stats  nolint:unused
@@ -19,7 +20,7 @@ type Stats struct {
 	frequencyAdjustment int64
 	delay               int64
 	lastOffset          int64
-	lastSyncState       ceevent.SyncState
+	lastSyncState       ptp.SyncState
 }
 
 // AddValue ...
@@ -85,7 +86,7 @@ func (s *Stats) Offset() int64 {
 }
 
 // SyncState return last known SyncState state
-func (s *Stats) SyncState() ceevent.SyncState {
+func (s *Stats) SyncState() ptp.SyncState {
 	return s.lastSyncState
 }
 
@@ -125,7 +126,7 @@ func (s *Stats) SetLastOffset(val int64) {
 }
 
 // SetLastSyncState ...
-func (s *Stats) SetLastSyncState(val ceevent.SyncState) {
+func (s *Stats) SetLastSyncState(val ptp.SyncState) {
 	s.lastSyncState = val
 }
 
@@ -145,6 +146,6 @@ func (s *Stats) LastOffset() int64 {
 }
 
 // LastSyncState ...
-func (s *Stats) LastSyncState() ceevent.SyncState {
+func (s *Stats) LastSyncState() ptp.SyncState {
 	return s.lastSyncState
 }

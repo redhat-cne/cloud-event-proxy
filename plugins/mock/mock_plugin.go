@@ -2,17 +2,19 @@ package main
 
 import (
 	"fmt"
+	"sync"
+	"time"
+
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	ceEvent "github.com/redhat-cne/sdk-go/pkg/event"
+	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 	log "github.com/sirupsen/logrus"
-	"sync"
-	"time"
 )
 
 // Copyright 2020 The Cloud Native Events Authors
@@ -73,8 +75,8 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		for range time.Tick(100 * time.Millisecond) {
 			// create an event
 			if mEvent, err := createMockEvent(pub); err == nil {
-				mEvent.Type = channel.PTPStatus
-				mEvent.Data.Values[0].Value = ceEvent.LOCKED
+				mEvent.Type = string(ptp.PtpStateChange)
+				mEvent.Data.Values[0].Value = ptp.LOCKED
 				mEvent.Data.Values[1].Value = -200
 				if err = common.PublishEventViaAPI(config, mEvent); err != nil {
 					log.Errorf("error publishing events %s", err)
@@ -107,7 +109,7 @@ func createMockEvent(pub pubsub.PubSub) (ceEvent.Event, error) {
 			Resource:  pub.Resource,
 			DataType:  ceEvent.NOTIFICATION,
 			ValueType: ceEvent.ENUMERATION,
-			Value:     ceEvent.ACQUIRING_SYNC,
+			Value:     ptp.ACQUIRING_SYNC,
 		},
 			{
 				Resource:  pub.Resource,
@@ -117,6 +119,6 @@ func createMockEvent(pub pubsub.PubSub) (ceEvent.Event, error) {
 			},
 		},
 	}
-	e, err := common.CreateEvent(pub.ID, "PTP_EVENT", data)
+	e, err := common.CreateEvent(pub.ID, string(ptp.PtpStateChange), data)
 	return e, err
 }

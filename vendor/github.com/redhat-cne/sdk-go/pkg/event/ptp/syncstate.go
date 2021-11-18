@@ -1,4 +1,4 @@
-// Copyright 2020 The Cloud Native Events Authors
+// Copyright 2021 The Cloud Native Events Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,36 +12,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package event
+package ptp
 
 // SyncState ...
 type SyncState string
 
 const (
-	//LOCKED ...
-	LOCKED SyncState = "LOCKED"
-
-	//UNLOCKED ...
-	UNLOCKED SyncState = "UNLOCKED"
-
-	//HOLDOVER ...
-	HOLDOVER SyncState = "HOLDOVER"
-
-	//FREERUN ...
-	FREERUN SyncState = "FREERUN"
-
-	//SYNCHRONIZED ...
-	SYNCHRONIZED SyncState = "SYNCHRONIZED"
-
-	//ACQUIRING_SYNC ...
+	// ACQUIRING_SYNC ...
 	ACQUIRING_SYNC SyncState = "ACQUIRING-SYNC"
 
 	// ANTENNA_DISCONNECTED ...
 	ANTENNA_DISCONNECTED SyncState = "ANTENNA-DISCONNECTED"
 
-	//BOOTING ...
-	BOOTING SyncState = "BOOTING"
-
 	// ANTENNA_SHORT_CIRCUIT ...
 	ANTENNA_SHORT_CIRCUIT SyncState = "ANTENNA-SHORT-CIRCUIT"
+
+	// BOOTING ...
+	BOOTING SyncState = "BOOTING"
+
+	// FREERUN ...
+	FREERUN SyncState = "FREERUN"
+
+	// HOLDOVER ...
+	HOLDOVER SyncState = "HOLDOVER"
+
+	// LOCKED ...
+	LOCKED SyncState = "LOCKED"
+
+	// SYNCHRONIZED ...
+	SYNCHRONIZED SyncState = "SYNCHRONIZED"
+
+	// UNLOCKED ...
+	UNLOCKED SyncState = "UNLOCKED"
 )
