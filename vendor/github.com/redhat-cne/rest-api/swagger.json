@@ -108,7 +108,7 @@
   },
   "definitions": {
     "Data": {
-      "description": "Data ... cloud native events data\nData Json payload is as follows,\n{\n\"version\": \"v1.0\",\n\"values\": [{\n\"resource\": \"/cluster/node/ptp\",\n\"data_type\": \"notification\",\n\"value_type\": \"enumeration\",\n\"value\": \"ACQUIRING-SYNC\"\n}, {\n\"resource\": \"/cluster/node/clock\",\n\"data_type\": \"metric\",\n\"value_type\": \"decimal64.3\",\n\"value\": 100.3\n}]\n}",
+      "description": "Data ... cloud native events data\nData Json payload is as follows,\n{\n\"version\": \"v1.0\",\n\"values\": [{\n\"resource\": \"/cluster/node/ptp\",\n\"dataType\": \"notification\",\n\"valueType\": \"enumeration\",\n\"value\": \"ACQUIRING-SYNC\"\n}, {\n\"resource\": \"/cluster/node/clock\",\n\"dataType\": \"metric\",\n\"valueType\": \"decimal64.3\",\n\"value\": 100.3\n}]\n}",
       "type": "object",
       "properties": {
         "values": {
@@ -131,7 +131,7 @@
       "x-go-package": "github.com/redhat-cne/sdk-go/pkg/event"
     },
     "DataValue": {
-      "description": "DataValue Json payload is as follows,\n{\n\"resource\": \"/cluster/node/ptp\",\n\"data_type\": \"notification\",\n\"value_type\": \"enumeration\",\n\"value\": \"ACQUIRING-SYNC\"\n}",
+      "description": "DataValue Json payload is as follows,\n{\n\"resource\": \"/cluster/node/ptp\",\n\"dataType\": \"notification\",\n\"valueType\": \"enumeration\",\n\"value\": \"ACQUIRING-SYNC\"\n}",
       "type": "object",
       "title": "DataValue ...",
       "properties": {
@@ -153,7 +153,7 @@
       "x-go-package": "github.com/redhat-cne/sdk-go/pkg/event"
     },
     "Event": {
-      "description": "Event Json  payload is as follows,\n{\n\"id\": \"5ce55d17-9234-4fee-a589-d0f10cb32b8e\",\n\"type\": \"event.synchronization-state-chang\",\n\"time\": \"2021-02-05T17:31:00Z\",\n\"data\": {\n\"version\": \"v1.0\",\n\"values\": [{\n\"resource\": \"/cluster/node/ptp\",\n\"data_type\": \"notification\",\n\"value_type\": \"enumeration\",\n\"value\": \"ACQUIRING-SYNC\"\n}, {\n\"resource\": \"/cluster/node/clock\",\n\"data_type\": \"metric\",\n\"value_type\": \"decimal64.3\",\n\"value\": 100.3\n}]\n}\n}\nEvent request model",
+      "description": "Event Json  payload is as follows,\n{\n\"id\": \"5ce55d17-9234-4fee-a589-d0f10cb32b8e\",\n\"type\": \"event.synchronization-state-chang\",\n\"time\": \"2021-02-05T17:31:00Z\",\n\"data\": {\n\"version\": \"v1.0\",\n\"values\": [{\n\"resource\": \"/cluster/node/ptp\",\n\"dataType\": \"notification\",\n\"valueType\": \"enumeration\",\n\"value\": \"ACQUIRING-SYNC\"\n}, {\n\"resource\": \"/cluster/node/clock\",\n\"dataType\": \"metric\",\n\"valueType\": \"decimal64.3\",\n\"value\": 100.3\n}]\n}\n}\nEvent request model",
       "type": "object",
       "title": "Event represents the canonical representation of a Cloud Native Event.",
       "properties": {

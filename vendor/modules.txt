@@ -94,16 +94,17 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/redhat-cne/rest-api v0.1.1-0.20210903140629-30bab22b44d5
+# github.com/redhat-cne/rest-api v0.1.1-0.20211130193106-d4bd451c668d
 ## explicit; go 1.15
 github.com/redhat-cne/rest-api
 github.com/redhat-cne/rest-api/pkg/localmetrics
-# github.com/redhat-cne/sdk-go v0.1.1-0.20210927021319-526cc32c66ed
+# github.com/redhat-cne/sdk-go v0.1.1-0.20211130185743-65c3912ba066
 ## explicit; go 1.15
 github.com/redhat-cne/sdk-go/pkg/channel
 github.com/redhat-cne/sdk-go/pkg/errorhandler
 github.com/redhat-cne/sdk-go/pkg/event
-github.com/redhat-cne/sdk-go/pkg/hwevent
+github.com/redhat-cne/sdk-go/pkg/event/ptp
+github.com/redhat-cne/sdk-go/pkg/event/redfish
 github.com/redhat-cne/sdk-go/pkg/localmetrics
 github.com/redhat-cne/sdk-go/pkg/protocol
 github.com/redhat-cne/sdk-go/pkg/protocol/amqp
@@ -114,7 +115,6 @@ github.com/redhat-cne/sdk-go/pkg/util/clock
 github.com/redhat-cne/sdk-go/pkg/util/wait
 github.com/redhat-cne/sdk-go/v1/amqp
 github.com/redhat-cne/sdk-go/v1/event
-github.com/redhat-cne/sdk-go/v1/hwevent
 github.com/redhat-cne/sdk-go/v1/pubsub
 # github.com/sirupsen/logrus v1.8.1
 ## explicit; go 1.13

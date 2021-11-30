@@ -12,25 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package hwevent
+package redfish
+
+// EventType ...
+type EventType string
 
 const (
-	// TextPlain ...
-	TextPlain = "text/plain"
-	// TextJSON ...
-	TextJSON = "text/json"
-	// ApplicationJSON ...
-	ApplicationJSON = "application/json"
+	// Alert ...
+	Alert EventType = "event.redfish.alert"
+
+	// ResourceAdded ...
+	ResourceAdded EventType = "event.redfish.resource-added"
+
+	// ResourceUpdated ...
+	ResourceUpdated EventType = "event.redfish.resource-updated"
+
+	// ResourceRemoved ...
+	ResourceRemoved EventType = "event.redfish.resource-removed"
+
+	// StatusChange ...
+	StatusChange EventType = "event.redfish.status-change"
 )
-
-// StringOfApplicationJSON returns a string pointer to "application/json"
-func StringOfApplicationJSON() *string {
-	a := ApplicationJSON
-	return &a
-}
-
-// StringOfTextPlain returns a string pointer to "text/plain"
-func StringOfTextPlain() *string {
-	a := TextPlain
-	return &a
-}

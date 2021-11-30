@@ -17,8 +17,10 @@ package event
 import (
 	"bytes"
 	"fmt"
-	jsoniter "github.com/json-iterator/go"
 	"io"
+
+	jsoniter "github.com/json-iterator/go"
+	"github.com/redhat-cne/sdk-go/pkg/event/redfish"
 )
 
 // WriteJSON writes the in event in the provided writer.
@@ -135,6 +137,13 @@ func writeJSONData(in *Data, writer io.Writer, stream *jsoniter.Stream) error {
 			case DECIMAL:
 				stream.WriteString(fmt.Sprintf("%v", v.Value))
 
+			case REDFISH_EVENT:
+				redfishEvent, ok := (v.Value).(redfish.Event)
+				if ok {
+					if err := redfish.WriteJSONEvent(&redfishEvent, writer, stream); err != nil {
+						return fmt.Errorf("error writing data: %w", err)
+					}
+				}
 			default:
 				// if type is other than above
 				return fmt.Errorf("error while writing the value attributes: unknown type")

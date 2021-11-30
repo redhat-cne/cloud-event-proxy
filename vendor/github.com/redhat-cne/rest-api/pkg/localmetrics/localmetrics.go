@@ -91,7 +91,7 @@ func UpdatePublisherCount(status MetricStatus, val int) {
 }
 
 // UpdateStatusCount ...
-func UpdateStatusCount(address string,status MetricStatus, val int) {
+func UpdateStatusCount(address string, status MetricStatus, val int) {
 	statusCallCount.With(
 		prometheus.Labels{"status": string(status)}).Add(float64(val))
 }

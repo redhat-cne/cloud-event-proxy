@@ -25,7 +25,7 @@ Create Publisher Resource: JSON request
 ```json
 {
   "Resource": "/east-edge-10/vdu3/o-ran-sync/sync-group/sync-status/sync-state",
-  "UriLocation": "http://localhost:8080/ack/event"
+  "UriLocation": "http://localhost:8089/ack/event"
 }
 ```
 
@@ -35,7 +35,7 @@ Create Publisher Resource: JSON response
   "Id": "789be75d-7ac3-472e-bbbc-6d62878aad4a",
   "Resource": "/east-edge-10/vdu3/o-ran-sync/sync-group/sync-status/sync-state",
   "UriLocation": "http://localhost:9090/ack/event" ,
-  "EndpointUri ": "http://localhost:8080/api/ocloudNotifications/v1/publishers/{publisherid}"
+  "EndpointUri ": "http://localhost:8089/api/ocloudNotifications/v1/publishers/{publisherid}"
 }
 ```
 ### Creating publisher golang example
@@ -50,7 +50,7 @@ func main(){
   //channel for the transport handler subscribed to get and set events  
     eventInCh := make(chan *channel.DataChan, 10)
     pubSubInstance = v1pubsub.GetAPIInstance(".")
-    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8080", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
+    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8089", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
     // create publisher 
     pub, err := pubSubInstance.CreatePublisher(v1pubsub.NewPubSub(endpointURL, "test/test"))
     // once the publisher response is received, create a transport sender object to send events.
@@ -75,7 +75,7 @@ Example Create Subscription Resource: JSON response
   "Id": "789be75d-7ac3-472e-bbbc-6d62878aad4a",
   "Resource": "/east-edge-10/vdu3/o-ran-sync/sync-group/sync-status/sync-state",
   "UriLocation": "http://localhost:9090/ack/event",
-  "EndpointUri": "http://localhost:8080/api/ocloudNotifications/v1/subscriptions/{subscriptionid}"
+  "EndpointUri": "http://localhost:8089/api/ocloudNotifications/v1/subscriptions/{subscriptionid}"
 }
 ```
 
@@ -92,7 +92,7 @@ func main(){
     eventInCh := make(chan *channel.DataChan, 10)
     
     pubSubInstance = v1pubsub.GetAPIInstance(".")
-    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8080", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
+    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8089", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
     // create subscription 
     pub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "test/test"))
     // once the subscription response is received, create a transport listener object to receive events.
@@ -182,14 +182,14 @@ The following example shows a Cloud Native Events serialized as JSON:
     "version": "v1.0",
     "values": [{
         "resource": "/cluster/node/ptp", 
-        "data_type": "notification",
-        "value_type": "enumeration",
+        "dataType": "notification",
+        "valueType": "enumeration",
         "value": "ACQUIRING-SYNC"
     }, {
 
         "resource": "/cluster/node/clock",
-        "data_type": "metric",
-        "value_type": "decimal64.3",
+        "dataType": "metric",
+        "valueType": "decimal64.3",
         "value": 100.3
     }]
     }
@@ -203,12 +203,13 @@ and should have access to the `id` of the publisher/subscription data objects.
 import (
    v1event "github.com/redhat-cne/sdk-go/v1/event"
    cneevent "github.com/redhat-cne/sdk-go/pkg/event"
+   cneevent "github.com/redhat-cne/sdk-go/pkg/event/ptp"
 )
 
 // create an event
 event := v1event.CloudNativeEvent()
 event.SetID(pub.ID)
-event.Type = "ptp_status_type"
+event.Type = string(ptp.PtpStateChange)
 event.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
 event.SetDataContentType(cneevent.ApplicationJSON)
 data := cneevent.Data{

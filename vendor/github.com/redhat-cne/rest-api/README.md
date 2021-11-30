@@ -132,13 +132,13 @@ Data ... cloud native events' data Json payload is as follows,
 "version": "v1.0",
 "values": [{
 "resource": "/cluster/node/ptp",
-"data_type": "notification",
-"value_type": "enumeration",
+"dataType": "notification",
+"valueType": "enumeration",
 "value": "ACQUIRING-SYNC"
 }, {
 "resource": "/cluster/node/clock",
-"data_type": "metric",
-"value_type": "decimal64.3",
+"dataType": "metric",
+"valueType": "decimal64.3",
 "value": 100.3
 }]
 }
@@ -162,8 +162,8 @@ DataValue Json payload is as follows,
 
 {
 "resource": "/cluster/node/ptp",
-"data_type": "notification",
-"value_type": "enumeration",
+"dataType": "notification",
+"valueType": "enumeration",
 "value": "ACQUIRING-SYNC"
 }
 ```
@@ -188,13 +188,13 @@ Event Json  payload is as follows,
 "version": "v1.0",
 "values": [{
 "resource": "/cluster/node/ptp",
-"data_type": "notification",
-"value_type": "enumeration",
+"dataType": "notification",
+"valueType": "enumeration",
 "value": "ACQUIRING-SYNC"
 }, {
 "resource": "/cluster/node/clock",
-"data_type": "metric",
-"value_type": "decimal64.3",
+"dataType": "metric",
+"valueType": "decimal64.3",
 "value": 100.3
 }]
 }

@@ -26,7 +26,7 @@ import (
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
-	"github.com/redhat-cne/sdk-go/pkg/hwevent"
+	"github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
@@ -51,7 +51,7 @@ const (
 )
 
 var (
-	apiAddr      string = "localhost:8080"
+	apiAddr      string = "localhost:8089"
 	apiPath      string = "/api/cloudNotifications/v1/"
 	localAPIAddr string = "localhost:8989"
 
@@ -64,7 +64,7 @@ func main() {
 	common.InitLogger()
 	flag.StringVar(&localAPIAddr, "local-api-addr", "localhost:8989", "The address the local api binds to .")
 	flag.StringVar(&apiPath, "api-path", "/api/cloudNotifications/v1/", "The rest api path.")
-	flag.StringVar(&apiAddr, "api-addr", "localhost:8080", "The address the framework api endpoint binds to.")
+	flag.StringVar(&apiAddr, "api-addr", "localhost:8089", "The address the framework api endpoint binds to.")
 	flag.Parse()
 
 	nodeName := os.Getenv("NODE_NAME")
@@ -226,9 +226,7 @@ func server() {
 func getEvent(ctx *fasthttp.RequestCtx) {
 	body := ctx.PostBody()
 	if len(body) > 0 {
-		if consumerType == HW {
-			processHwEvent(body)
-		}
+		processEvent(body)
 		log.Debugf("received event %s", string(body))
 	} else {
 		ctx.SetStatusCode(http.StatusNoContent)
@@ -244,8 +242,8 @@ func ackEvent(ctx *fasthttp.RequestCtx) {
 	}
 }
 
-func processHwEvent(data []byte) {
-	var e hwevent.Event
+func processEvent(data []byte) {
+	var e event.Event
 	json.Unmarshal(data, &e)
 	// Note that there is no UnixMillis, so to get the
 	// milliseconds since epoch you'll need to manually
