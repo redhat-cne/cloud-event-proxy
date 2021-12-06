@@ -6,8 +6,8 @@ require (
 	github.com/cloudevents/sdk-go/v2 v2.5.0
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/prometheus/client_golang v1.11.0
-	github.com/redhat-cne/rest-api v0.1.1-0.20211130193106-d4bd451c668d
-	github.com/redhat-cne/sdk-go v0.1.1-0.20211130185743-65c3912ba066
+	github.com/redhat-cne/rest-api v0.1.1-0.20211206194632-bc3eb46ad9d0
+	github.com/redhat-cne/sdk-go v0.1.1-0.20211206194140-5b52c616af2b
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	github.com/valyala/fasthttp v1.29.0
