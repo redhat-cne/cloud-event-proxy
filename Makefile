@@ -1,4 +1,4 @@
-.PHONY: build
+.PHONY: build, test
 
 #for examples
 # Current  version
@@ -79,6 +79,9 @@ run-consumer:
 
 test:
 	go test ./...  -coverprofile=cover.out
+
+functests:
+	SUITE=./test/cne hack/run-functests.sh
 
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
 deploy-example:kustomize
