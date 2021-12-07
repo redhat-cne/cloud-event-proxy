@@ -1,3 +1,5 @@
+// +build unittests
+
 package main_test
 
 import (

@@ -24,8 +24,13 @@ jobs:
     name: Unit Tests
     runs-on: ubuntu-20.04
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-    - name: Run Test Scripts
-      run: |
-        make gha
+      - name: Checkout code
+        uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          go-version: '1.17'
+      - name: tidy
+        run: go mod tidy
+      - name: Run Test Scripts
+        run: |
+          make gha

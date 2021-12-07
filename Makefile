@@ -1,4 +1,4 @@
-.PHONY: build
+.PHONY: build, test
 
 #for examples
 # Current  version
@@ -80,6 +80,9 @@ run-consumer:
 test:
 	go test ./...  -coverprofile=cover.out
 
+functests:
+	SUITE=./test/cne hack/run-functests.sh
+
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
 deploy-example:kustomize
 	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-proxy=${SIDECAR_IMG} && $(KUSTOMIZE) edit set image cloud-native-event-consumer=${CONSUMER_IMG}
@@ -95,5 +98,5 @@ gha:
 	go build -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 	go build -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 	go build -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
-	go test ./...  -coverprofile=cover.out
+	go test ./... --tags=unittests -coverprofile=cover.out
 
