@@ -1,8 +1,25 @@
 package utils
 
 const (
-	// NamespaceTesting contains the name of the testing namespace
-	NamespaceTesting = "cloud-native-events-testing"
-	//EventProxyContainerName Event Proxy container name
+	// NamespaceForTesting ...
+	NamespaceForTesting = "cne-testing"
+	// NamespaceProducerTesting contains the name of the testing namespace
+	NamespaceProducerTesting = "cloud-native-event-producer-testing"
+	// NamespaceConsumerTesting ...
+	NamespaceConsumerTesting = "cloud-native-event-consumer-testing"
+	// NamespaceAMQTesting ...
+	NamespaceAMQTesting = "amq-router-testing"
+	// CloudEventProducerDeploymentName ...
+	CloudEventProducerDeploymentName = "cloud-native-producer-deployment"
+	// CloudEventConsumerDeploymentName ...
+	CloudEventConsumerDeploymentName = "cloud-native-consumer-deployment"
+	// AMQDeploymentName ...
+	AMQDeploymentName = "interconnect-deployment"
+
+	// EventProxyContainerName Event Proxy container name
 	EventProxyContainerName = "cloud-event-proxy"
+	// AmqInstanceName ...
+	AmqInstanceName = "amq-router"
+	// ConsumerContainerName ...
+	ConsumerContainerName = "cloud-event-consumer"
 )

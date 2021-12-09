@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: qpidrouter-config-a
+  name: qpidrouter-config
   namespace: default
 data:
   qdrouterd.conf: |-

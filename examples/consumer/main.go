@@ -55,7 +55,7 @@ var (
 	apiPath      string = "/api/cloudNotifications/v1/"
 	localAPIAddr string = "localhost:8989"
 
-	resourceAddressMock    string = "/cluster/node/mock"
+	resourceAddressMock    string = "/cluster/node/%s/mock"
 	resourceAddressPTP     string = "/cluster/node/%s/ptp"
 	resourceAddressHwEvent string = "/cluster/node/%s/redfish/event"
 )
@@ -72,7 +72,6 @@ func main() {
 		log.Error("cannot find NODE_NAME environment variable,setting to default `mock` node")
 		nodeName = "mock"
 	}
-	resourceAddressHwEvent = fmt.Sprintf("/cluster/node/%s/redfish/event", nodeName)
 
 	enableStatusCheck := common.GetBoolEnv("ENABLE_STATUS_CHECK")
 
@@ -98,31 +97,36 @@ RETRY:
 	}
 
 	subs := []*pubsub.PubSub{&pubsub.PubSub{
-		Resource: resourceAddressHwEvent,
+		Resource: fmt.Sprintf(resourceAddressHwEvent, nodeName),
 	}, &pubsub.PubSub{
-		Resource: resourceAddressMock,
+		Resource: fmt.Sprintf(resourceAddressMock, nodeName),
 	}, &pubsub.PubSub{
 		Resource: fmt.Sprintf(resourceAddressPTP, nodeName),
 	},
 	}
 
-	if enableStatusCheck {
-		if consumerType == PTP {
-			createPublisherForStatusPing(subs[2].Resource) // ptp // disable this for testing else you will see context deadline error
-		} else if consumerType == MOCK {
-			createPublisherForStatusPing(subs[1].Resource) // mock
-		}
+	var sub *pubsub.PubSub
+	if consumerType == PTP {
+		sub = subs[2]
+	} else if consumerType == MOCK || consumerType == "" {
+		sub = subs[1]
+	} else {
+		sub = subs[0]
 	}
 
-	for _, sub := range subs {
-		result := createSubscription(sub.Resource)
-		if result != nil {
-			if err := json.Unmarshal(result, sub); err != nil {
-				log.Errorf("failed to create a subscription object %v\n", err)
-			}
-		}
-		log.Infof("created subscription: %s\n", sub.String())
+	if enableStatusCheck {
+		createPublisherForStatusPing(sub.Resource) // ptp // disable this for testing else you will see context deadline error
 	}
+
+	var result []byte
+
+	result = createSubscription(sub.Resource)
+	if result != nil {
+		if err := json.Unmarshal(result, sub); err != nil {
+			log.Errorf("failed to create a subscription object %v\n", err)
+		}
+	}
+	log.Infof("created subscription: %s\n", sub.String())
 
 	// ping  for status every n secs
 
@@ -131,12 +135,7 @@ RETRY:
 		go func() {
 			defer wg.Done()
 			for range time.Tick(StatusCheckInterval * time.Second) {
-				//only for PTP testing
-				if consumerType == PTP {
-					pingForStatus(subs[2].ID) // ptp // disable this for testing else you will see context deadline error
-				} else if consumerType == MOCK {
-					pingForStatus(subs[1].ID) // mock
-				}
+				pingForStatus(sub.ID)
 			}
 		}()
 	}
@@ -250,5 +249,5 @@ func processEvent(data []byte) {
 	// divide from nanoseconds.
 	latency := (time.Now().UnixNano() - e.Time.UnixNano()) / 1000000
 	// set log to Info level for performance measurement
-	log.Infof("Latency for hardware event: %v ms\n", latency)
+	log.Infof("Latency for the event: %v ms\n", latency)
 }

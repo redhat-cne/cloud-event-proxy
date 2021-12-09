@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -32,7 +33,7 @@ import (
 // limitations under the License.
 
 var (
-	resourceAddress string = "/cluster/node/mock"
+	resourceAddress string = "/cluster/node/%s/mock"
 	config          *common.SCConfiguration
 )
 
@@ -41,10 +42,16 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 
 	config = configuration
 
+	nodeName := os.Getenv("NODE_NAME")
+	if nodeName == "" {
+		log.Error("cannot find NODE_NAME environment variable")
+		return fmt.Errorf("cannot find NODE_NAME environment variable %s", nodeName)
+	}
+
 	// 1. Create event Publication
 	var pub pubsub.PubSub
 	var err error
-	if pub, err = createPublisher(resourceAddress); err != nil {
+	if pub, err = createPublisher(fmt.Sprintf(resourceAddress, nodeName)); err != nil {
 		log.Errorf("failed to create a publisher %v", err)
 		return err
 	}
@@ -72,7 +79,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for range time.Tick(100 * time.Millisecond) {
+		for range time.Tick(5 * time.Second) {
 			// create an event
 			if mEvent, err := createMockEvent(pub); err == nil {
 				mEvent.Type = string(ptp.PtpStateChange)
