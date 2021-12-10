@@ -19,9 +19,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// TODO: we should refactor tests to use client from controller-runtime package
-// see - https://github.com/openshift/cluster-api-actuator-pkg/blob/master/pkg/e2e/framework/framework.go
-
 var junitPath *string
 
 func init() {
@@ -44,7 +41,7 @@ var _ = BeforeSuite(func() {
 
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: testutils.NamespaceTesting,
+			Name: testutils.NamespaceForTesting,
 		},
 	}
 	_, err := testclient.Client.Namespaces().Create(context.Background(), ns, metav1.CreateOptions{})
@@ -52,7 +49,7 @@ var _ = BeforeSuite(func() {
 })
 
 var _ = AfterSuite(func() {
-	err := testclient.Client.Namespaces().Delete(context.Background(), testutils.NamespaceTesting, metav1.DeleteOptions{})
+	err := testclient.Client.Namespaces().Delete(context.Background(), testutils.NamespaceForTesting, metav1.DeleteOptions{})
 	Expect(err).ToNot(HaveOccurred())
-	_ = namespaces.WaitForDeletion(testclient.Client, testutils.NamespaceTesting, 5*time.Minute)
+	_ = namespaces.WaitForDeletion(testclient.Client, testutils.NamespaceForTesting, 5*time.Minute)
 })

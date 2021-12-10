@@ -32,7 +32,7 @@ spec:
             limits:
               cpu: "50m"
           volumeMounts:
-            - name: qpidrouter-config-a
+            - name: qpidrouter-config
               mountPath: /etc/qpid-dispatch/
       volumes:
         - name: qpidrouter-config
