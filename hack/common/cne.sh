@@ -31,8 +31,15 @@ spec:
       labels:
         app: producer
     spec:
-      nodeSelector:
-        node-role.kubernetes.io/worker: ""
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - local
       serviceAccountName: cloud-event-producer-sa
       dnsPolicy: ClusterFirstWithHostNet
       containers:

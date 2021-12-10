@@ -6,6 +6,9 @@ NamespaceProducerTesting="cloud-native-event-producer-testing"
 NamespaceConsumerTesting="cloud-native-event-consumer-testing"
 NamespaceAMQTesting="amq-router-testing"
 
+label_node() {
+  oc label --overwrite node $(oc  get nodes -l node-role.kubernetes.io/worker="" | grep Ready | cut -f1 -d" " | head -1) app=local
+}
 create_namespaces() {
   action=$1
   echo "$action namespace "

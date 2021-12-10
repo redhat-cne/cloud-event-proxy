@@ -40,8 +40,15 @@ spec:
       labels:
         app: amq-router
     spec:
-      nodeSelector:
-        node-role.kubernetes.io/worker: ""
+      affinity:
+       nodeAffinity:
+         requiredDuringSchedulingIgnoredDuringExecution:
+           nodeSelectorTerms:
+             - matchExpressions:
+                 - key: app
+                   operator: In
+                   values:
+                     - local
       containers:
         - env:
             - name: QDROUTERD_CONF

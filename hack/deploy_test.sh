@@ -26,6 +26,7 @@ if [ "$action" == "undeploy" ]; then
  create_namespaces $action || true
 else
   action="apply"
+  label_node || true
  create_namespaces $action || true
  deploy_amq $action $NamespaceAMQTesting || true
  deploy_consumer $action $NamespaceConsumerTesting $NamespaceAMQTesting || true

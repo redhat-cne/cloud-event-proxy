@@ -147,8 +147,6 @@ var _ = ginkgo.Describe("validation", func() {
 					fmt.Sprintf("AMQ failed to post due to context deadline exceeded %s", producerPod.Name))
 				gomega.Expect(podLogs).Should(gomega.ContainSubstring("posting event status SUCCESS to publisher"),
 					fmt.Sprintf("Event posting did not succeed  %s", producerPod.Name))
-				fmt.Print(podLogs)
-
 			})
 
 		})
@@ -163,7 +161,7 @@ var _ = ginkgo.Describe("validation", func() {
 				gomega.Eventually(func() string {
 					buf, _ := pods.ExecCommand(testclient.Client, consumerPod, testutils.EventProxyContainerName, []string{"curl", "127.0.0.1:9091/metrics"})
 					return buf.String()
-				}, 5*time.Minute, 5*time.Second).Should(gomega.ContainSubstring("cne_api_events_published"),
+				}, 5*time.Minute, 5*time.Second).Should(gomega.ContainSubstring("cne_events_received"),
 					"api metrics not found")
 
 			})

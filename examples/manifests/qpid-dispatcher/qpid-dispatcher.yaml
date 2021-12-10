@@ -14,8 +14,15 @@ spec:
       labels:
         app: qpid-dispatcher
     spec:
-      nodeSelector:
-        node-role.kubernetes.io/worker: ""
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: local-app
+                    operator: In
+                    values:
+                      - local
       containers:
         - name: qpid-dispatcher
           image: quay.io/interconnectedcloud/qdrouterd:1.14.0
