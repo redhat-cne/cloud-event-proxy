@@ -544,22 +544,23 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, ifa
 	if state == "" {
 		return
 	}
+	source := fmt.Sprintf("/cluster/%s/ptp/interface/%s", p.nodeName, iface)
 	data := ceevent.Data{
 		Version: "v1",
 		Values: []ceevent.DataValue{{
-			Resource:  fmt.Sprintf("/cluster/%s/ptp/interface/%s", p.nodeName, iface),
+			Resource:  string(ptp.SyncStatusState),
 			DataType:  ceevent.NOTIFICATION,
 			ValueType: ceevent.ENUMERATION,
 			Value:     state,
 		}, {
-			Resource:  fmt.Sprintf("/cluster/%s/ptp/interface/%s", p.nodeName, iface),
+			Resource:  string(ptp.SyncStatusState),
 			DataType:  ceevent.METRIC,
 			ValueType: ceevent.DECIMAL,
 			Value:     float64(ptpOffset),
 		},
 		},
 	}
-	e, err := common.CreateEvent(p.publisherID, string(eventType), data)
+	e, err := common.CreateEvent(p.publisherID, string(eventType), source, data)
 	if err != nil {
 		log.Errorf("failed to create ptp event, %s", err)
 		return
