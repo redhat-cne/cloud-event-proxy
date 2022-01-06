@@ -78,7 +78,7 @@ run-consumer:
 	go run examples/consumer/main.go
 
 test:
-	go test ./...  -coverprofile=cover.out
+	go test ./... --tags=unittests -coverprofile=cover.out
 
 functests:
 	SUITE=./test/cne hack/run-functests.sh

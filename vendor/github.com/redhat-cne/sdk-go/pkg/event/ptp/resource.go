@@ -14,31 +14,31 @@
 
 package ptp
 
-// EventSource ...
-type EventSource string
+// EventResource ...
+type EventResource string
 
 const (
 	// GnssSyncStatus notification is signalled from equipment at state change
-	GnssSyncStatus EventSource = "/sync/gnss-status/gnss-sync-status"
+	GnssSyncStatus EventResource = "/sync/gnss-status/gnss-sync-status"
 
 	// OsClockSyncState State of node OS clock synchronization is notified at state change
-	OsClockSyncState EventSource = "/sync/sync-status/os-clock-sync-state"
+	OsClockSyncState EventResource = "/sync/sync-status/os-clock-sync-state"
 
 	// PtpClockClass notification is generated when the clock-class changes.
-	PtpClockClass EventSource = "/sync/ptp-status/ptp-clock-class-change"
+	PtpClockClass EventResource = "/sync/ptp-status/ptp-clock-class-change"
 
 	// PtpLockState notification is signalled from equipment at state change
-	PtpLockState EventSource = "/sync/ptp-status/lock-state"
+	PtpLockState EventResource = "/sync/ptp-status/lock-state"
 
 	// SynceClockQuality notification is generated when the clock-quality changes.
-	SynceClockQuality EventSource = "/sync/synce-status/clock-quality"
+	SynceClockQuality EventResource = "/sync/synce-status/clock-quality"
 
 	// SynceLockState Notification used to inform about synce synchronization state change
-	SynceLockState EventSource = "/sync/synce-status/lock-state"
+	SynceLockState EventResource = "/sync/synce-status/lock-state"
 
 	// SynceLockStateExtended notification is signalled from equipment at state change, enhanced information
-	SynceLockStateExtended EventSource = "/sync/synce-status/lock-state-extended"
+	SynceLockStateExtended EventResource = "/sync/synce-status/lock-state-extended"
 
 	// SyncStatusState State of equipment synchronization is notified at state change
-	SyncStatusState EventSource = "/sync/sync-status/sync-state"
+	SyncStatusState EventResource = "/sync/sync-status/sync-state"
 )

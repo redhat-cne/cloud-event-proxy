@@ -132,7 +132,7 @@ func CreateSubscription(config *SCConfiguration, subscription pubsub.PubSub) (su
 }
 
 // CreateEvent create an event
-func CreateEvent(pubSubID, eventType string, data ceevent.Data) (ceevent.Event, error) {
+func CreateEvent(pubSubID, eventType, source string, data ceevent.Data) (ceevent.Event, error) {
 	// create an event
 	if pubSubID == "" {
 		return ceevent.Event{}, fmt.Errorf("id is a required field")
@@ -143,6 +143,7 @@ func CreateEvent(pubSubID, eventType string, data ceevent.Data) (ceevent.Event, 
 	event := v1event.CloudNativeEvent()
 	event.ID = pubSubID
 	event.Type = eventType
+	event.SetSource(source)
 	event.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
 	event.SetDataContentType(ceevent.ApplicationJSON)
 	event.SetData(data)

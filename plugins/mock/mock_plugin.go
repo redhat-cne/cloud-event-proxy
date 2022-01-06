@@ -113,19 +113,19 @@ func createMockEvent(pub pubsub.PubSub) (ceEvent.Event, error) {
 	data := ceEvent.Data{
 		Version: "v1",
 		Values: []ceEvent.DataValue{{
-			Resource:  pub.Resource,
+			Resource:  string(ptp.SyncStatusState),
 			DataType:  ceEvent.NOTIFICATION,
 			ValueType: ceEvent.ENUMERATION,
 			Value:     ptp.ACQUIRING_SYNC,
 		},
 			{
-				Resource:  pub.Resource,
+				Resource:  string(ptp.SyncStatusState),
 				DataType:  ceEvent.METRIC,
 				ValueType: ceEvent.DECIMAL,
 				Value:     "99.6",
 			},
 		},
 	}
-	e, err := common.CreateEvent(pub.ID, string(ptp.PtpStateChange), data)
+	e, err := common.CreateEvent(pub.ID, pub.Resource, string(ptp.PtpStateChange), data)
 	return e, err
 }
