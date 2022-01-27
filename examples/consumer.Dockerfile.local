@@ -8,8 +8,8 @@ COPY --from=builder  /go/src/github.com/redhat-cne/cloud-event-proxy/build/libpt
 COPY --from=builder  /go/src/github.com/redhat-cne/cloud-event-proxy/build/libc.so.6 /lib64/
 COPY --from=builder  /go/src/github.com/redhat-cne/cloud-event-proxy/build/ld-linux-x86-64.so.2 /lib64/
 
-COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/build/cloud-native-event-consumer /
-ENTRYPOINT ["/cloud-native-event-consumer"]
+COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/build/cloud-event-consumer /
+ENTRYPOINT ["/cloud-event-consumer"]
 
 
 

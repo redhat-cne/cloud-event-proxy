@@ -8,8 +8,8 @@ source "$DIR/common/consumer.sh"
 source "$DIR/common/router.sh"
 
 KUBECONFIG="${KUBECONFIG:-}"
-CNE_IMG="${CNE_IMG:-quay.io/aneeshkp/cloud-event-proxy}"
-CONSUMER_IMG="${CONSUMER_IMG:-quay.io/aneeshkp/cloud-native-event-consumer}"
+CNE_IMG="${CNE_IMG:-quay.io/redhat-cne/cloud-event-proxy}"
+CONSUMER_IMG="${CONSUMER_IMG:-quay.io/redhat-cne/cloud-event-consumer}"
 
 
 if [ "$KUBECONFIG" == "" ]; then

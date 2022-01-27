@@ -97,7 +97,7 @@ var (
 			Help:      "",
 		}, []string{"from", "process", "node", "iface"})
 
-	//SyncState metrics to show current clock state
+	// SyncState metrics to show current clock state
 	SyncState = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: ptpNamespace,
@@ -149,12 +149,12 @@ func RegisterMetrics(nodeName string) {
 
 // PTPEventManager for PTP
 type PTPEventManager struct {
-	publisherID string
-	nodeName    string
-	scConfig    *common.SCConfiguration
-	lock        sync.RWMutex
-	Stats       map[types.ConfigName]map[types.IFace]*stats.Stats
-	mock        bool
+	publisherTypes map[ptp.EventType]*types.EventPublisherType
+	nodeName       string
+	scConfig       *common.SCConfiguration
+	lock           sync.RWMutex
+	Stats          map[types.ConfigName]map[types.IFace]*stats.Stats
+	mock           bool
 	//PtpConfigMapUpdates holds ptp-configmap updated details
 	PtpConfigMapUpdates *ptpConfig.LinuxPTPConfigMapUpdate
 	// Ptp4lConfigInterfaces holds interfaces and its roles , after reading from ptp4l config files
@@ -162,9 +162,9 @@ type PTPEventManager struct {
 }
 
 // NewPTPEventManager to manage events and metrics
-func NewPTPEventManager(publisherID string, nodeName string, config *common.SCConfiguration) (ptpEventManager *PTPEventManager) {
+func NewPTPEventManager(publisherTypes map[ptp.EventType]*types.EventPublisherType, nodeName string, config *common.SCConfiguration) (ptpEventManager *PTPEventManager) {
 	ptpEventManager = &PTPEventManager{
-		publisherID:           publisherID,
+		publisherTypes:        publisherTypes,
 		nodeName:              nodeName,
 		scConfig:              config,
 		lock:                  sync.RWMutex{},
@@ -321,6 +321,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		//phc2sys[4268818.287]: [ptp4l.0.config] ens5f0 phc offset       -47 s2 freq   -2047 delay   2438
 		// Use threshold to CLOCK_REALTIME==SLAVE, rest send clock state to metrics no events
 		interfaceName, ptpOffset, _, frequencyAdjustment, delay, syncState := extractRegularMetrics(processName, output)
+		eventType := ptp.PtpStateChange
 		if interfaceName == "" {
 			return // don't do if iface not known
 		}
@@ -329,6 +330,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			offsetSource = sys
 		} else if strings.Contains(output, "phc offset") {
 			offsetSource = phc
+			eventType = ptp.OsClockSyncStateChange
 		}
 
 		interfaceType := types.IFace(interfaceName)
@@ -348,12 +350,12 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		case ClockRealTime: //CLOCK_REALTIME is active slave interface
 			// copy  ClockRealTime value to current slave interface
 			if ptpInterface.Name != "" {
-				p.GenPhc2SysEvent(ptpStats[interfaceType], ptpInterface.Name, ClockRealTime, int64(ptpOffset), syncState)
+				p.GenPTPEvent(ptpStats[interfaceType], ptpInterface.Name, ClockRealTime, int64(ptpOffset), syncState, eventType)
 				UpdateSyncStateMetrics(processName, ptpInterface.Name, ptpStats[interfaceType].LastSyncState())
 				UpdatePTPMetrics(offsetSource, processName, ptpInterface.Name, ptpOffset, float64(ptpStats[interfaceType].MaxAbs()),
 					frequencyAdjustment, delay)
 			} else {
-				p.GenPhc2SysEvent(ptpStats[interfaceType], interfaceName, ClockRealTime, int64(ptpOffset), syncState)
+				p.GenPTPEvent(ptpStats[interfaceType], interfaceName, ClockRealTime, int64(ptpOffset), syncState, eventType)
 			}
 			//this will update for CLOCK_REALTIME
 			UpdateSyncStateMetrics(processName, interfaceName, ptpStats[interfaceType].LastSyncState())
@@ -365,9 +367,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				r := []rune(ptpInterface.Name)
 				ptpInterface.Name = string(r[:len(r)-1]) + "x"
 				masterResource := fmt.Sprintf("%s/%s", ptpInterface.Name, MasterClockType)
-				p.GenPhc2SysEvent(ptpStats[interfaceType], ptpInterface.Name,
-					masterResource,
-					int64(ptpOffset), syncState)
+				p.GenPTPEvent(ptpStats[interfaceType], ptpInterface.Name, masterResource, int64(ptpOffset), syncState, eventType)
 				UpdateSyncStateMetrics(processName, ptpInterface.Name, ptpStats[interfaceType].LastSyncState())
 				UpdatePTPMetrics(offsetSource, processName, ptpInterface.Name, ptpOffset, float64(ptpStats[interfaceType].MaxAbs()),
 					frequencyAdjustment, delay)
@@ -380,7 +380,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				break
 			}
 			if ptpInterface.Role != types.FAULTY && int64(ptpOffset) > 0 { //if its faulty leave it to last state(HOLDOVER  or FREERUN)
-				p.GenPhc2SysEvent(ptpStats[interfaceType], interfaceName, interfaceName, int64(ptpOffset), syncState)
+				p.GenPTPEvent(ptpStats[interfaceType], interfaceName, interfaceName, int64(ptpOffset), syncState, eventType)
 			}
 			UpdateSyncStateMetrics(processName, interfaceName, ptpStats[interfaceType].LastSyncState())
 			UpdatePTPMetrics(offsetSource, processName, interfaceName, ptpOffset, float64(ptpStats[interfaceType].MaxAbs()),
@@ -471,8 +471,8 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	}
 }
 
-// GenPhc2SysEvent ... generate events form the logs
-func (p *PTPEventManager) GenPhc2SysEvent(stats *stats.Stats, iface string, eventResourceName string, ptpOffset int64, clockState ptp.SyncState) {
+// GenPTPEvent ... generate events form the logs
+func (p *PTPEventManager) GenPTPEvent(stats *stats.Stats, iface string, eventResourceName string, ptpOffset int64, clockState ptp.SyncState, eventType ptp.EventType) {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Println("Recovered in f", r)
@@ -490,7 +490,7 @@ func (p *PTPEventManager) GenPhc2SysEvent(stats *stats.Stats, iface string, even
 		case ptp.FREERUN: //last state was already sent for FreeRUN , but if its within then send again with new state
 			if isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) { // within range
 				log.Infof(" publishing event for %s with last state %s and current clock state %s and offset %d", iface, stats.LastSyncState(), clockState, ptpOffset)
-				p.PublishEvent(clockState, ptpOffset, eventResourceName, ptp.PtpStateChange) // change to locked
+				p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType) // change to locked
 				stats.SetLastSyncState(clockState)
 				stats.SetLastOffset(int64(ptpOffset))
 				stats.AddValue(int64(ptpOffset)) // update off set when its in locked state and hold over only
@@ -501,7 +501,7 @@ func (p *PTPEventManager) GenPhc2SysEvent(stats *stats.Stats, iface string, even
 				stats.AddValue(int64(ptpOffset)) // update off set when its in locked state and hold over only
 			} else {
 				log.Infof(" publishing event for %s with last state %s and current clock state %s and offset %d", iface, stats.LastSyncState(), clockState, ptpOffset)
-				p.PublishEvent(ptp.FREERUN, ptpOffset, eventResourceName, ptp.PtpStateChange)
+				p.PublishEvent(ptp.FREERUN, ptpOffset, eventResourceName, eventType)
 				stats.SetLastSyncState(ptp.FREERUN)
 				stats.SetLastOffset(int64(ptpOffset))
 			}
@@ -514,14 +514,14 @@ func (p *PTPEventManager) GenPhc2SysEvent(stats *stats.Stats, iface string, even
 				clockState = ptp.FREERUN
 			}
 			log.Infof(" publishing event for %s with last state %s and current clock state %s and offset %d", iface, stats.LastSyncState(), clockState, ptpOffset)
-			p.PublishEvent(clockState, ptpOffset, eventResourceName, ptp.PtpStateChange) // change to unknown
+			p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType) // change to unknown
 			stats.SetLastSyncState(clockState)
 			stats.SetLastOffset(int64(ptpOffset))
 		}
 	case ptp.FREERUN:
 		if lastClockState != ptp.FREERUN { // within range
 			log.Infof(" publishing event for %s with last state %s and current clock state %s and offset %d", iface, stats.LastSyncState(), clockState, ptpOffset)
-			p.PublishEvent(clockState, ptpOffset, eventResourceName, ptp.PtpStateChange) // change to locked
+			p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType) // change to locked
 			stats.SetLastSyncState(clockState)
 			stats.SetLastOffset(int64(ptpOffset))
 			stats.AddValue(int64(ptpOffset))
@@ -532,7 +532,7 @@ func (p *PTPEventManager) GenPhc2SysEvent(stats *stats.Stats, iface string, even
 			clockState = ptp.FREERUN
 		}
 		log.Infof(" publishing event for %s with last state %s and current clock state %s and offset %d", iface, stats.LastSyncState(), clockState, ptpOffset)
-		p.PublishEvent(clockState, ptpOffset, eventResourceName, ptp.PtpStateChange) // change to unknown state
+		p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType) // change to unknown state
 		stats.SetLastSyncState(clockState)
 		stats.SetLastOffset(int64(ptpOffset))
 	}
@@ -548,33 +548,39 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, ifa
 	data := ceevent.Data{
 		Version: "v1",
 		Values: []ceevent.DataValue{{
-			Resource:  string(ptp.SyncStatusState),
+			Resource:  string(p.publisherTypes[eventType].Resource),
 			DataType:  ceevent.NOTIFICATION,
 			ValueType: ceevent.ENUMERATION,
 			Value:     state,
 		}, {
-			Resource:  string(ptp.SyncStatusState),
+			Resource:  string(p.publisherTypes[eventType].Resource),
 			DataType:  ceevent.METRIC,
 			ValueType: ceevent.DECIMAL,
 			Value:     float64(ptpOffset),
 		},
 		},
 	}
-	e, err := common.CreateEvent(p.publisherID, string(eventType), source, data)
-	if err != nil {
-		log.Errorf("failed to create ptp event, %s", err)
-		return
-	}
-	if !p.mock {
-		if err = common.PublishEventViaAPI(p.scConfig, e); err != nil {
-			log.Errorf("failed to publish ptp event %v, %s", e, err)
+	if pubs, ok := p.publisherTypes[eventType]; ok {
+		e, err := common.CreateEvent(pubs.PubID, string(eventType), source, data)
+		if err != nil {
+			log.Errorf("failed to create ptp event, %s", err)
 			return
 		}
+		if !p.mock {
+			if err = common.PublishEventViaAPI(p.scConfig, e); err != nil {
+				log.Errorf("failed to publish ptp event %v, %s", e, err)
+				return
+			}
+		}
+	} else {
+		log.Errorf("failed to publish ptp event due to missing publisher for type %s", string(eventType))
 	}
 }
 
 // UpdatePTPMetrics ...
 func UpdatePTPMetrics(metricsType, process, iface string, offset, maxOffset, frequencyAdjustment, delay float64) {
+	PtpOffset.Delete(prometheus.Labels{"from": metricsType,
+		"process": process, "node": ptpNodeName, "iface": iface})
 	PtpOffset.With(prometheus.Labels{"from": metricsType,
 		"process": process, "node": ptpNodeName, "iface": iface}).Set(offset)
 
@@ -595,16 +601,17 @@ func UpdateDeletedPTPMetrics(offsetSource, iface, processName string) {
 
 // UpdateSyncStateMetrics ...
 func UpdateSyncStateMetrics(process string, iface string, state ptp.SyncState) {
+	var clockState float64
 	if state == ptp.LOCKED {
-		SyncState.With(prometheus.Labels{
-			"process": process, "node": ptpNodeName, "iface": iface}).Set(1)
+		clockState = 1
 	} else if state == ptp.FREERUN {
-		SyncState.With(prometheus.Labels{
-			"process": process, "node": ptpNodeName, "iface": iface}).Set(0)
+		clockState = 0
 	} else if state == ptp.HOLDOVER {
-		SyncState.With(prometheus.Labels{
-			"process": process, "node": ptpNodeName, "iface": iface}).Set(2)
+		clockState = 2
 	}
+
+	SyncState.With(prometheus.Labels{
+		"process": process, "node": ptpNodeName, "iface": iface}).Set(clockState)
 }
 
 //UpdateInterfaceRoleMetrics ...

@@ -17,6 +17,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	ptpEvent "github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	"net"
 	"os"
 	"sync"
@@ -27,13 +28,11 @@ import (
 
 	ceTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
 
-	"github.com/redhat-cne/sdk-go/pkg/channel"
-	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
-
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptpSocket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
 	ptpTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
+	"github.com/redhat-cne/sdk-go/pkg/channel"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	log "github.com/sirupsen/logrus"
 
@@ -51,9 +50,10 @@ const (
 )
 
 var (
-	resourceAddress string = "/cluster/node/%s/ptp"
-	config          *common.SCConfiguration
-	eventManager    *ptpMetrics.PTPEventManager
+	resourcePrefix = "/cluster/node/%s%s"
+	publishers     = map[ptpEvent.EventType]*ptpTypes.EventPublisherType{}
+	config         *common.SCConfiguration
+	eventManager   *ptpMetrics.PTPEventManager
 )
 
 // Start ptp plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
@@ -68,16 +68,23 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	config = configuration
 	// register metrics type
 	ptpMetrics.RegisterMetrics(nodeName)
+	publishers = InitPubSubTypes()
 
 	// 1. Create event Publication
-	var pub pubsub.PubSub
 	var err error
-	if pub, err = createPublisher(fmt.Sprintf(resourceAddress, nodeName)); err != nil {
-		log.Errorf("failed to create a publisher %v", err)
-		return err
+	for _, publisherType := range publishers {
+		var pub pubsub.PubSub
+		if pub, err = createPublisher(fmt.Sprintf(resourcePrefix, nodeName, string(publisherType.Resource))); err != nil {
+			log.Errorf("failed to create a publisher %v", err)
+			return err
+		}
+
+		publisherType.PubID = pub.ID
+		publisherType.Pub = &pub
+		log.Printf("Created publisher %v", pub)
 	}
-	log.Printf("Created publisher %v", pub)
-	eventManager = ptpMetrics.NewPTPEventManager(pub.ID, nodeName, config)
+
+	eventManager = ptpMetrics.NewPTPEventManager(publishers, nodeName, config)
 
 	wg.Add(1)
 	go listenToSocket(wg)
@@ -132,9 +139,8 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 								log.Errorf("config updated and interface  not exists, deleting %s", ifaces.Name)
 								t := eventManager.PtpThreshold(ifaces.Name)
 								close(t.Close) // close any holdover go routines
-
-								eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, ifaces.Name, ptp.PtpStateChange)
-								ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, ifaces.Name, ptp.FREERUN)
+								eventManager.PublishEvent(ptpEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, ifaces.Name, ptpEvent.PtpStateChange)
+								ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, ifaces.Name, ptpEvent.FREERUN)
 								if s, found := ptpStats[ceTypes.IFace(ifaces.Name)]; found {
 									ptpMetrics.UpdateDeletedPTPMetrics(s.OffsetSource(), ifaces.Name, s.ProcessName())
 									eventManager.DeleteStats(ptpConfigFileName, ptpTypes.IFace(ifaces.Name))
@@ -175,8 +181,8 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 								// Make sure that the function does close the channel
 								t.SafeClose()
 							}
-							eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, iface.Name, ptp.PtpStateChange)
-							ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, iface.Name, ptp.FREERUN)
+							eventManager.PublishEvent(ptpEvent.FREERUN, ptpMetrics.FreeRunOffsetValue, iface.Name, ptpEvent.PtpStateChange)
+							ptpMetrics.UpdateSyncStateMetrics(phc2sysProcessName, iface.Name, ptpEvent.FREERUN)
 							if s, found := ptpStats[ceTypes.IFace(iface.Name)]; found {
 								ptpMetrics.UpdateDeletedPTPMetrics(s.OffsetSource(), iface.Name, s.ProcessName())
 								eventManager.DeleteStats(ptpConfigFileName, ptpTypes.IFace(iface.Name))
@@ -232,7 +238,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	onReceiveOverrideFn := func(e v2.Event, d *channel.DataChan) error {
 		log.Info("got status check call,fire events for above publisher")
 		if len(eventManager.Stats) == 0 {
-			eventManager.PublishEvent(ptp.FREERUN, 0, "ptp-not-set", ptp.PtpStateChange)
+			eventManager.PublishEvent(ptpEvent.FREERUN, 0, "ptp-not-set", ptpEvent.PtpStateChange)
 		} else {
 			for c, ifaces := range eventManager.Stats {
 				ptp4lCfg := eventManager.Ptp4lConfigInterfaces[c]
@@ -245,7 +251,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 							i = ptpTypes.IFace(fmt.Sprintf("%s/%s", iName, ptpMetrics.MasterClockType))
 						}
 					}
-					eventManager.PublishEvent(s.SyncState(), s.Offset(), string(i), ptp.PtpStateChange)
+					eventManager.PublishEvent(s.SyncState(), s.Offset(), string(i), ptpEvent.PtpStateChange)
 				}
 			}
 		}
@@ -253,7 +259,9 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		return nil
 	}
 	log.Infof("setting up status listener")
-	v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pub.Resource, "status"), onReceiveOverrideFn, fn)
+	for _, pType := range publishers {
+		v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pType.Resource, "status"), onReceiveOverrideFn, fn)
+	}
 
 	return nil
 }
@@ -311,4 +319,23 @@ func HasEqualInterface(a []*string, b []*ptp4lconf.PTPInterface) bool {
 		}
 	}
 	return true
+}
+
+// InitPubSubTypes ... initialize types of publishers for ptp operator
+func InitPubSubTypes() map[ptpEvent.EventType]*ptpTypes.EventPublisherType {
+	publishers := make(map[ptpEvent.EventType]*ptpTypes.EventPublisherType)
+	publishers[ptpEvent.OsClockSyncStateChange] = &ptpTypes.EventPublisherType{
+		EventType: ptpEvent.OsClockSyncStateChange,
+		Resource:  ptpEvent.OsClockSyncState,
+	}
+	publishers[ptpEvent.PtpClockClassChange] = &ptpTypes.EventPublisherType{
+		EventType: ptpEvent.PtpClockClassChange,
+		Resource:  ptpEvent.PtpClockClass,
+	}
+
+	publishers[ptpEvent.PtpStateChange] = &ptpTypes.EventPublisherType{
+		EventType: ptpEvent.PtpStateChange,
+		Resource:  ptpEvent.PtpLockState,
+	}
+	return publishers
 }

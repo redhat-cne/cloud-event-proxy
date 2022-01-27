@@ -21,13 +21,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: sidecar-consumer-sa
-    namespace: cloud-native-events
+    namespace: cloud-events
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: prometheus-k8s
-  namespace: cloud-native-events
+  namespace: cloud-events
 rules:
   - apiGroups:
       - ""
@@ -51,7 +51,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: prometheus-k8s
-  namespace: cloud-native-events
+  namespace: cloud-events
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
