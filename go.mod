@@ -10,7 +10,7 @@ require (
 	github.com/onsi/gomega v1.17.0
 	github.com/prometheus/client_golang v1.11.0
 	github.com/redhat-cne/rest-api v0.1.1-0.20220105171308-cc511366a079
-	github.com/redhat-cne/sdk-go v0.1.1-0.20220105170230-b17827c91503
+	github.com/redhat-cne/sdk-go v0.1.1-0.20220127152823-2487c3dd9ce7
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	github.com/valyala/fasthttp v1.29.0
