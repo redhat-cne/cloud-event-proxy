@@ -8,7 +8,7 @@ source "$DIR/common/consumer.sh"
 source "$DIR/common/router.sh"
 
 KUBECONFIG="${KUBECONFIG:-}"
-CNE_IMG="${CNE_IMG:-quay.io/redhat-cne/cloud-event-proxy}"
+CNE_IMG="${CNE_IMG:-quay.io/openshift/origin-cloud-event-proxy}"
 CONSUMER_IMG="${CONSUMER_IMG:-quay.io/redhat-cne/cloud-event-consumer}"
 
 
