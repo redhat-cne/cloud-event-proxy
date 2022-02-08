@@ -5,7 +5,7 @@
 VERSION ?=latest
 # Default image tag
 
-IMG ?= quay.io/redhat-cne/cloud-event-proxy:$(VERSION)
+IMG ?= quay.io/openshift/origin-cloud-event-proxy:$(VERSION)
 CONSUMER_IMG ?= quay.io/redhat-cne/cloud-event-consumer:$(VERSION)
 
 

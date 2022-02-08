@@ -206,20 +206,6 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 		}
 		log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
 			*profile.Name, holdOverTh, maxOffsetTh, minOffsetTh)
-
-		/* move threshold per profile
-		for _, iface := range profile.Interfaces {
-			if iface != nil && *iface != "" {
-				l.EventThreshold[*iface] = &PtpClockThreshold{
-					HoldOverTimeout:    holdOverTh,
-					MaxOffsetThreshold: maxOffsetTh,
-					MinOffsetThreshold: minOffsetTh,
-					Close:              make(chan struct{}),
-				}
-				log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
-					*iface, holdOverTh, maxOffsetTh, minOffsetTh)
-			}
-		}*/
 	}
 }
 

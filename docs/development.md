@@ -39,7 +39,7 @@ make run-consumer
 
 ```shell
 podman push localhost/cloud-event-proxy:${TAG} quay.io/redhat-cne/cloud-event-proxy:latest
-podman push localhost/cloud-event-consumer:${TAG}quay.io/redhat-cne/cloud-event-consumer:latest
+podman push localhost/cloud-event-consumer:${TAG} quay.io/redhat-cne/cloud-event-consumer:latest
 ```
 
 Use consumer.yaml and service.yaml from examples/manifests folder to deploy to a cluster.
