@@ -39,7 +39,7 @@ const (
 	FreeRunOffsetValue = -9999999999999999
 	//ClockRealTime is the slave
 	ClockRealTime = "CLOCK_REALTIME"
-	//MasterClockType is teh slave sync slave clock to master
+	//MasterClockType is the slave sync slave clock to master
 	MasterClockType = "master"
 
 	// from the logs
