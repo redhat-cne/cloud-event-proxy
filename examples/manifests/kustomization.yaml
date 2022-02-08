@@ -8,11 +8,11 @@ resources:
 - consumer.yaml
 replicas:
 - count: 1
-  name: cloud-native-consumer-deployment
+  name: cloud-consumer-deployment
 images:
 - name: cloud-event-proxy
-  newName: quay.io/aneeshkp/cloud-event-proxy
+  newName: quay.io/openshift/origin-cloud-event-proxy
   newTag: latest
-- name: cloud-native-event-consumer
-  newName: quay.io/aneeshkp/cloud-native-event-consumer
+- name: cloud-event-consumer
+  newName: quay.io/redhat-cne/cloud-event-consumer
   newTag: latest

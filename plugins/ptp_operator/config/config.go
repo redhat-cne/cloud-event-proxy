@@ -138,38 +138,40 @@ func (p *PtpProfile) GetInterface() (interfaces []*string) {
 	return interfaces
 }
 
-// SetDefaultPTPThreshold ... creates default record
-func (l *LinuxPTPConfigMapUpdate) SetDefaultPTPThreshold(iface string) {
-	l.lock.Lock()
-	defer l.lock.Unlock()
-	l.EventThreshold[iface] = &PtpClockThreshold{
-		HoldOverTimeout:    holdoverTimeout,
-		MaxOffsetThreshold: maxOffsetThreshold,
-		MinOffsetThreshold: minOffsetThreshold,
-		Close:              make(chan struct{}),
+// DeletePTPThreshold ... delete threshold for profile
+func (l *LinuxPTPConfigMapUpdate) DeletePTPThreshold(name string) {
+	if t, found := l.EventThreshold[name]; found {
+		l.lock.Lock()
+		closeHoldover(t)
+		delete(l.EventThreshold, name)
+		l.lock.Unlock()
 	}
 }
 
-// DeletePTPThreshold ... delete threshold for the interface
-func (l *LinuxPTPConfigMapUpdate) DeletePTPThreshold(iface string) {
+// DeleteAllPTPThreshold ... delete all threshold per config
+func (l *LinuxPTPConfigMapUpdate) DeleteAllPTPThreshold() {
+	for k, t := range l.EventThreshold {
+		l.lock.Lock()
+		closeHoldover(t)
+		delete(l.EventThreshold, k)
+		l.lock.Unlock()
+	}
+}
+
+func closeHoldover(t *PtpClockThreshold) {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Errorf("restored from delete ptp threshold")
 		}
 	}()
-	if t, found := l.EventThreshold[iface]; found {
-		l.lock.Lock()
-		defer l.lock.Unlock()
-		select {
-		case <-t.Close:
-		default:
-			close(t.Close) // close any holdover go routines
-		}
-		delete(l.EventThreshold, iface)
+	select {
+	case <-t.Close:
+	default:
+		close(t.Close) // close any holdover go routines
 	}
 }
 
-// UpdatePTPThreshold .. update ptp threshold
+// UpdatePTPThreshold ... update ptp threshold
 func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 	var maxOffsetTh, minOffsetTh, holdOverTh int64
 	for _, profile := range l.NodeProfiles {
@@ -196,18 +198,14 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 			}
 		}
 
-		for _, iface := range profile.Interfaces {
-			if iface != nil && *iface != "" {
-				l.EventThreshold[*iface] = &PtpClockThreshold{
-					HoldOverTimeout:    holdOverTh,
-					MaxOffsetThreshold: maxOffsetTh,
-					MinOffsetThreshold: minOffsetTh,
-					Close:              make(chan struct{}),
-				}
-				log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
-					*iface, holdOverTh, maxOffsetTh, minOffsetTh)
-			}
+		l.EventThreshold[*profile.Name] = &PtpClockThreshold{
+			HoldOverTimeout:    holdOverTh,
+			MaxOffsetThreshold: maxOffsetTh,
+			MinOffsetThreshold: minOffsetTh,
+			Close:              make(chan struct{}),
 		}
+		log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
+			*profile.Name, holdOverTh, maxOffsetTh, minOffsetTh)
 	}
 }
 
@@ -222,8 +220,9 @@ func (l *LinuxPTPConfigMapUpdate) UpdateConfig(nodeProfilesJSON []byte) error {
 		l.appliedNodeProfileJSON = nodeProfilesJSON
 		l.NodeProfiles = nodeProfiles
 		for index, np := range l.NodeProfiles {
-			//duplicate nodeprofiles
+			//duplicate node profiles
 			l.NodeProfiles[index].Interfaces = np.GetInterface()
+			l.NodeProfiles[index].PtpClockThreshold = np.PtpClockThreshold
 		}
 		l.UpdateCh <- true
 		return nil
@@ -236,7 +235,6 @@ func (l *LinuxPTPConfigMapUpdate) UpdateConfig(nodeProfilesJSON []byte) error {
 			log.Infof("Skip no profile %+v", nodeProfiles[0])
 			return nil
 		}
-
 		log.Info("load profiles using old method")
 		l.appliedNodeProfileJSON = nodeProfilesJSON
 		l.NodeProfiles = nodeProfiles

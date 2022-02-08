@@ -5,8 +5,8 @@
 VERSION ?=latest
 # Default image tag
 
-SIDECAR_IMG ?= quay.io/aneeshkp/cloud-event-proxy:$(VERSION)
-CONSUMER_IMG ?= quay.io/aneeshkp/cloud-native-event-consumer:$(VERSION)
+IMG ?= quay.io/openshift/origin-cloud-event-proxy:$(VERSION)
+CONSUMER_IMG ?= quay.io/redhat-cne/cloud-event-consumer:$(VERSION)
 
 
 # Export GO111MODULE=on to enable project to be built from within GOPATH/src
@@ -50,7 +50,7 @@ build-only:
 	go build -o ./build/cloud-event-proxy cmd/main.go
 
 build-examples:
-	go build -o ./build/cloud-native-event-consumer ./examples/consumer/main.go
+	go build -o ./build/cloud-event-consumer ./examples/consumer/main.go
 
 lint:
 	golint -set_exit_status `go list ./... | grep -v vendor`
@@ -60,7 +60,6 @@ build-plugins:
 	go build  -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 	go build  -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 	go build  -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
-
 
 build-amqp-plugin:
 	go build -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
@@ -85,12 +84,12 @@ functests:
 
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
 deploy-example:kustomize
-	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-proxy=${SIDECAR_IMG} && $(KUSTOMIZE) edit set image cloud-native-event-consumer=${CONSUMER_IMG}
+	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-proxy=${IMG} && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl apply -f -
 
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
 undeploy-example:kustomize
-	cd ./examples/manifests  && $(KUSTOMIZE) edit set image cloud-event-proxy=${SIDECAR_IMG} && $(KUSTOMIZE) edit set image cloud-native-event-consumer=${CONSUMER_IMG}
+	cd ./examples/manifests  && $(KUSTOMIZE) edit set image cloud-event-proxy=${IMG} && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl delete -f -
 
 # For GitHub Actions CI
@@ -100,3 +99,14 @@ gha:
 	go build -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
 	go test ./... --tags=unittests -coverprofile=cover.out
 
+docker-build: #test ## Build docker image with the manager.
+	docker build -t ${IMG} .
+
+docker-push: ## Push docker image with the manager.
+	docker push ${IMG}
+
+docker-build-consumer: #test ## Build docker image with the manager.
+	docker build -f ./examples/consumer.Dockerfile -t ${CONSUMER_IMG} .
+
+docker-push-consumer: ## Push docker image with the manager.
+	docker push ${CONSUMER_IMG}

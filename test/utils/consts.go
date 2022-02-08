@@ -4,15 +4,15 @@ const (
 	// NamespaceForTesting ...
 	NamespaceForTesting = "cne-testing"
 	// NamespaceProducerTesting contains the name of the testing namespace
-	NamespaceProducerTesting = "cloud-native-event-producer-testing"
+	NamespaceProducerTesting = "cloud-event-producer-testing"
 	// NamespaceConsumerTesting ...
-	NamespaceConsumerTesting = "cloud-native-event-consumer-testing"
+	NamespaceConsumerTesting = "cloud-event-consumer-testing"
 	// NamespaceAMQTesting ...
 	NamespaceAMQTesting = "amq-router-testing"
 	// CloudEventProducerDeploymentName ...
-	CloudEventProducerDeploymentName = "cloud-native-producer-deployment"
+	CloudEventProducerDeploymentName = "cloud-producer-deployment"
 	// CloudEventConsumerDeploymentName ...
-	CloudEventConsumerDeploymentName = "cloud-native-consumer-deployment"
+	CloudEventConsumerDeploymentName = "cloud-consumer-deployment"
 	// AMQDeploymentName ...
 	AMQDeploymentName = "interconnect-deployment"
 

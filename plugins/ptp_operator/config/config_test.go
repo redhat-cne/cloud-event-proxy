@@ -9,9 +9,10 @@ import (
 )
 
 var (
-	profile string = "profile0"
-	inface0 string = "ens5f0"
-	inface1 string = "ens5f1"
+	profile0 string = "profile0"
+	profile1 string = "profile1"
+	inface0  string = "ens5f0"
+	inface1  string = "ens5f1"
 )
 
 func Test_Config(t *testing.T) {
@@ -23,7 +24,7 @@ func Test_Config(t *testing.T) {
 	}{
 		"section": {
 			wantProfile: []*ptpConfig.PtpProfile{{
-				Name:      &profile,
+				Name:      &profile0,
 				Interface: &inface1,
 				PtpClockThreshold: &ptpConfig.PtpClockThreshold{
 					HoldOverTimeout:    5,
@@ -38,7 +39,7 @@ func Test_Config(t *testing.T) {
 		},
 		"single": {
 			wantProfile: []*ptpConfig.PtpProfile{{
-				Name:      &profile,
+				Name:      &profile0,
 				Interface: &inface1,
 				PtpClockThreshold: &ptpConfig.PtpClockThreshold{
 					HoldOverTimeout:    30,
@@ -53,7 +54,7 @@ func Test_Config(t *testing.T) {
 		},
 		"mixed": {
 			wantProfile: []*ptpConfig.PtpProfile{{
-				Name:      &profile,
+				Name:      &profile0,
 				Interface: &inface0,
 				PtpClockThreshold: &ptpConfig.PtpClockThreshold{
 					HoldOverTimeout:    10,
@@ -62,7 +63,7 @@ func Test_Config(t *testing.T) {
 					Close:              make(chan struct{}),
 				},
 			}, {
-				Name:      &profile,
+				Name:      &profile1,
 				Interface: &inface1,
 				PtpClockThreshold: &ptpConfig.PtpClockThreshold{
 					HoldOverTimeout:    30,
@@ -97,9 +98,9 @@ func Test_Config(t *testing.T) {
 				for i, p := range ptpUpdate.NodeProfiles {
 					tc.wantProfile[i].PtpClockThreshold.Close = p.PtpClockThreshold.Close
 					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, p.PtpClockThreshold)
-					tc.wantProfile[i].PtpClockThreshold.Close = ptpUpdate.EventThreshold[*p.Interfaces[0]].Close
-					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, ptpUpdate.EventThreshold[*p.Interfaces[0]])
-					assert.Equal(t, *tc.wantProfile[i].Interface, *p.Interfaces[0])
+					tc.wantProfile[i].PtpClockThreshold.Close = ptpUpdate.EventThreshold[*p.Name].Close
+					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, ptpUpdate.EventThreshold[*p.Name])
+					assert.Equal(t, *tc.wantProfile[i].Name, *p.Name)
 				}
 			} else if tc.nodeName == "none" {
 				assert.Equal(t, []ptpConfig.PtpProfile{}, ptpUpdate.NodeProfiles)
@@ -108,9 +109,9 @@ func Test_Config(t *testing.T) {
 				for i, p := range ptpUpdate.NodeProfiles {
 					tc.wantProfile[i].PtpClockThreshold.Close = p.PtpClockThreshold.Close
 					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, p.PtpClockThreshold)
-					tc.wantProfile[i].PtpClockThreshold.Close = ptpUpdate.EventThreshold[*p.Interfaces[0]].Close
-					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, ptpUpdate.EventThreshold[*p.Interface])
-					assert.Equal(t, *tc.wantProfile[i].Interface, *p.Interface)
+					tc.wantProfile[i].PtpClockThreshold.Close = ptpUpdate.EventThreshold[*p.Name].Close
+					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, ptpUpdate.EventThreshold[*p.Name])
+					assert.Equal(t, *tc.wantProfile[i].Name, *p.Name)
 				}
 			}
 		})
