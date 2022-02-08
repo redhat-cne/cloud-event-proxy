@@ -2,8 +2,8 @@
 
 set -e
 NODE_ROLE="${NODE_ROLE:-node-role.kubernetes.io/worker}"
-NamespaceProducerTesting="cloud-native-event-producer-testing"
-NamespaceConsumerTesting="cloud-native-event-consumer-testing"
+NamespaceProducerTesting="cloud-event-producer-testing"
+NamespaceConsumerTesting="cloud-event-consumer-testing"
 NamespaceAMQTesting="amq-router-testing"
 
 label_node() {

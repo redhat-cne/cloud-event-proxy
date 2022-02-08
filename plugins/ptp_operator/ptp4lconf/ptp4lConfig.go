@@ -14,6 +14,7 @@ import (
 var (
 	ptpConfigFileRegEx = regexp.MustCompile(`ptp4l.[0-9]*.config`)
 	sectionHead        = regexp.MustCompile(`\[([^\[\]]*)\]`)
+	profileRegEx       = regexp.MustCompile(`profile: \s*([a-zA-Z0-9]+)`)
 )
 
 const (
@@ -24,6 +25,7 @@ const (
 type PtpConfigUpdate struct {
 	Name      *string `json:"name,omitempty"`
 	Ptp4lConf *string `json:"ptp4lConf,omitempty"`
+	Profile   *string `json:"profile,omitempty"`
 	Removed   bool    `json:"removed,omitempty"`
 }
 
@@ -65,6 +67,7 @@ type PTPInterface struct {
 //PTP4lConfig ...
 type PTP4lConfig struct {
 	Name       string
+	Profile    string
 	Interfaces []*PTPInterface
 }
 
@@ -210,15 +213,18 @@ func readConfig(path string) (*PtpConfigUpdate, error) {
 		return nil, err
 	}
 	data := string(b)
+	profile := GetPTPProfileName(data)
 	ptpConfig := &PtpConfigUpdate{
 		Name:      &fName,
 		Ptp4lConf: &data,
+		Profile:   &profile,
 	}
 	return ptpConfig, nil
 }
 
 func filename(path string) string {
 	r, e := regexp.Compile("([^/]+$)")
+
 	if e != nil {
 		log.Errorf("error finding ptp4l config filename for path %s error %s", path, e)
 		return path
@@ -228,4 +234,14 @@ func filename(path string) string {
 
 func checkIfPtP4lConf(filename string) bool {
 	return ptpConfigFileRegEx.MatchString(filename)
+}
+
+// GetPTPProfileName  ... get profile name from ptpconfig
+func GetPTPProfileName(ptpConfig string) string {
+	matches := profileRegEx.FindStringSubmatch(ptpConfig)
+	// a regular expression
+	if len(matches) > 1 {
+		return matches[1]
+	}
+	return ""
 }

@@ -5,7 +5,7 @@ metadata:
     prometheus.io/scrape: "true"
     service.alpha.openshift.io/serving-cert-secret-name: sidecar-consumer-secret
   name: consumer-sidecar-service
-  namespace: cloud-native-events
+  namespace: cloud-events
   labels:
     app: consumer-service
 spec:
@@ -23,9 +23,9 @@ metadata:
   labels:
     k8s-app: consumer-sidecar-service-monitor
   name: consumer-sidecar-service-monitor
-  namespace: cloud-native-events
+  namespace: cloud-events
 spec:
-  jobLabel: cloud-native-events
+  jobLabel: cloud-events
   endpoints:
     - interval: 30s
       port: metrics
@@ -33,11 +33,11 @@ spec:
       scheme: "https"
       tlsConfig:
         caFile: "/etc/prometheus/configmaps/serving-certs-ca-bundle/service-ca.crt"
-        serverName: "consumer-sidecar-service.cloud-native-events.svc"
+        serverName: "consumer-sidecar-service.cloud-events.svc"
   selector:
     matchLabels:
       app: consumer-service
   namespaceSelector:
     matchNames:
-      - cloud-native-events
+      - cloud-events
 

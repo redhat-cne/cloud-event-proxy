@@ -2,4 +2,4 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: sidecar-consumer-sa
-  namespace: cloud-native-events
+  namespace: cloud-events
