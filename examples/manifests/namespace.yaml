@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: cloud-native-events
+  name: cloud-events
   labels:
-    name: cloud-native-events
+    name: cloud-events
     openshift.io/cluster-monitoring: "true"

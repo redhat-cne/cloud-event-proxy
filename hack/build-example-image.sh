@@ -3,7 +3,7 @@ repo_root=$(dirname $0)/..
 
 BUILDCMD=${BUILDCMD:-podman build}
 
-REPO=${REPO:-cloud-native-event-}
+REPO=${REPO:-cloud-event-}
 if [ -z ${VERSION+a} ]; then
 	VERSION=$(git describe --abbrev=8 --dirty --always)
 fi

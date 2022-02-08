@@ -1,8 +1,8 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cloud-native-consumer-deployment
-  namespace: cloud-native-events
+  name: cloud-consumer-deployment
+  namespace: cloud-events
   labels:
     app: consumer
 spec:
@@ -26,8 +26,8 @@ spec:
                       - local
       serviceAccountName: sidecar-consumer-sa
       containers:
-        - name: cloud-native-event-consumer
-          image: quay.io/jacding/cloud-native-event-consumer
+        - name: cloud-event-consumer
+          image: quay.io/redhat-cne/cloud-event-consumer
           args:
             - "--local-api-addr=127.0.0.1:9089"
             - "--api-path=/api/cloudNotifications/v1/"
@@ -39,7 +39,7 @@ spec:
                   fieldPath: spec.nodeName
             - name: CONSUMER_TYPE
               value: "HW"
-        - name: cloud-native-event-sidecar
+        - name: cloud-event-sidecar
           image: quay.io/jacding/cloud-event-proxy
           args:
             - "--metrics-addr=127.0.0.1:9091"
