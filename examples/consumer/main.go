@@ -27,6 +27,8 @@ import (
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	"github.com/redhat-cne/sdk-go/pkg/event"
+	ptpEvent "github.com/redhat-cne/sdk-go/pkg/event/ptp"
+	redfishEvent "github.com/redhat-cne/sdk-go/pkg/event/redfish"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
@@ -51,13 +53,10 @@ const (
 )
 
 var (
-	apiAddr      string = "localhost:8089"
-	apiPath      string = "/api/cloudNotifications/v1/"
-	localAPIAddr string = "localhost:8989"
-
-	resourceAddressMock    string = "/cluster/node/%s/mock"
-	resourceAddressPTP     string = "/cluster/node/%s/ptp"
-	resourceAddressHwEvent string = "/cluster/node/%s/redfish/event"
+	apiAddr        string = "localhost:8089"
+	apiPath        string = "/api/cloudNotifications/v1/"
+	localAPIAddr   string = "localhost:8989"
+	resourcePrefix        = "/cluster/node/%s%s"
 )
 
 func main() {
@@ -81,7 +80,7 @@ func main() {
 	} else {
 		consumerType = ConsumerTypeEnum(consumerTypeEnv)
 	}
-
+	subscribeTo := initSubscribers(consumerType)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go server() // spin local api
@@ -95,38 +94,28 @@ RETRY:
 	if ok, _ := common.APIHealthCheck(healthURL, 2*time.Second); !ok {
 		goto RETRY
 	}
-
-	subs := []*pubsub.PubSub{&pubsub.PubSub{
-		Resource: fmt.Sprintf(resourceAddressHwEvent, nodeName),
-	}, &pubsub.PubSub{
-		Resource: fmt.Sprintf(resourceAddressMock, nodeName),
-	}, &pubsub.PubSub{
-		Resource: fmt.Sprintf(resourceAddressPTP, nodeName),
-	},
-	}
-
-	var sub *pubsub.PubSub
-	if consumerType == PTP {
-		sub = subs[2]
-	} else if consumerType == MOCK || consumerType == "" {
-		sub = subs[1]
-	} else {
-		sub = subs[0]
+	var subs []*pubsub.PubSub
+	for _, resource := range subscribeTo {
+		subs = append(subs, &pubsub.PubSub{
+			Resource: fmt.Sprintf(resourcePrefix, nodeName, resource),
+		})
 	}
 
 	if enableStatusCheck {
-		createPublisherForStatusPing(sub.Resource) // ptp // disable this for testing else you will see context deadline error
-	}
-
-	var result []byte
-
-	result = createSubscription(sub.Resource)
-	if result != nil {
-		if err := json.Unmarshal(result, sub); err != nil {
-			log.Errorf("failed to create a subscription object %v\n", err)
+		for _, s := range subs {
+			createPublisherForStatusPing(s.Resource) // ptp // disable this for testing else you will see context deadline error
 		}
 	}
-	log.Infof("created subscription: %s\n", sub.String())
+	for _, s := range subs {
+		su, e := createSubscription(s.Resource)
+		if e != nil {
+			log.Errorf("failed to create a subscription object %v\n", e)
+		} else {
+			log.Infof("created subscription: %s\n", su.String())
+			s.URILocation = su.URILocation
+		}
+
+	}
 
 	// ping  for status every n secs
 
@@ -135,7 +124,9 @@ RETRY:
 		go func() {
 			defer wg.Done()
 			for range time.Tick(StatusCheckInterval * time.Second) {
-				pingForStatus(sub.ID)
+				for _, s := range subs {
+					pingForStatus(s.ID)
+				}
 			}
 		}()
 	}
@@ -145,7 +136,8 @@ RETRY:
 
 }
 
-func createSubscription(resourceAddress string) []byte {
+func createSubscription(resourceAddress string) (sub pubsub.PubSub, err error) {
+	var status int
 	subURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
 		Path: fmt.Sprintf("%s%s", apiPath, "subscriptions")}}
@@ -153,17 +145,23 @@ func createSubscription(resourceAddress string) []byte {
 		Host: localAPIAddr,
 		Path: fmt.Sprintf("%s", "event")}}
 
-	pub := v1pubsub.NewPubSub(endpointURL, resourceAddress)
-	if b, err := json.Marshal(&pub); err == nil {
+	sub = v1pubsub.NewPubSub(endpointURL, resourceAddress)
+	var subB []byte
+
+	if subB, err = json.Marshal(&sub); err == nil {
 		rc := restclient.New()
-		if status, b := rc.PostWithReturn(subURL, b); status == http.StatusCreated {
-			return b
+		if status, subB = rc.PostWithReturn(subURL, subB); status != http.StatusCreated {
+			err = fmt.Errorf("subscription creation api at %s, returned status %d", subURL, status)
+			return
 		}
-		log.Errorf("subscription create returned error %s", string(b))
 	} else {
-		log.Errorf("failed to create subscription ")
+		log.Error("failed to marshal subscription ")
 	}
-	return nil
+	if err = json.Unmarshal(subB, &sub); err != nil {
+		return
+	}
+	return sub, err
+
 }
 
 func createPublisherForStatusPing(resourceAddress string) []byte {
@@ -250,4 +248,25 @@ func processEvent(data []byte) {
 	latency := (time.Now().UnixNano() - e.Time.UnixNano()) / 1000000
 	// set log to Info level for performance measurement
 	log.Infof("Latency for the event: %v ms\n", latency)
+}
+
+func initSubscribers(cType ConsumerTypeEnum) map[string]string {
+	subscribeTo := make(map[string]string)
+	switch cType {
+	case PTP:
+		subscribeTo[string(ptpEvent.OsClockSyncStateChange)] = string(ptpEvent.OsClockSyncState)
+		subscribeTo[string(ptpEvent.PtpClockClassChange)] = string(ptpEvent.PtpClockClass)
+		subscribeTo[string(ptpEvent.PtpStateChange)] = string(ptpEvent.PtpLockState)
+	case MOCK:
+		subscribeTo["mock"] = "/mock"
+	case HW:
+		subscribeTo[string(redfishEvent.Alert)] = string(redfishEvent.Systems)
+		subscribeTo[string(redfishEvent.ResourceAdded)] = string(redfishEvent.Systems)
+		subscribeTo[string(redfishEvent.ResourceUpdated)] = string(redfishEvent.Systems)
+		subscribeTo[string(redfishEvent.ResourceRemoved)] = string(redfishEvent.Systems)
+		subscribeTo[string(redfishEvent.StatusChange)] = string(redfishEvent.Systems)
+	default:
+		subscribeTo["mock"] = "/mock"
+	}
+	return subscribeTo
 }

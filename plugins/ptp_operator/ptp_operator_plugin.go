@@ -17,6 +17,9 @@ package main
 import (
 	"bufio"
 	"fmt"
+	ptpSocket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
+	ptpTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
+	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"net"
 	"os"
 	"sync"
@@ -30,15 +33,11 @@ import (
 
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
-	ptpSocket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
-	ptpTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
-	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
-	log "github.com/sirupsen/logrus"
-
 	ptpMetrics "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
-	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
+	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -53,9 +52,10 @@ const (
 )
 
 var (
-	resourceAddress string = "/cluster/node/%s/ptp"
-	config          *common.SCConfiguration
-	eventManager    *ptpMetrics.PTPEventManager
+	resourcePrefix = "/cluster/node/%s%s"
+	publishers     = map[ptp.EventType]*ptpTypes.EventPublisherType{}
+	config         *common.SCConfiguration
+	eventManager   *ptpMetrics.PTPEventManager
 )
 
 // Start ptp plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
@@ -70,17 +70,25 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	config = configuration
 	// register metrics type
 	ptpMetrics.RegisterMetrics(nodeName)
+	publishers = InitPubSubTypes()
 
 	// 1. Create event Publication
-	var pub pubsub.PubSub
+	// 1. Create event Publication
 	var err error
-	if pub, err = createPublisher(fmt.Sprintf(resourceAddress, nodeName)); err != nil {
-		log.Errorf("failed to create a publisher %v", err)
-		return err
+	for _, publisherType := range publishers {
+		var pub pubsub.PubSub
+		if pub, err = createPublisher(fmt.Sprintf(resourcePrefix, nodeName, string(publisherType.Resource))); err != nil {
+			log.Errorf("failed to create a publisher %v", err)
+			return err
+		}
+
+		publisherType.PubID = pub.ID
+		publisherType.Pub = &pub
+		log.Printf("Created publisher %v", pub)
 	}
-	log.Printf("Created publisher %v", pub)
+
 	// Initialize the Event Manager
-	eventManager = ptpMetrics.NewPTPEventManager(pub.ID, nodeName, config)
+	eventManager = ptpMetrics.NewPTPEventManager(publishers, nodeName, config)
 	wg.Add(1)
 	// create socket listener
 	go listenToSocket(wg)
@@ -256,7 +264,10 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		return nil
 	}
 	log.Infof("setting up status listener")
-	v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pub.Resource, "status"), onReceiveOverrideFn, fn)
+	for _, pType := range publishers {
+		baseURL := fmt.Sprintf(resourcePrefix, nodeName, string(pType.Resource))
+		v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", baseURL, "status"), onReceiveOverrideFn, fn)
+	}
 	return nil
 }
 func createPublisher(address string) (pub pubsub.PubSub, err error) {
@@ -313,4 +324,22 @@ func HasEqualInterface(a []*string, b []*ptp4lconf.PTPInterface) bool {
 		}
 	}
 	return true
+}
+
+// InitPubSubTypes ... initialize types of publishers for ptp operator
+func InitPubSubTypes() map[ptp.EventType]*ptpTypes.EventPublisherType {
+	publishers := make(map[ptp.EventType]*ptpTypes.EventPublisherType)
+	publishers[ptp.OsClockSyncStateChange] = &ptpTypes.EventPublisherType{
+		EventType: ptp.OsClockSyncStateChange,
+		Resource:  ptp.OsClockSyncState,
+	}
+	publishers[ptp.PtpClockClassChange] = &ptpTypes.EventPublisherType{
+		EventType: ptp.PtpClockClassChange,
+		Resource:  ptp.PtpClockClass,
+	}
+	publishers[ptp.PtpStateChange] = &ptpTypes.EventPublisherType{
+		EventType: ptp.PtpStateChange,
+		Resource:  ptp.PtpLockState,
+	}
+	return publishers
 }
