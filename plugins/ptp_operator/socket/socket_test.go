@@ -34,6 +34,7 @@ var logsData = [logLength]string{
 	"ptp4l[432313.222]: [ens5f1] port 1: SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED) " + "\n",
 }
 var eventProcessor *metrics.PTPEventManager
+var pubID = "123"
 var scConfig *common.SCConfiguration
 
 func setup() {
@@ -42,7 +43,7 @@ func setup() {
 
 func Test_WriteMetricsToSocket(t *testing.T) {
 	setup()
-	eventProcessor = metrics.NewPTPEventManager(nil, "tetsnode", scConfig)
+	eventProcessor = metrics.NewPTPEventManager(pubID, "tetsnode", scConfig)
 	eventProcessor.MockTest(true)
 	go listenToTestMetrics()
 	time.Sleep(2 * time.Second)
