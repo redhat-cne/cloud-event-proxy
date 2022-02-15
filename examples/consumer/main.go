@@ -151,17 +151,14 @@ func createSubscription(resourceAddress string) (sub pubsub.PubSub, err error) {
 	if subB, err = json.Marshal(&sub); err == nil {
 		rc := restclient.New()
 		if status, subB = rc.PostWithReturn(subURL, subB); status != http.StatusCreated {
-			err = fmt.Errorf("subscription creation api at %s, returned status %d", subURL, status)
-			return
+			err = fmt.Errorf("error subscription creation api at %s, returned status %d", subURL, status)
+		} else {
+			err = json.Unmarshal(subB, &sub)
 		}
 	} else {
-		log.Error("failed to marshal subscription ")
+		err = fmt.Errorf("failed to marshal subscription or %s", resourceAddress)
 	}
-	if err = json.Unmarshal(subB, &sub); err != nil {
-		return
-	}
-	return sub, err
-
+	return
 }
 
 func createPublisherForStatusPing(resourceAddress string) []byte {
