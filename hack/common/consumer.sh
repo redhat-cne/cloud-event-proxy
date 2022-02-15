@@ -57,9 +57,9 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: CONSUMER_TYPE
-              value: "MOCK"
+              value: "$CONSUMER_TYPE"
         - name: cloud-event-proxy
-          image: "$CNE_IMG"
+          image: "$IMG"
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"

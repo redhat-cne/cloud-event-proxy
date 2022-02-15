@@ -1,6 +1,10 @@
 package types
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
+	"github.com/redhat-cne/sdk-go/pkg/pubsub"
+)
 
 type (
 	//ProcessName ...
@@ -50,4 +54,12 @@ func (r PtpPortRole) String() string {
 	default:
 		return fmt.Sprintf("%d", int(r))
 	}
+}
+
+// EventPublisherType ... define types of publishers
+type EventPublisherType struct {
+	EventType ptp.EventType
+	Resource  ptp.EventResource
+	PubID     string
+	Pub       *pubsub.PubSub
 }
