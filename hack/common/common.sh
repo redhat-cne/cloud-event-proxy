@@ -10,8 +10,8 @@ label_node() {
   oc label --overwrite node $(oc  get nodes -l node-role.kubernetes.io/worker="" | grep Ready | cut -f1 -d" " | head -1) app=local
 }
 create_namespaces() {
-action=$1
-echo "$action namespace "
+  action=$1
+  echo "$action namespace "
 cat <<EOF | oc $action -f -
 apiVersion: v1
 kind: Namespace
@@ -21,12 +21,17 @@ metadata:
     name: $NamespaceProducerTesting
     #openshift.io/cluster-monitoring: "true"
 EOF
-create_amq_namespaces $action
-create_consumer_namespaces $action
-}
-create_amq_namespaces() {
-action=$1
-echo "$action namespace "
+
+ cat <<EOF | oc $action -f -
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: $NamespaceConsumerTesting
+  labels:
+    name: $NamespaceConsumerTesting
+    #openshift.io/cluster-monitoring: "true"
+EOF
+
 cat <<EOF | oc $action -f -
 apiVersion: v1
 kind: Namespace
@@ -34,20 +39,6 @@ metadata:
   name: $NamespaceAMQTesting
   labels:
     name: $NamespaceAMQTesting
-    #openshift.io/cluster-monitoring: "true"
-EOF
-}
-
-create_consumer_namespaces(){
-action=$1
-echo "$action namespace "
-cat <<EOF | oc $action -f -
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: $NamespaceConsumerTesting
-  labels:
-    name: $NamespaceConsumerTesting
     #openshift.io/cluster-monitoring: "true"
 EOF
 }

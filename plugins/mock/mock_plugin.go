@@ -82,8 +82,8 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		for range time.Tick(5 * time.Second) {
 			// create an event
 			if mEvent, err := createMockEvent(pub); err == nil {
-				mEvent.Type = "mock"
-				mEvent.Data.Values[0].Value = "LOCKED"
+				mEvent.Type = string(ptp.PtpStateChange)
+				mEvent.Data.Values[0].Value = ptp.LOCKED
 				mEvent.Data.Values[1].Value = -200
 				if err = common.PublishEventViaAPI(config, mEvent); err != nil {
 					log.Errorf("error publishing events %s", err)
@@ -113,19 +113,19 @@ func createMockEvent(pub pubsub.PubSub) (ceEvent.Event, error) {
 	data := ceEvent.Data{
 		Version: "v1",
 		Values: []ceEvent.DataValue{{
-			Resource:  "/mock",
+			Resource:  string(ptp.SyncStatusState),
 			DataType:  ceEvent.NOTIFICATION,
 			ValueType: ceEvent.ENUMERATION,
 			Value:     ptp.ACQUIRING_SYNC,
 		},
 			{
-				Resource:  "/mock",
+				Resource:  string(ptp.SyncStatusState),
 				DataType:  ceEvent.METRIC,
 				ValueType: ceEvent.DECIMAL,
 				Value:     "99.6",
 			},
 		},
 	}
-	e, err := common.CreateEvent(pub.ID, pub.Resource, "mock", data)
+	e, err := common.CreateEvent(pub.ID, pub.Resource, string(ptp.PtpStateChange), data)
 	return e, err
 }

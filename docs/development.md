@@ -59,8 +59,8 @@ mv kustomize /usr/local/bin/
 ### Set Env variables
 ```shell
 export version=latest 
-export IMG=quay.io/openshift/origin-cloud-event-proxy
-export  CONSUMER_IMG=quay.io/redhat-cne/cloud-event-consumer
+export SIDECAR_IMG=quay.io/aneeshkp/cloud-event-proxy
+export  CONSUMER_IMG=quay.io/aneeshkp/cloud-event-consumer
 ```
 
 ### Setup AMQ Interconnect

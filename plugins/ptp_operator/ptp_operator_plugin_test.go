@@ -19,7 +19,6 @@ package main_test
 
 import (
 	"fmt"
-	ptpEvent "github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	"log"
 	"os"
 	"sync"
@@ -27,7 +26,6 @@ import (
 	"time"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
-	ptpTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
 	restapi "github.com/redhat-cne/rest-api"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"github.com/redhat-cne/sdk-go/pkg/types"
@@ -40,15 +38,15 @@ import (
 )
 
 var (
-	wg                sync.WaitGroup
-	server            *restapi.Server
-	scConfig          *common.SCConfiguration
-	channelBufferSize int = 10
-	storePath             = "../../.."
-	resourcePrefix        = "/cluster/node/%s%s"
-	apiPort           int = 8990
-	c                 chan os.Signal
-	pubsubTypes       map[ptpEvent.EventType]*ptpTypes.EventPublisherType
+	wg                    sync.WaitGroup
+	server                *restapi.Server
+	scConfig              *common.SCConfiguration
+	channelBufferSize     int    = 10
+	storePath                    = "../../.."
+	resourceAddress       string = "/cluster/node/test_node/ptp"
+	resourceStatusAddress string = "/cluster/node/test_node/ptp/status"
+	apiPort               int    = 8990
+	c                     chan os.Signal
 )
 
 func TestMain(m *testing.M) {
@@ -68,7 +66,6 @@ func TestMain(m *testing.M) {
 	server, _ = common.StartPubSubService(scConfig)
 	scConfig.APIPort = server.Port()
 	scConfig.BaseURL = server.GetHostPath()
-	pubsubTypes = ptpPlugin.InitPubSubTypes()
 	cleanUP()
 	os.Exit(m.Run())
 }
@@ -93,28 +90,23 @@ func Test_StartWithAMQP(t *testing.T) {
 	// build your client
 	//CLIENT SUBSCRIPTION: create a subscription to consume events
 	endpointURL := fmt.Sprintf("%s%s", scConfig.BaseURL, "dummy")
-	for _, pTypes := range pubsubTypes {
-		sub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), fmt.Sprintf(resourcePrefix, "test_node", string(pTypes.Resource)))
-		sub, _ = common.CreateSubscription(scConfig, sub)
-		assert.NotEmpty(t, sub.ID)
-		assert.NotEmpty(t, sub.URILocation)
-		//create a status ping sender object
-		v1amqp.CreateSender(scConfig.EventInCh, fmt.Sprintf("%s/%s", sub.Resource, "status"))
-		pTypes.PubID = sub.ID
-		pTypes.Pub = &sub
-	}
+	sub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), resourceAddress)
+	sub, _ = common.CreateSubscription(scConfig, sub)
+	assert.NotEmpty(t, sub.ID)
+	assert.NotEmpty(t, sub.URILocation)
+	//create a status ping sender object
+	v1amqp.CreateSender(scConfig.EventInCh, resourceStatusAddress)
 
 	// start ptp plugin
 	err = ptpPlugin.Start(&wg, scConfig, nil)
 	assert.Nil(t, err)
 
 	//status sender object, this wast you can send data to that channel
-	for _, pTypes := range pubsubTypes {
-		e := v1event.CloudNativeEvent()
-		ce, _ := v1event.CreateCloudEvents(e, *pTypes.Pub)
-		ce.SetSource(pTypes.Pub.Resource)
-		v1event.SendNewEventToDataChannel(scConfig.EventInCh, fmt.Sprintf("%s/%s", pTypes.Pub.Resource, "status"), ce)
-	}
+	e := v1event.CloudNativeEvent()
+	ce, _ := v1event.CreateCloudEvents(e, sub)
+	ce.SetSource(resourceAddress)
+
+	v1event.SendNewEventToDataChannel(scConfig.EventInCh, resourceStatusAddress, ce)
 
 	statusEvent := <-scConfig.EventOutCh // status updated
 	assert.Equal(t, channel.SUCCESS, statusEvent.Status)
@@ -122,7 +114,7 @@ func Test_StartWithAMQP(t *testing.T) {
 	log.Printf("Closing the channels")
 	close(scConfig.CloseCh) // close the channel
 	pubs := scConfig.PubSubAPI.GetPublishers()
-	assert.Equal(t, 3, len(pubs))
+	assert.Equal(t, len(pubs), 1)
 }
 
 func Test_StartWithOutAMQP(t *testing.T) {
@@ -136,16 +128,12 @@ func Test_StartWithOutAMQP(t *testing.T) {
 	// build your client
 	//CLIENT SUBSCRIPTION: create a subscription to consume events
 	endpointURL := fmt.Sprintf("%s%s", scConfig.BaseURL, "dummy")
-	for _, pTypes := range pubsubTypes {
-		sub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), fmt.Sprintf(resourcePrefix, "test_node", string(pTypes.Resource)))
-		sub, _ = common.CreateSubscription(scConfig, sub)
-		assert.NotEmpty(t, sub.ID)
-		assert.NotEmpty(t, sub.URILocation)
-		//create a status ping sender object
-		v1amqp.CreateSender(scConfig.EventInCh, fmt.Sprintf("%s/%s", sub.Resource, "status"))
-		pTypes.PubID = sub.ID
-		pTypes.Pub = &sub
-	}
+	sub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), resourceAddress)
+	sub, _ = common.CreateSubscription(scConfig, sub)
+	assert.NotEmpty(t, sub.ID)
+	assert.NotEmpty(t, sub.URILocation)
+	//create a status ping sender object
+	v1amqp.CreateSender(scConfig.EventInCh, resourceStatusAddress)
 
 	// start ptp plugin
 	err := ptpPlugin.Start(&wg, scConfig, nil)
@@ -153,13 +141,11 @@ func Test_StartWithOutAMQP(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	//status sender object, client requesting for an event
-	for _, pTypes := range pubsubTypes {
-		e := v1event.CloudNativeEvent()
-		ce, _ := v1event.CreateCloudEvents(e, *pTypes.Pub)
-		ce.SetSource(pTypes.Pub.Resource)
-		log.Printf("sending event to data channel %v", ce)
-		v1event.SendNewEventToDataChannel(scConfig.EventInCh, fmt.Sprintf("%s/%s", pTypes.Pub.Resource, "status"), ce)
-	}
+	e := v1event.CloudNativeEvent()
+	ce, _ := v1event.CreateCloudEvents(e, sub)
+	ce.SetSource(resourceAddress)
+	log.Printf("sending event to data channel %v", ce)
+	v1event.SendNewEventToDataChannel(scConfig.EventInCh, resourceStatusAddress, ce)
 
 	EventData := <-scConfig.EventOutCh // status updated
 	assert.Equal(t, channel.EVENT, EventData.Type)
@@ -168,9 +154,9 @@ func Test_StartWithOutAMQP(t *testing.T) {
 	log.Printf("Closing the channels")
 	close(scConfig.CloseCh) // close the channel
 	pubs := scConfig.PubSubAPI.GetPublishers()
-	assert.Equal(t, 3, len(pubs))
+	assert.Equal(t, 1, len(pubs))
 	subs := scConfig.PubSubAPI.GetSubscriptions()
-	assert.Equal(t, 3, len(subs))
+	assert.Equal(t, 1, len(subs))
 
 }
 
