@@ -38,8 +38,8 @@ make run-consumer
 ### Push images to a repo
 
 ```shell
-podman push localhost/cloud-event-proxy:${TAG} quay.io/aneeshkp/cloud-event-proxy:latest
-podman push localhost/cloud-native-event-consumer:${TAG}quay.io/aneeshkp/cloud-native-event-consumer:latest
+podman push localhost/cloud-event-proxy:${TAG} quay.io/redhat-cne/cloud-event-proxy:latest
+podman push localhost/cloud-event-consumer:${TAG} quay.io/redhat-cne/cloud-event-consumer:latest
 ```
 
 Use consumer.yaml and service.yaml from examples/manifests folder to deploy to a cluster.
@@ -60,7 +60,7 @@ mv kustomize /usr/local/bin/
 ```shell
 export version=latest 
 export SIDECAR_IMG=quay.io/aneeshkp/cloud-event-proxy
-export  CONSUMER_IMG=quay.io/aneeshkp/cloud-native-event-consumer
+export  CONSUMER_IMG=quay.io/aneeshkp/cloud-event-consumer
 ```
 
 ### Setup AMQ Interconnect
@@ -74,7 +74,7 @@ Make sure amq-interconnect pods are running before the next step.
 oc get pods -n `<AMQP_NAMESPAVCE>`
 ```
 
-In consumer.yaml, change the `transport-host` args for `cloud-native-event-sidecar` container from
+In consumer.yaml, change the `transport-host` args for `cloud-event-sidecar` container from
 ```
 - "--transport-host=amqp://amq-interconnect"
 ```

@@ -20,7 +20,7 @@ deploy_event_consumer() {
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cloud-native-consumer-deployment
+  name: cloud-consumer-deployment
   labels:
     app: consumer
 spec:

@@ -21,6 +21,7 @@ type Stats struct {
 	delay               int64
 	lastOffset          int64
 	lastSyncState       ptp.SyncState
+	aliasName           string
 }
 
 // AddValue ...
@@ -72,7 +73,6 @@ func (s *Stats) SetOffsetSource(os string) {
 // ProcessName ...
 func (s *Stats) ProcessName() string {
 	return s.processName
-
 }
 
 // SetProcessName ...
@@ -83,6 +83,16 @@ func (s *Stats) SetProcessName(processName string) {
 // Offset return last known offset
 func (s *Stats) Offset() int64 {
 	return s.lastOffset
+}
+
+// Alias return alias name
+func (s *Stats) Alias() string {
+	return s.aliasName
+}
+
+// SetAlias ...
+func (s *Stats) SetAlias(val string) {
+	s.aliasName = val
 }
 
 // SyncState return last known SyncState state
@@ -103,6 +113,7 @@ func (s *Stats) reset() { //nolint:unused
 	s.min = 0
 	s.sumDiffSqr = 0
 	s.sumSqr = 0
+	s.aliasName = ""
 }
 
 // NewStats ... create new stats

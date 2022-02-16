@@ -18,7 +18,7 @@ deploy_cne() {
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: cloud-native-producer-deployment
+  name: cloud-producer-deployment
   labels:
     app: producer
 spec:
