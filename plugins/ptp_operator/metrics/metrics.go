@@ -123,6 +123,15 @@ var (
 			Name:      "interface_role",
 			Help:      "0 = PASSIVE, 1 = SLAVE, 2 = MASTER, 3 = FAULTY, 4 =  UNKNOWN",
 		}, []string{"process", "node", "iface"})
+
+	// ClockClassMetrics metrics to show current clock class for the node
+	ClockClassMetrics = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: ptpNamespace,
+			Subsystem: ptpSubsystem,
+			Name:      "clock_class",
+			Help:      "",
+		}, []string{"process", "node"})
 )
 
 var registerMetrics sync.Once
@@ -134,10 +143,10 @@ func RegisterMetrics(nodeName string) {
 		prometheus.MustRegister(PtpMaxOffset)
 		prometheus.MustRegister(PtpFrequencyAdjustment)
 		prometheus.MustRegister(PtpDelay)
-
 		prometheus.MustRegister(SyncState)
 		prometheus.MustRegister(Threshold)
 		prometheus.MustRegister(InterfaceRole)
+		prometheus.MustRegister(ClockClassMetrics)
 
 		// Including these stats kills performance when Prometheus polls with multiple targets
 		prometheus.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
@@ -380,7 +389,26 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		}
 	}
 	if ptp4lProcessName == processName { //all we get from ptp4l is stats
-		if strings.Contains(output, " port ") {
+		if strings.Contains(output, "CLOCK_CLASS_CHANGE") {
+			if len(fields) < 5 {
+				log.Errorf("clock class not in right format %s", output)
+				return
+			}
+			//ptp4l 1646672953  ptp4l.0.config  CLOCK_CLASS_CHANGE 165.000000
+			clockClass, err := strconv.ParseFloat(fields[4], 64)
+			if err != nil {
+				log.Error("error parsing clock class change")
+			} else {
+				masterResource := fmt.Sprintf("%s/%s", "unknown", MasterClockType)
+				if m, ok := ptpStats[master]; ok && m.Alias() != "" {
+					masterResource = fmt.Sprintf("%s/%s", m.Alias(), MasterClockType)
+				}
+				ClockClassMetrics.With(prometheus.Labels{
+					"process": processName, "node": ptpNodeName}).Set(clockClass)
+
+				p.PublishClockClassEvent(clockClass, masterResource, ptp.PtpClockClassChange)
+			}
+		} else if strings.Contains(output, " port ") {
 			portID, role, syncState := extractPTP4lEventState(output)
 			if portID == 0 || role == types.UNKNOWN {
 				return
@@ -554,6 +582,22 @@ func (p *PTPEventManager) GenPTPEvent(profileName string, stats *stats.Stats, ev
 	}
 }
 
+//PublishClockClassEvent ...publish events
+func (p *PTPEventManager) PublishClockClassEvent(clockClass float64, eventResourceName string, eventType ptp.EventType) {
+	source := fmt.Sprintf("/cluster/%s/ptp/%s", p.nodeName, eventResourceName)
+	data := ceevent.Data{
+		Version: "v1",
+		Values: []ceevent.DataValue{{
+			Resource:  string(p.publisherTypes[eventType].Resource),
+			DataType:  ceevent.METRIC,
+			ValueType: ceevent.DECIMAL,
+			Value:     clockClass,
+		},
+		},
+	}
+	p.publish(data, source, eventType)
+}
+
 //PublishEvent ...publish events
 func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, eventResourceName string, eventType ptp.EventType) {
 	// create an event
@@ -576,8 +620,12 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, eve
 		},
 		},
 	}
+	p.publish(data, source, eventType)
+}
+
+func (p *PTPEventManager) publish(data ceevent.Data, resource string, eventType ptp.EventType) {
 	if pubs, ok := p.publisherTypes[eventType]; ok {
-		e, err := common.CreateEvent(pubs.PubID, string(eventType), source, data)
+		e, err := common.CreateEvent(pubs.PubID, string(eventType), resource, data)
 		if err != nil {
 			log.Errorf("failed to create ptp event, %s", err)
 			return
