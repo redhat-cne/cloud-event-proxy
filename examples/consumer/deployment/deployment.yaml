@@ -35,7 +35,7 @@ spec:
             - name: ENABLE_STATUS_CHECK
               value: "true"
         - name: cloud-event-sidecar
-          image: quay.io/aneeshkp/cloud-event-proxy
+          image: quay.io/redhat-cne/cloud-event-proxy
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
