@@ -33,8 +33,12 @@ import (
 // limitations under the License.
 
 var (
-	resourceAddress string = "/cluster/node/%s/mock"
-	config          *common.SCConfiguration
+	resourceAddress      string = "/cluster/node/%s/mock"
+	config               *common.SCConfiguration
+	mockResourceName     string  = "/mock"
+	mockEventType        string  = "mock"
+	mockEventStateLocked string  = "LOCKED"
+	mockEventValue       float64 = -200
 )
 
 // Start mock plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
@@ -82,9 +86,9 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		for range time.Tick(5 * time.Second) {
 			// create an event
 			if mEvent, err := createMockEvent(pub); err == nil {
-				mEvent.Type = "mock"
-				mEvent.Data.Values[0].Value = "LOCKED"
-				mEvent.Data.Values[1].Value = -200
+				mEvent.Type = mockEventType
+				mEvent.Data.Values[0].Value = mockEventStateLocked
+				mEvent.Data.Values[1].Value = mockEventValue
 				if err = common.PublishEventViaAPI(config, mEvent); err != nil {
 					log.Errorf("error publishing events %s", err)
 				}
@@ -113,19 +117,19 @@ func createMockEvent(pub pubsub.PubSub) (ceEvent.Event, error) {
 	data := ceEvent.Data{
 		Version: "v1",
 		Values: []ceEvent.DataValue{{
-			Resource:  "/mock",
+			Resource:  mockResourceName,
 			DataType:  ceEvent.NOTIFICATION,
 			ValueType: ceEvent.ENUMERATION,
 			Value:     ptp.ACQUIRING_SYNC,
 		},
 			{
-				Resource:  "/mock",
+				Resource:  mockResourceName,
 				DataType:  ceEvent.METRIC,
 				ValueType: ceEvent.DECIMAL,
 				Value:     "99.6",
 			},
 		},
 	}
-	e, err := common.CreateEvent(pub.ID, pub.Resource, "mock", data)
+	e, err := common.CreateEvent(pub.ID, pub.Resource, mockEventType, data)
 	return e, err
 }

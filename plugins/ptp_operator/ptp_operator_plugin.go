@@ -73,7 +73,6 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	publishers = InitPubSubTypes()
 
 	// 1. Create event Publication
-	// 1. Create event Publication
 	var err error
 	for _, publisherType := range publishers {
 		var pub pubsub.PubSub
@@ -266,6 +265,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	log.Infof("setting up status listener")
 	for _, pType := range publishers {
 		baseURL := fmt.Sprintf(resourcePrefix, nodeName, string(pType.Resource))
+		log.Infof("for %s", fmt.Sprintf("%s/%s", baseURL, "status"))
 		v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", baseURL, "status"), onReceiveOverrideFn, fn)
 	}
 	return nil

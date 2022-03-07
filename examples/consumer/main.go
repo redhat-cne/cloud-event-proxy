@@ -53,10 +53,12 @@ const (
 )
 
 var (
-	apiAddr        string = "localhost:8089"
-	apiPath        string = "/api/cloudNotifications/v1/"
-	localAPIAddr   string = "localhost:8989"
-	resourcePrefix        = "/cluster/node/%s%s"
+	apiAddr         string = "localhost:8089"
+	apiPath         string = "/api/cloudNotifications/v1/"
+	localAPIAddr    string = "localhost:8989"
+	resourcePrefix  string = "/cluster/node/%s%s"
+	mockResource    string = "/mock"
+	mockResourceKey string = "mock"
 )
 
 func main() {
@@ -69,7 +71,7 @@ func main() {
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
 		log.Error("cannot find NODE_NAME environment variable,setting to default `mock` node")
-		nodeName = "mock"
+		nodeName = mockResourceKey
 	}
 
 	enableStatusCheck := common.GetBoolEnv("ENABLE_STATUS_CHECK")
@@ -255,7 +257,7 @@ func initSubscribers(cType ConsumerTypeEnum) map[string]string {
 		subscribeTo[string(ptpEvent.PtpClockClassChange)] = string(ptpEvent.PtpClockClass)
 		subscribeTo[string(ptpEvent.PtpStateChange)] = string(ptpEvent.PtpLockState)
 	case MOCK:
-		subscribeTo["mock"] = "/mock"
+		subscribeTo[mockResourceKey] = mockResource
 	case HW:
 		subscribeTo[string(redfishEvent.Alert)] = string(redfishEvent.Systems)
 		subscribeTo[string(redfishEvent.ResourceAdded)] = string(redfishEvent.Systems)
@@ -263,7 +265,7 @@ func initSubscribers(cType ConsumerTypeEnum) map[string]string {
 		subscribeTo[string(redfishEvent.ResourceRemoved)] = string(redfishEvent.Systems)
 		subscribeTo[string(redfishEvent.StatusChange)] = string(redfishEvent.Systems)
 	default:
-		subscribeTo["mock"] = "/mock"
+		subscribeTo[mockResourceKey] = mockResource
 	}
 	return subscribeTo
 }
