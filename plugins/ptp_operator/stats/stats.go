@@ -2,6 +2,7 @@ package stats
 
 import (
 	"math"
+	"strings"
 
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 )
@@ -159,4 +160,13 @@ func (s *Stats) LastOffset() int64 {
 // LastSyncState ...
 func (s *Stats) LastSyncState() ptp.SyncState {
 	return s.lastSyncState
+}
+
+func (s *Stats) String() string {
+	b := strings.Builder{}
+	b.WriteString("  configName: " + s.configName + "\n")
+	b.WriteString("  processName: " + s.processName + "\n")
+	b.WriteString("  aliasName: " + s.aliasName + "\n")
+	b.WriteString("  offsetSource: " + s.offsetSource + "\n")
+	return b.String()
 }

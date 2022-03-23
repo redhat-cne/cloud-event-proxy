@@ -2,13 +2,14 @@ package ptp4lconf
 
 import (
 	"fmt"
-	"github.com/fsnotify/fsnotify"
-	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/fsnotify/fsnotify"
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -37,9 +38,13 @@ func (p *PtpConfigUpdate) String() string {
 	if p.Ptp4lConf != nil {
 		ptp4lConf = *p.Ptp4lConf
 	}
+
 	return fmt.Sprintf(" name:%s "+
 		" ptp4lconf:%s"+
-		" removed:%t", name, ptp4lConf, p.Removed)
+		" removed:%t",
+		name,
+		ptp4lConf,
+		p.Removed)
 }
 
 // GetAllInterface ... return interfaces
@@ -72,13 +77,30 @@ type PTP4lConfig struct {
 }
 
 //ByRole ...
-func (Ptp4lCfg *PTP4lConfig) ByRole(role types.PtpPortRole) (PTPInterface, error) {
-	for _, p := range Ptp4lCfg.Interfaces {
+func (ptp4lCfg *PTP4lConfig) ByRole(role types.PtpPortRole) (PTPInterface, error) {
+	for _, p := range ptp4lCfg.Interfaces {
 		if p != nil && p.Role == role {
 			return *p, nil
 		}
 	}
-	return PTPInterface{}, fmt.Errorf("interfaces not found for the role %d --> %s", role, Ptp4lCfg.String())
+	return PTPInterface{}, fmt.Errorf("interfaces not found for the role %d --> %s", role, ptp4lCfg.String())
+}
+
+//GetUnknownAlias ...
+func (ptp4lCfg *PTP4lConfig) GetUnknownAlias() (string, error) {
+	for _, p := range ptp4lCfg.Interfaces {
+		r := []rune(p.Name)
+		alias := string(r[:len(r)-1]) + "x"
+		return alias, nil
+	}
+	return "unknown", fmt.Errorf("interfaces not found for profilfe %s", ptp4lCfg.Profile)
+}
+
+// GetAliasByInterface ...
+func (ptp4lCfg *PTP4lConfig) GetAliasByInterface(p PTPInterface) string {
+	r := []rune(p.Name)
+	alias := string(r[:len(r)-1]) + "x"
+	return alias
 }
 
 //UpdateRole ...
@@ -86,11 +108,12 @@ func (pi *PTPInterface) UpdateRole(role types.PtpPortRole) {
 	pi.Role = role
 }
 
-func (Ptp4lCfg *PTP4lConfig) String() string {
+func (ptp4lCfg *PTP4lConfig) String() string {
 	b := strings.Builder{}
-	b.WriteString("  configName: " + Ptp4lCfg.Name + "\r\n")
+	b.WriteString("  configName: " + ptp4lCfg.Name + "\r\n")
+	b.WriteString("  profileName: " + ptp4lCfg.Profile + "\r\n")
 	b.WriteString("  Ptp4lConfigInterfaces: " + "\n")
-	for _, p := range Ptp4lCfg.Interfaces {
+	for _, p := range ptp4lCfg.Interfaces {
 		b.WriteString("  name: " + p.Name + "\n")
 		b.WriteString("  portName: " + p.PortName + "\n")
 		b.WriteString("  role: " + p.Role.String() + "\n")
@@ -100,8 +123,8 @@ func (Ptp4lCfg *PTP4lConfig) String() string {
 }
 
 //ByInterface ...
-func (Ptp4lCfg *PTP4lConfig) ByInterface(iface string) (PTPInterface, error) {
-	for _, p := range Ptp4lCfg.Interfaces {
+func (ptp4lCfg *PTP4lConfig) ByInterface(iface string) (PTPInterface, error) {
+	for _, p := range ptp4lCfg.Interfaces {
 		if p != nil && p.Name == iface {
 			return *p, nil
 		}
@@ -110,8 +133,8 @@ func (Ptp4lCfg *PTP4lConfig) ByInterface(iface string) (PTPInterface, error) {
 }
 
 //ByPortID ...
-func (Ptp4lCfg *PTP4lConfig) ByPortID(id int) (PTPInterface, error) {
-	for _, p := range Ptp4lCfg.Interfaces {
+func (ptp4lCfg *PTP4lConfig) ByPortID(id int) (PTPInterface, error) {
+	for _, p := range ptp4lCfg.Interfaces {
 		if p != nil && p.PortID == id {
 			return *p, nil
 		}
@@ -238,10 +261,12 @@ func checkIfPtP4lConf(filename string) bool {
 
 // GetPTPProfileName  ... get profile name from ptpconfig
 func GetPTPProfileName(ptpConfig string) string {
+
 	matches := profileRegEx.FindStringSubmatch(ptpConfig)
 	// a regular expression
 	if len(matches) > 1 {
 		return matches[1]
 	}
+	log.Errorf("did not find matching profile name for reg ex %s and ptp config %s", "profile: \\s*([a-zA-Z0-9]+)", ptpConfig)
 	return ""
 }

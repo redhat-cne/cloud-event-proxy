@@ -2,14 +2,15 @@ package socket_test
 
 import (
 	"bufio"
+	"net"
+	"testing"
+	"time"
+
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
 	ptp_socket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"net"
-	"testing"
-	"time"
 )
 
 const logLength = 17
@@ -69,9 +70,8 @@ func listenToTestMetrics() {
 	if err != nil {
 		log.Printf("error setting up socket %s", err)
 		return
-	} else {
-		log.Printf("connection established successfully")
 	}
+	log.Printf("connection established successfully")
 
 	for {
 		fd, err := l.Accept()

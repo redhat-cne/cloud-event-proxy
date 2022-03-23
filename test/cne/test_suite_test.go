@@ -6,11 +6,12 @@ package cne_test
 import (
 	"context"
 	"flag"
+	"testing"
+	"time"
+
 	testutils "github.com/redhat-cne/cloud-event-proxy/test/utils"
 	testclient "github.com/redhat-cne/cloud-event-proxy/test/utils/client"
 	"github.com/redhat-cne/cloud-event-proxy/test/utils/namespaces"
-	"testing"
-	"time"
 
 	. "github.com/onsi/ginkgo"
 	"github.com/onsi/ginkgo/reporters"

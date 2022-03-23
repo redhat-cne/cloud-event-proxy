@@ -15,6 +15,11 @@ var (
 	inface1  string = "ens5f1"
 )
 
+// StrPtr returns a pointer to a string value. This is useful within expressions where the value is a literal.
+func StrPtr(s string) *string {
+	return &s
+}
+
 func Test_Config(t *testing.T) {
 	testCases := map[string]struct {
 		wantProfile []*ptpConfig.PtpProfile
@@ -75,6 +80,23 @@ func Test_Config(t *testing.T) {
 			profilePath: "../_testprofile",
 			nodeName:    "mixed",
 			len:         2,
+		},
+		"optionalPhcOpts": {
+			wantProfile: []*ptpConfig.PtpProfile{{
+				Name:        &profile0,
+				Interface:   &inface0,
+				Ptp4lOpts:   StrPtr("-2 -s --summary_interval -4"),
+				Phc2sysOpts: nil,
+				PtpClockThreshold: &ptpConfig.PtpClockThreshold{
+					HoldOverTimeout:    30,
+					MaxOffsetThreshold: 100,
+					MinOffsetThreshold: -100,
+					Close:              make(chan struct{}),
+				},
+			}},
+			profilePath: "../_testprofile",
+			nodeName:    "optionalPhcOpts",
+			len:         1,
 		},
 		"none": {
 			wantProfile: []*ptpConfig.PtpProfile{},

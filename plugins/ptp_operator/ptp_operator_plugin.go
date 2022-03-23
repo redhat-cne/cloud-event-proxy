@@ -17,9 +17,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	ptpSocket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
-	ptpTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
-	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"net"
 	"os"
 	"sync"
@@ -33,11 +30,15 @@ import (
 
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
-	ptpMetrics "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
-	"github.com/redhat-cne/sdk-go/pkg/types"
+	ptpSocket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
+	ptpTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
-	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
 	log "github.com/sirupsen/logrus"
+
+	ptpMetrics "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
+	"github.com/redhat-cne/sdk-go/pkg/pubsub"
+	"github.com/redhat-cne/sdk-go/pkg/types"
+	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
 )
 
 const (
@@ -192,7 +193,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 					// for dual nic, keep the CLOCK_REALTIME,if master interface not in same config
 					if s, found := ptpStats[ClockRealTime]; found {
 						ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), phc2sysProcessName, ClockRealTime)
-						eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, ClockRealTime, ptp.PtpStateChange)
+						eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, ClockRealTime, ptp.OsClockSyncStateChange)
 					}
 					if s, found := ptpStats[MasterClockType]; found {
 						ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), ptp4lProcessName, s.Alias())
@@ -225,6 +226,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 					}
 				} else {
 					//updates
+					eventManager.PtpConfigMapUpdates.UpdatePTPProcessOptions()
 					eventManager.PtpConfigMapUpdates.UpdatePTPThreshold()
 					for key, np := range eventManager.PtpConfigMapUpdates.EventThreshold {
 						ptpMetrics.Threshold.With(prometheus.Labels{
@@ -259,6 +261,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 						} else {
 							eventManager.PublishEvent(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.PtpStateChange)
 						}
+
 					}
 				}
 			}
