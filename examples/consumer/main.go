@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/url"
 	"os"
@@ -33,7 +34,6 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 	log "github.com/sirupsen/logrus"
-	"github.com/valyala/fasthttp"
 )
 
 // ConsumerTypeEnum enum to choose consumer type
@@ -202,39 +202,39 @@ func pingForStatus(resourceID string) {
 	}
 }
 
-func fastHTTPHandler(ctx *fasthttp.RequestCtx) {
-	switch string(ctx.Path()) {
-	case "/event":
-		getEvent(ctx)
-	case "/ack/event":
-		ackEvent(ctx)
-	default:
-		ctx.Error("Unsupported path %s", fasthttp.StatusNotFound)
-	}
-
-}
-
 // Consumer webserver
 func server() {
-	fasthttp.ListenAndServe(localAPIAddr, fastHTTPHandler)
+	http.HandleFunc("/event", getEvent)
+	http.HandleFunc("/ack/event", ackEvent)
+	http.ListenAndServe(localAPIAddr, nil)
 }
 
-func getEvent(ctx *fasthttp.RequestCtx) {
-	body := ctx.PostBody()
-	if len(body) > 0 {
-		processEvent(body)
-		log.Debugf("received event %s", string(body))
+func getEvent(w http.ResponseWriter, req *http.Request) {
+	defer req.Body.Close()
+	bodyBytes, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		log.Errorf("error reading event %v", err)
+	}
+	e := string(bodyBytes)
+	if e != "" {
+		processEvent(bodyBytes)
+		log.Debugf("received event %s", string(bodyBytes))
 	} else {
-		ctx.SetStatusCode(http.StatusNoContent)
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
-func ackEvent(ctx *fasthttp.RequestCtx) {
-	body := ctx.PostBody()
-	if len(body) > 0 {
-		log.Debugf("received ack %s", string(body))
+func ackEvent(w http.ResponseWriter, req *http.Request) {
+	defer req.Body.Close()
+	bodyBytes, err := ioutil.ReadAll(req.Body)
+	if err != nil {
+		log.Errorf("error reading acknowledgment  %v", err)
+	}
+	e := string(bodyBytes)
+	if e != "" {
+		log.Debugf("received ack %s", string(bodyBytes))
 	} else {
-		ctx.SetStatusCode(http.StatusNoContent)
+		w.WriteHeader(http.StatusNoContent)
 	}
 }
 
