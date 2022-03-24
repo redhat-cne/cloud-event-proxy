@@ -460,7 +460,10 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				// update role metrics
 				UpdateInterfaceRoleMetrics(processName, ptpIFace, role)
 			}
-
+			if _, ok := ptpStats[master]; !ok { //
+				log.Errorf("no offset stats found for master for  portid %d with role %s (the port started in fault state ", portID, role)
+				return
+			}
 			//Enter the HOLDOVER state: If current sycState is HOLDOVER(Role is at FAULTY) ,then spawn a go routine to hold the state until
 			// holdover timeout, always put only master offset from ptp4l to HOLDOVER,when this goes to FREERUN
 			// make any slave interface master offset to FREERUN

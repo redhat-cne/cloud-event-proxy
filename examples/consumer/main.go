@@ -115,6 +115,7 @@ RETRY:
 		} else {
 			log.Infof("created subscription: %s\n", su.String())
 			s.URILocation = su.URILocation
+			s.ID = su.ID
 		}
 
 	}
