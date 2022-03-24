@@ -254,7 +254,11 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 						if ptpInterface == ptpMetrics.MasterClockType && s.Alias() != "" { // if its master stats then replace with slave interface(masked) +X
 							ptpInterface = ptpTypes.IFace(fmt.Sprintf("%s/%s", s.Alias(), ptpMetrics.MasterClockType))
 						}
-						eventManager.PublishEvent(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.PtpStateChange)
+						if ptpInterface == ptpMetrics.ClockRealTime {
+							eventManager.PublishEvent(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.OsClockSyncStateChange)
+						} else {
+							eventManager.PublishEvent(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.PtpStateChange)
+						}
 					}
 				}
 			}
