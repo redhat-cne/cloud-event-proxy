@@ -9,8 +9,8 @@ require (
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.17.0
 	github.com/prometheus/client_golang v1.11.0
-	github.com/redhat-cne/rest-api v0.1.1-0.20220105171308-cc511366a079
-	github.com/redhat-cne/sdk-go v0.1.1-0.20220127152823-2487c3dd9ce7
+	github.com/redhat-cne/rest-api v0.1.1-0.20220324184430-c3b65824b158
+	github.com/redhat-cne/sdk-go v0.1.1-0.20220324183018-77240adc404d
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/net v0.0.0-20220225172249-27dd8689420f
