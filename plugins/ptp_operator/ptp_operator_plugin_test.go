@@ -19,12 +19,13 @@ package main_test
 
 import (
 	"fmt"
-	ptpEvent "github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	"log"
 	"os"
 	"sync"
 	"testing"
 	"time"
+
+	ptpEvent "github.com/redhat-cne/sdk-go/pkg/event/ptp"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptpTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"

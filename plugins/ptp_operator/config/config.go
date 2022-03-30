@@ -32,6 +32,7 @@ import (
 var (
 	sectionHead        = regexp.MustCompile(`\[([^\[\]]*)\]`)
 	ptpConfigFileRegEx = regexp.MustCompile(`ptp4l.[0-9]*.config`)
+	profileRegEx       = regexp.MustCompile(`profile: \s*([a-zA-Z0-9]+)`)
 )
 
 const (
@@ -68,6 +69,36 @@ type PtpClockThreshold struct {
 	Close chan struct{} `json:"close,omitempty"`
 }
 
+// PtpProcessOpts ...
+type PtpProcessOpts struct {
+	// ptp4lOpts are set
+	Ptp4lOpts *string `json:"Ptp4lOpts,omitempty"`
+	// Phc2Opts options are set
+	Phc2Opts *string `json:"Phc2Opts,omitempty"`
+}
+
+// Ptp4lEnabled check if ptp4l is enabled
+func (ptpOpts *PtpProcessOpts) Ptp4lEnabled() bool {
+	return ptpOpts.Ptp4lOpts != nil && *ptpOpts.Ptp4lOpts != ""
+}
+
+// Phc2SysEnabled check if phc2sys is enabled
+func (ptpOpts *PtpProcessOpts) Phc2SysEnabled() bool {
+	return ptpOpts.Phc2Opts != nil && *ptpOpts.Phc2Opts != ""
+}
+
+// GetPTPProfileName  ... get profile name from ptpconfig
+func GetPTPProfileName(ptpConfig string) string {
+	log.Infof("ptpConfig %s", ptpConfig)
+	matches := profileRegEx.FindStringSubmatch(ptpConfig)
+	// a regular expression
+	if len(matches) > 1 {
+		return matches[1]
+	}
+	log.Errorf("did not find matching profile name for reg ex %s and ptp config %s", "profile: \\s*([a-zA-Z0-9]+)", ptpConfig)
+	return ""
+}
+
 //SafeClose ... handle close channel
 func (pt *PtpClockThreshold) SafeClose() (justClosed bool) {
 	defer func() {
@@ -94,6 +125,7 @@ type LinuxPTPConfigMapUpdate struct {
 	profilePath            string
 	intervalUpdate         int
 	EventThreshold         map[string]*PtpClockThreshold
+	PtpProcessOpts         map[string]*PtpProcessOpts
 }
 
 // NewLinuxPTPConfUpdate -- profile updater
@@ -104,6 +136,7 @@ func NewLinuxPTPConfUpdate() *LinuxPTPConfigMapUpdate {
 		profilePath:    DefaultProfilePath,
 		intervalUpdate: DefaultUpdateInterval,
 		EventThreshold: make(map[string]*PtpClockThreshold),
+		PtpProcessOpts: make(map[string]*PtpProcessOpts),
 	}
 
 	if os.Getenv("PTP_PROFILE_PATH") != "" {
@@ -171,6 +204,16 @@ func closeHoldover(t *PtpClockThreshold) {
 	}
 }
 
+// UpdatePTPProcessOptions ..
+func (l *LinuxPTPConfigMapUpdate) UpdatePTPProcessOptions() {
+	l.PtpProcessOpts = make(map[string]*PtpProcessOpts)
+	for _, profile := range l.NodeProfiles {
+		l.PtpProcessOpts[*profile.Name] = &PtpProcessOpts{
+			Ptp4lOpts: profile.Ptp4lOpts,
+			Phc2Opts:  profile.Phc2sysOpts}
+	}
+}
+
 // UpdatePTPThreshold ... update ptp threshold
 func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 	var maxOffsetTh, minOffsetTh, holdOverTh int64
@@ -214,7 +257,7 @@ func (l *LinuxPTPConfigMapUpdate) UpdateConfig(nodeProfilesJSON []byte) error {
 	if string(l.appliedNodeProfileJSON) == string(nodeProfilesJSON) {
 		return nil
 	}
-
+	log.Info("updating PROFILE")
 	if nodeProfiles, ok := tryToLoadConfig(nodeProfilesJSON); ok {
 		log.Info("load ptp profiles")
 		l.appliedNodeProfileJSON = nodeProfilesJSON

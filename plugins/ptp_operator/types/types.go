@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 )

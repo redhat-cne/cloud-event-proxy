@@ -2,10 +2,12 @@ package nodes
 
 import (
 	"fmt"
+
 	testclient "github.com/redhat-cne/cloud-event-proxy/test/utils/client"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"context"
+
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -74,9 +76,10 @@ func GetNodes() ([]NodeTopology, error) {
 	}
 	res := make([]NodeTopology, 0)
 	for _, node := range nodes.Items {
+		newNode := node
 		n := NodeTopology{}
 		n.NodeName = node.Name
-		n.NodeObject = &node
+		n.NodeObject = &newNode
 		res = append(res, n)
 	}
 	if len(res) == 0 {

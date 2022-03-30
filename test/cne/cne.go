@@ -6,6 +6,8 @@ package cne
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
 	testutils "github.com/redhat-cne/cloud-event-proxy/test/utils"
@@ -14,7 +16,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	v1core "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"time"
 )
 
 var _ = ginkgo.Describe("validation", func() {
