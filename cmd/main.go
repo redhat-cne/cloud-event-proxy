@@ -48,7 +48,7 @@ import (
 )
 
 var (
-	//defaults
+	// defaults
 	storePath         string
 	amqpHost          string
 	apiPort           int
@@ -104,7 +104,6 @@ func main() {
 		<-sigCh
 		log.Info("exiting...")
 		close(scConfig.CloseCh)
-		//wg.Wait()
 		os.Exit(1)
 	}()
 
@@ -156,9 +155,10 @@ func metricServer(address string) {
 }
 
 // ProcessOutChannel this process the out channel;data put out by amqp
-func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
-	//qdr throws out the data on this channel ,listen to data coming out of qdrEventOutCh
-	//Send back the acknowledgement to publisher
+func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) { // nolint:unused
+	// qdr throws out the data on this channel ,listen to data coming out of qdrEventOutCh
+	// Send back the acknowledgement to publisher
+	defer wg.Done()
 	postProcessFn := func(address string, status channel.Status) {
 		if pub, ok := scConfig.PubSubAPI.HasPublisher(address); ok {
 			if status == channel.SUCCESS {
@@ -167,7 +167,7 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 				localmetrics.UpdateEventAckCount(address, localmetrics.FAILED)
 			}
 			if pub.EndPointURI != nil {
-				log.Debugf("posting event status %s to publisher %s", channel.Status(status), pub.Resource)
+				log.Debugf("posting event status %s to publisher %s", status, pub.Resource)
 				restClient := restclient.New()
 				_ = restClient.Post(pub.EndPointURI,
 					[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, status)))
@@ -289,12 +289,10 @@ func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 
 func loadFromPubSubStore() {
 	pubs := scConfig.PubSubAPI.GetPublishers()
-	//apiMetrics.UpdatePublisherCount(apiMetrics.ACTIVE, len(pubs))
 	for _, pub := range pubs {
 		v1amqp.CreateSender(scConfig.EventInCh, pub.Resource)
 	}
 	subs := scConfig.PubSubAPI.GetSubscriptions()
-	//apiMetrics.UpdateSubscriptionCount(apiMetrics.ACTIVE, len(subs))
 	for _, sub := range subs {
 		v1amqp.CreateListener(scConfig.EventInCh, sub.Resource)
 	}

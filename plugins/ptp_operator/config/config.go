@@ -40,13 +40,13 @@ const (
 	DefaultUpdateInterval = 60
 	// DefaultProfilePath  default ptp profile path
 	DefaultProfilePath       = "/etc/linuxptp"
-	maxOffsetThreshold int64 = 100 //in nano secs
+	maxOffsetThreshold int64 = 100 // in nano secs
 	minOffsetThreshold int64 = -100
 	holdoverTimeout    int64 = 5
 	ignorePtp4lSection       = "global"
 )
 
-// PtpProfile ...
+// PtpProfile ... ptp profile
 type PtpProfile struct {
 	Name              *string            `json:"name"`
 	Interface         *string            `json:"interface"`
@@ -57,7 +57,7 @@ type PtpProfile struct {
 	Interfaces        []*string
 }
 
-// PtpClockThreshold ...
+// PtpClockThreshold ... ptp clock threshold values
 type PtpClockThreshold struct {
 	// clock state to stay in holdover state in secs
 	HoldOverTimeout int64 `json:"holdOverTimeout,omitempty"`
@@ -69,7 +69,7 @@ type PtpClockThreshold struct {
 	Close chan struct{} `json:"close,omitempty"`
 }
 
-// PtpProcessOpts ...
+// PtpProcessOpts ... prp process options
 type PtpProcessOpts struct {
 	// ptp4lOpts are set
 	Ptp4lOpts *string `json:"Ptp4lOpts,omitempty"`
@@ -99,7 +99,7 @@ func GetPTPProfileName(ptpConfig string) string {
 	return ""
 }
 
-//SafeClose ... handle close channel
+// SafeClose ... handle close channel
 func (pt *PtpClockThreshold) SafeClose() (justClosed bool) {
 	defer func() {
 		if recover() != nil {
@@ -234,7 +234,7 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 			} else {
 				minOffsetTh = profile.PtpClockThreshold.MinOffsetThreshold
 			}
-			if profile.PtpClockThreshold.HoldOverTimeout > 0 { //secs can't be negative or zero
+			if profile.PtpClockThreshold.HoldOverTimeout > 0 { // secs can't be negative or zero
 				holdOverTh = profile.PtpClockThreshold.HoldOverTimeout
 			} else {
 				log.Infof("invalid holdOverTimeout %d in secs, setting to default %d holdOverTimeout", profile.PtpClockThreshold.HoldOverTimeout, holdOverTh)
@@ -263,7 +263,7 @@ func (l *LinuxPTPConfigMapUpdate) UpdateConfig(nodeProfilesJSON []byte) error {
 		l.appliedNodeProfileJSON = nodeProfilesJSON
 		l.NodeProfiles = nodeProfiles
 		for index, np := range l.NodeProfiles {
-			//duplicate node profiles
+			// duplicate node profiles
 			l.NodeProfiles[index].Interfaces = np.GetInterface()
 			l.NodeProfiles[index].PtpClockThreshold = np.PtpClockThreshold
 		}

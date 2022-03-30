@@ -16,29 +16,29 @@ const (
 	EventNodeLabel = "app=local"
 )
 
-// NodeTopology  ...
+// NodeTopology  ... node topology struct
 type NodeTopology struct {
 	NodeName   string
 	NodeObject *corev1.Node
 }
 
-// LabelNode ...
+// LabelNode ... label k8s nodes
 func LabelNode(nodeName, key, value string) (*corev1.Node, error) {
-	NodeObject, err := testclient.Client.Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
+	nodeObject, err := testclient.Client.Nodes().Get(context.Background(), nodeName, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	NodeObject.Labels[key] = value
-	NodeObject, err = testclient.Client.Nodes().Update(context.Background(), NodeObject, metav1.UpdateOptions{})
+	nodeObject.Labels[key] = value
+	nodeObject, err = testclient.Client.Nodes().Update(context.Background(), nodeObject, metav1.UpdateOptions{})
 	if err != nil {
 		return nil, err
 	}
 
-	return NodeObject, nil
+	return nodeObject, nil
 }
 
-// FilterNodes ...
+// FilterNodes ... filter nodes
 func FilterNodes(nodesSelector string, toFilter []NodeTopology) ([]NodeTopology, error) {
 	if nodesSelector == "" {
 		return toFilter, nil
@@ -68,7 +68,7 @@ func FilterNodes(nodesSelector string, toFilter []NodeTopology) ([]NodeTopology,
 	return res, nil
 }
 
-// GetNodes ...
+// GetNodes ... get k8s nodes
 func GetNodes() ([]NodeTopology, error) {
 	nodes, err := testclient.Client.Nodes().List(context.Background(), metav1.ListOptions{})
 	if err != nil {

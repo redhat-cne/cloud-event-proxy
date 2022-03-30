@@ -25,7 +25,7 @@ type Stats struct {
 	aliasName           string
 }
 
-// AddValue ...
+// AddValue ...add value
 func (s *Stats) AddValue(val int64) {
 
 	oldMean := s.mean
@@ -43,7 +43,7 @@ func (s *Stats) AddValue(val int64) {
 
 }
 
-// StDev ...
+// StDev ... set dev
 func (s *Stats) StDev() float64 { //nolint:unused
 	if s.num > 0 {
 		return math.Sqrt(float64(s.sumDiffSqr / s.num))
@@ -51,7 +51,7 @@ func (s *Stats) StDev() float64 { //nolint:unused
 	return 1
 }
 
-// MaxAbs ...
+// MaxAbs ... get Max abs value
 func (s *Stats) MaxAbs() int64 {
 	if s.max > s.min {
 		return s.max
@@ -60,23 +60,23 @@ func (s *Stats) MaxAbs() int64 {
 
 }
 
-// OffsetSource ...
+// OffsetSource ... get offset source
 func (s *Stats) OffsetSource() string {
 	return s.offsetSource
 
 }
 
-// SetOffsetSource ...
+// SetOffsetSource ... set offset source ptp4/phc2sys/master
 func (s *Stats) SetOffsetSource(os string) {
 	s.offsetSource = os
 }
 
-// ProcessName ...
+// ProcessName ... name of the process either ptp4l or phc2sys
 func (s *Stats) ProcessName() string {
 	return s.processName
 }
 
-// SetProcessName ...
+// SetProcessName ... set process name
 func (s *Stats) SetProcessName(processName string) {
 	s.processName = processName
 }
@@ -91,7 +91,7 @@ func (s *Stats) Alias() string {
 	return s.aliasName
 }
 
-// SetAlias ...
+// SetAlias ... set alias name for slave port
 func (s *Stats) SetAlias(val string) {
 	s.aliasName = val
 }
@@ -101,7 +101,7 @@ func (s *Stats) SyncState() ptp.SyncState {
 	return s.lastSyncState
 }
 
-//ConfigName ...
+// ConfigName ...get config name
 func (s *Stats) ConfigName() string {
 	return s.configName
 }
@@ -122,42 +122,42 @@ func NewStats(configName string) *Stats {
 	return &Stats{configName: configName}
 }
 
-// SetFrequencyAdjustment ...
+// SetFrequencyAdjustment ... set frequency adjustment
 func (s *Stats) SetFrequencyAdjustment(val int64) {
 	s.frequencyAdjustment = val
 }
 
-// SetDelay ...
+// SetDelay ... set delay value
 func (s *Stats) SetDelay(val int64) {
 	s.delay = val
 }
 
-// SetLastOffset ...
+// SetLastOffset ... set last offset value
 func (s *Stats) SetLastOffset(val int64) {
 	s.lastOffset = val
 }
 
-// SetLastSyncState ...
+// SetLastSyncState ... set last sync state
 func (s *Stats) SetLastSyncState(val ptp.SyncState) {
 	s.lastSyncState = val
 }
 
-// FrequencyAdjustment ...
+// FrequencyAdjustment ... get frequency adjustment value
 func (s *Stats) FrequencyAdjustment() int64 {
 	return s.frequencyAdjustment
 }
 
-// Delay ...
+// Delay ... get delay value
 func (s *Stats) Delay() int64 {
 	return s.delay
 }
 
-// LastOffset ...
+// LastOffset ... last offset value
 func (s *Stats) LastOffset() int64 {
 	return s.lastOffset
 }
 
-// LastSyncState ...
+// LastSyncState ... last sync state
 func (s *Stats) LastSyncState() ptp.SyncState {
 	return s.lastSyncState
 }

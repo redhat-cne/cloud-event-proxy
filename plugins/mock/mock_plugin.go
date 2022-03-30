@@ -33,11 +33,11 @@ import (
 // limitations under the License.
 
 var (
-	resourceAddress      string = "/cluster/node/%s/mock"
+	resourceAddress      = "/cluster/node/%s/mock"
 	config               *common.SCConfiguration
-	mockResourceName     string  = "/mock"
-	mockEventType        string  = "mock"
-	mockEventStateLocked string  = "LOCKED"
+	mockResourceName             = "/mock"
+	mockEventType                = "mock"
+	mockEventStateLocked         = "LOCKED"
 	mockEventValue       float64 = -200
 )
 
@@ -77,7 +77,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	// create amqp listener
 	v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pub.Resource, "status"), onStatusRequestFn, fn)
 
-	//create events periodically
+	// create events periodically
 	time.Sleep(5 * time.Second)
 	// create periodical events
 	wg.Add(1)

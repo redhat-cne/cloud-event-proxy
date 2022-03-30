@@ -47,7 +47,7 @@ var (
 			Help:      "",
 		}, []string{"from", "process", "node", "iface"})
 
-	//SyncState metrics to show current clock state
+	// SyncState metrics to show current clock state
 	SyncState = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Namespace: ptpNamespace,
@@ -106,7 +106,7 @@ func RegisterMetrics(nodeName string) {
 	})
 }
 
-// UpdatePTPMetrics ...
+// UpdatePTPMetrics ... update ptp metrics
 func UpdatePTPMetrics(metricsType, process, eventResourceName string, offset, maxOffset, frequencyAdjustment, delay float64) {
 	PtpOffset.With(prometheus.Labels{"from": metricsType,
 		"process": process, "node": ptpNodeName, "iface": eventResourceName}).Set(offset)
@@ -145,8 +145,8 @@ func DeleteThresholdMetrics(profile string) {
 		"threshold": "HoldOverTimeout", "node": ptpNodeName, "profile": profile})
 }
 
-// UpdateSyncStateMetrics ...
-func UpdateSyncStateMetrics(process string, iface string, state ptp.SyncState) {
+// UpdateSyncStateMetrics ... update sync state metrics
+func UpdateSyncStateMetrics(process, iface string, state ptp.SyncState) {
 	var clockState float64
 	if state == ptp.LOCKED {
 		clockState = 1
@@ -160,13 +160,13 @@ func UpdateSyncStateMetrics(process string, iface string, state ptp.SyncState) {
 
 }
 
-//UpdateInterfaceRoleMetrics ...
+// UpdateInterfaceRoleMetrics ... update interface role metrics
 func UpdateInterfaceRoleMetrics(process, ptpInterface string, role types.PtpPortRole) {
 	InterfaceRole.With(prometheus.Labels{
 		"process": process, "node": ptpNodeName, "iface": ptpInterface}).Set(float64(role))
 }
 
-//DeleteInterfaceRoleMetrics ...
+// DeleteInterfaceRoleMetrics ... delete interface role metrics
 func DeleteInterfaceRoleMetrics(process, ptpInterface string) {
 	InterfaceRole.Delete(prometheus.Labels{
 		"process": process, "node": ptpNodeName, "iface": ptpInterface})

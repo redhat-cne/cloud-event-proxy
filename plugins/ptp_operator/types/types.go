@@ -8,30 +8,30 @@ import (
 )
 
 type (
-	//ProcessName ...
+	// ProcessName ... process name either ptp4l or phc2sys
 	ProcessName string
-	//PtpPortRole ...
+	// PtpPortRole ...ptp port role
 	PtpPortRole int
-	//IFace ...
+	// IFace ... network interface name
 	IFace string
-	//ConfigName ...
+	// ConfigName ... config name
 	ConfigName string
 )
 
 const (
-	//PASSIVE when two slave are configure other will be passive
+	// PASSIVE when two slave are configure other will be passive
 	PASSIVE PtpPortRole = iota
-	//SLAVE interface
+	// SLAVE interface
 	SLAVE
-	//MASTER interface
+	// MASTER interface
 	MASTER
-	//FAULTY Interface role
+	// FAULTY Interface role
 	FAULTY
-	//UNKNOWN role
+	// UNKNOWN role
 	UNKNOWN
 )
 
-//PtpRoleMappings ...
+// PtpRoleMappings ... set ptp role mapping
 var PtpRoleMappings = map[string]PtpPortRole{
 	"PASSIVE": PASSIVE,
 	"SLAVE":   SLAVE,

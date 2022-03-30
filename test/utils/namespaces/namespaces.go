@@ -6,7 +6,7 @@ import (
 
 	k8sv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/pointer"
@@ -35,7 +35,7 @@ func Create(namespace string, cs *testclient.Set) error {
 		metav1.CreateOptions{},
 	)
 
-	if k8serrors.IsAlreadyExists(err) {
+	if errors.IsAlreadyExists(err) {
 		return nil
 	}
 	return err
@@ -44,7 +44,7 @@ func Create(namespace string, cs *testclient.Set) error {
 // Clean cleans all dangling objects from the given namespace.
 func Clean(namespace string, cs *testclient.Set) error {
 	_, err := cs.Namespaces().Get(context.Background(), namespace, metav1.GetOptions{})
-	if err != nil && k8serrors.IsNotFound(err) {
+	if err != nil && errors.IsNotFound(err) {
 		return nil
 	}
 
@@ -70,7 +70,7 @@ func Clean(namespace string, cs *testclient.Set) error {
 		}
 		err = cs.Services(namespace).Delete(context.Background(), s.Name, metav1.DeleteOptions{
 			GracePeriodSeconds: pointer.Int64Ptr(0)})
-		if err != nil && k8serrors.IsNotFound(err) {
+		if err != nil && errors.IsNotFound(err) {
 			continue
 		}
 		if err != nil {
