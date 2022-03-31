@@ -27,7 +27,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			log.Errorf("clock class not in right format %s", output)
 			return
 		}
-		//ptp4l 1646672953  ptp4l.0.config  CLOCK_CLASS_CHANGE 165.000000
+		// ptp4l 1646672953  ptp4l.0.config  CLOCK_CLASS_CHANGE 165.000000
 		clockClass, err := strconv.ParseFloat(fields[4], 64)
 		if err != nil {
 			log.Error("error parsing clock class change")
@@ -63,7 +63,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 		ptpIFace := ptpInterface.Name
 
 		if role == types.SLAVE {
-			//initialize
+			// initialize
 			if _, found := ptpStats[ClockRealTime]; !found {
 				ptpStats[ClockRealTime] = stats.NewStats(configName)
 				ptpStats[ClockRealTime].SetProcessName(phc2sysProcessName)
@@ -79,7 +79,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			   If role changes from FAULTY to SLAVE/PASSIVE/MASTER , then cancel HOLDOVER timer
 			    and publish metrics
 			*/
-			if lastRole == types.FAULTY { //recovery
+			if lastRole == types.FAULTY { // recovery
 				if role == types.SLAVE { // cancel any HOLDOVER timeout for master, if new role is slave
 					if t, ok := p.PtpConfigMapUpdates.EventThreshold[profileName]; ok {
 						log.Infof("interface %s is not anymore faulty, cancel holdover", ptpIFace)
@@ -110,7 +110,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			log.Errorf("no offset stats found for master for  portid %d with role %s (the port started in fault state)", portID, role)
 			return
 		}
-		//Enter the HOLDOVER state: If current sycState is HOLDOVER(Role is at FAULTY) ,then spawn a go routine to hold the state until
+		// Enter the HOLDOVER state: If current sycState is HOLDOVER(Role is at FAULTY) ,then spawn a go routine to hold the state until
 		// holdover timeout, always put only master offset from ptp4l to HOLDOVER,when this goes to FREERUN
 		// make any slave interface master offset to FREERUN
 		if syncState != "" && syncState != ptpStats[master].LastSyncState() && syncState == ptp.HOLDOVER {
@@ -120,7 +120,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			p.PublishEvent(syncState, ptpStats[master].LastOffset(), masterResource, ptp.PtpStateChange)
 			ptpStats[master].SetLastSyncState(syncState)
 			UpdateSyncStateMetrics(ptpStats[master].ProcessName(), alias, syncState)
-			//// Put CLOCK_REALTIME in FREERUN state
+			// Put CLOCK_REALTIME in FREERUN state
 			var ptpOpts *ptpConfig.PtpProcessOpts
 			var ok bool
 			if ptpOpts, ok = p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && ptpOpts != nil && ptpOpts.Phc2SysEnabled() {
@@ -130,43 +130,48 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			}
 
 			threshold := p.PtpThreshold(profileName)
-			go func(ptpManager *PTPEventManager, ptpOpts *ptpConfig.PtpProcessOpts, configName, ptpProfileName string, holdoverTimeout int64, ptpIFace string, role types.PtpPortRole, c chan struct{}) {
-				defer func() {
-					log.Infof("exiting holdover for interface %s", ptpIFace)
-					if r := recover(); r != nil {
-						fmt.Println("Recovered in f", r)
-					}
-				}()
-				select {
-				case <-c:
-					log.Infof("call received to close holderover timeout")
-					return
-				case <-time.After(time.Duration(holdoverTimeout) * time.Second):
-					log.Infof("time expired for interface %s", ptpIFace)
-					stats := p.GetStats(types.ConfigName(configName))
-					if mStats, found := stats[master]; found {
-						if mStats.LastSyncState() == ptp.HOLDOVER {
-							log.Infof("HOLDOVER timeout after %d secs,setting clock state to FREERUN from HOLDOVER state for %s",
-								holdoverTimeout, master)
-							masterResource := fmt.Sprintf("%s/%s", mStats.Alias(), MasterClockType)
-							ptpManager.PublishEvent(ptp.FREERUN, stats[MasterClockType].LastOffset(), masterResource, ptp.PtpStateChange)
-							stats[MasterClockType].SetLastSyncState(ptp.FREERUN)
-							UpdateSyncStateMetrics(mStats.ProcessName(), mStats.Alias(), ptp.FREERUN)
-							//don't check of os clock sync state if phc2 not enabled
-							if cStats, ok := stats[ClockRealTime]; ok && ptpOpts != nil && ptpOpts.Phc2SysEnabled() {
-								ptpManager.GenPTPEvent(ptpProfileName, cStats, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
-								UpdateSyncStateMetrics(cStats.ProcessName(), ptpIFace, ptp.FREERUN)
-							} else {
-								log.Infof("phc2sys is not enabled for profile %s, skiping os clock syn state ", profileName)
-							}
-							//s.reset()
-						}
-					} else {
-						log.Errorf("failed to switch from holdover, could not find stats for interface %s", ptpIFace)
-					}
-				}
-			}(p, ptpOpts, configName, profileName, threshold.HoldOverTimeout, MasterClockType, lastRole, threshold.Close)
+			go handleHoldOverState(p, ptpOpts, configName, profileName, threshold.HoldOverTimeout, MasterClockType, threshold.Close)
 		}
 	}
 
+}
+
+func handleHoldOverState(ptpManager *PTPEventManager,
+	ptpOpts *ptpConfig.PtpProcessOpts, configName,
+	ptpProfileName string, holdoverTimeout int64,
+	ptpIFace string, c chan struct{}) {
+	defer func() {
+		log.Infof("exiting holdover for interface %s", ptpIFace)
+		if r := recover(); r != nil {
+			fmt.Println("Recovered in f", r)
+		}
+	}()
+	select {
+	case <-c:
+		log.Infof("call received to close holderover timeout")
+		return
+	case <-time.After(time.Duration(holdoverTimeout) * time.Second):
+		log.Infof("time expired for interface %s", ptpIFace)
+		ptpStats := ptpManager.GetStats(types.ConfigName(configName))
+		if mStats, found := ptpStats[master]; found {
+			if mStats.LastSyncState() == ptp.HOLDOVER {
+				log.Infof("HOLDOVER timeout after %d secs,setting clock state to FREERUN from HOLDOVER state for %s",
+					holdoverTimeout, master)
+				masterResource := fmt.Sprintf("%s/%s", mStats.Alias(), MasterClockType)
+				ptpManager.PublishEvent(ptp.FREERUN, ptpStats[MasterClockType].LastOffset(), masterResource, ptp.PtpStateChange)
+				ptpStats[MasterClockType].SetLastSyncState(ptp.FREERUN)
+				UpdateSyncStateMetrics(mStats.ProcessName(), mStats.Alias(), ptp.FREERUN)
+				// don't check of os clock sync state if phc2 not enabled
+				if cStats, ok := ptpStats[ClockRealTime]; ok && ptpOpts != nil && ptpOpts.Phc2SysEnabled() {
+					ptpManager.GenPTPEvent(ptpProfileName, cStats, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
+					UpdateSyncStateMetrics(cStats.ProcessName(), ptpIFace, ptp.FREERUN)
+				} else {
+					log.Infof("phc2sys is not enabled for profile %s, skiping os clock syn state ", ptpProfileName)
+				}
+				// s.reset()
+			}
+		} else {
+			log.Errorf("failed to switch from holdover, could not find ptpStats for interface %s", ptpIFace)
+		}
+	}
 }

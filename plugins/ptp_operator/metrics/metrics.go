@@ -30,11 +30,11 @@ const (
 	clockStep = "s1"
 	locked    = "s2"
 
-	//FreeRunOffsetValue when sync state is FREERUN
+	// FreeRunOffsetValue when sync state is FREERUN
 	FreeRunOffsetValue = -9999999999999999
-	//ClockRealTime is the slave
+	// ClockRealTime is the slave
 	ClockRealTime = "CLOCK_REALTIME"
-	//MasterClockType is the slave sync slave clock to master
+	// MasterClockType is the slave sync slave clock to master
 	MasterClockType = "master"
 
 	// from the logs
@@ -51,7 +51,7 @@ const (
 	master = "master"
 )
 
-// ExtractMetrics ...
+// ExtractMetrics ... extract metrics from ptp logs.
 func (p *PTPEventManager) ExtractMetrics(msg string) {
 	defer func() {
 		if err := recover(); err != nil {
@@ -111,10 +111,10 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			}
 		}
 	} else if strings.Contains(output, " offset ") {
-		//ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay    374976
-		//phc2sys[4268818.286]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -62 s0 freq  -78368 delay   1100
-		//phc2sys[4268818.287]: [ptp4l.0.config] ens5f1 phc offset       -92 s0 freq    -890 delay   2464   ( this is down)
-		//phc2sys[4268818.287]: [ptp4l.0.config] ens5f0 phc offset       -47 s2 freq   -2047 delay   2438
+		// ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay    374976
+		// phc2sys[4268818.286]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -62 s0 freq  -78368 delay   1100
+		// phc2sys[4268818.287]: [ptp4l.0.config] ens5f1 phc offset       -92 s0 freq    -890 delay   2464   ( this is down)
+		// phc2sys[4268818.287]: [ptp4l.0.config] ens5f0 phc offset       -47 s2 freq   -2047 delay   2438
 		// Use threshold to CLOCK_REALTIME==SLAVE, rest send clock state to metrics no events
 		interfaceName, ptpOffset, _, frequencyAdjustment, delay, syncState := extractRegularMetrics(processName, output)
 		eventType := ptp.PtpStateChange
@@ -146,7 +146,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		ptpInterface, _ = ptp4lCfg.ByRole(types.SLAVE)
 
 		switch interfaceName {
-		case ClockRealTime: //CLOCK_REALTIME is active slave interface
+		case ClockRealTime: // CLOCK_REALTIME is active slave interface
 			// copy  ClockRealTime value to current slave interface
 			p.GenPTPEvent(profileName, ptpStats[interfaceType], interfaceName, int64(ptpOffset), syncState, eventType)
 			UpdateSyncStateMetrics(processName, interfaceName, ptpStats[interfaceType].LastSyncState())
@@ -169,7 +169,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			}
 		}
 	}
-	if ptp4lProcessName == processName { //all we get from ptp4l is stats
+	if ptp4lProcessName == processName { // all we get from ptp4l is stats
 		p.ParsePTP4l(processName, configName, profileName, output, fields,
 			ptpInterface, ptp4lCfg, ptpStats)
 	}

@@ -9,10 +9,10 @@ import (
 )
 
 var (
-	profile0 string = "profile0"
-	profile1 string = "profile1"
-	inface0  string = "ens5f0"
-	inface1  string = "ens5f1"
+	profile0 = "profile0"
+	profile1 = "profile1"
+	inface0  = "ens5f0"
+	inface1  = "ens5f1"
 )
 
 // StrPtr returns a pointer to a string value. This is useful within expressions where the value is a literal.

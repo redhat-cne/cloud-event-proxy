@@ -10,8 +10,8 @@ var (
 	staleSocketTimeout = 100 * time.Millisecond
 )
 
-//Listen ... listen to ptp daemon logs
-func Listen(addr string) (net.Listener, error) {
+// Listen ... listen to ptp daemon logs
+func Listen(addr string) (l net.Listener, e error) {
 	uAddr, err := net.ResolveUnixAddr("unix", addr)
 	if err != nil {
 		return nil, err
@@ -19,9 +19,9 @@ func Listen(addr string) (net.Listener, error) {
 
 	// Try to listen on the socket. If that fails we check to see if it's a stale
 	// socket and remove it if it is. Then we try to listen one more time.
-	l, err := net.ListenUnix("unix", uAddr)
+	l, err = net.ListenUnix("unix", uAddr)
 	if err != nil {
-		if err = removeIfStaleUnixSocket(addr); err != nil {
+		if err := removeIfStaleUnixSocket(addr); err != nil {
 			return nil, err
 		}
 		if l, err = net.ListenUnix("unix", uAddr); err != nil {
@@ -40,7 +40,7 @@ func removeIfStaleUnixSocket(socketPath string) error {
 	}
 	// Try to connect
 	conn, err := net.DialTimeout("unix", socketPath, staleSocketTimeout)
-	if err != nil { //=syscall.ECONNREFUSED {
+	if err != nil { // =syscall.ECONNREFUSED {
 		return os.Remove(socketPath)
 	} else if err == nil {
 		return conn.Close()

@@ -58,7 +58,8 @@ func Test_WriteMetricsToSocket(t *testing.T) {
 	for i := 0; i < logLength; i++ {
 		_, err = c.Write([]byte(logsData[i]))
 		if err != nil {
-			log.Fatal("write error:", err)
+			log.Errorf("write error:%s", err)
+			return
 		}
 	}
 
@@ -93,7 +94,6 @@ func processTestMetrics2(c net.Conn) {
 		if !ok {
 			break
 		}
-		//log.Printf("plugin got %s", scanner.Text())
 		msg := scanner.Text()
 		eventProcessor.ExtractMetrics(msg)
 	}

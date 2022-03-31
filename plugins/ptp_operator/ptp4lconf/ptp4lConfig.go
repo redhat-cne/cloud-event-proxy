@@ -16,13 +16,14 @@ var (
 	ptpConfigFileRegEx = regexp.MustCompile(`ptp4l.[0-9]*.config`)
 	sectionHead        = regexp.MustCompile(`\[([^\[\]]*)\]`)
 	profileRegEx       = regexp.MustCompile(`profile: \s*([a-zA-Z0-9]+)`)
+	fileNameRegEx      = regexp.MustCompile("([^/]+$)")
 )
 
 const (
 	ptp4lGlobalSection = "global"
 )
 
-//PtpConfigUpdate ...
+// PtpConfigUpdate ...  updated ptp config values
 type PtpConfigUpdate struct {
 	Name      *string `json:"name,omitempty"`
 	Ptp4lConf *string `json:"ptp4lConf,omitempty"`
@@ -61,7 +62,7 @@ func (p *PtpConfigUpdate) GetAllInterface() []*string {
 	return interfaces
 }
 
-//PTPInterface ...
+// PTPInterface ... ptp interfaces from ptpConfig
 type PTPInterface struct {
 	Name     string
 	PortID   int
@@ -69,14 +70,14 @@ type PTPInterface struct {
 	Role     types.PtpPortRole
 }
 
-//PTP4lConfig ...
+// PTP4lConfig ... get filename, profile name and interfaces
 type PTP4lConfig struct {
 	Name       string
 	Profile    string
 	Interfaces []*PTPInterface
 }
 
-//ByRole ...
+// ByRole ... get interface name by ptp port role
 func (ptp4lCfg *PTP4lConfig) ByRole(role types.PtpPortRole) (PTPInterface, error) {
 	for _, p := range ptp4lCfg.Interfaces {
 		if p != nil && p.Role == role {
@@ -86,7 +87,7 @@ func (ptp4lCfg *PTP4lConfig) ByRole(role types.PtpPortRole) (PTPInterface, error
 	return PTPInterface{}, fmt.Errorf("interfaces not found for the role %d --> %s", role, ptp4lCfg.String())
 }
 
-//GetUnknownAlias ...
+// GetUnknownAlias ... when master port details are not know, get first interface alias name
 func (ptp4lCfg *PTP4lConfig) GetUnknownAlias() (string, error) {
 	for _, p := range ptp4lCfg.Interfaces {
 		r := []rune(p.Name)
@@ -96,14 +97,14 @@ func (ptp4lCfg *PTP4lConfig) GetUnknownAlias() (string, error) {
 	return "unknown", fmt.Errorf("interfaces not found for profilfe %s", ptp4lCfg.Profile)
 }
 
-// GetAliasByInterface ...
+// GetAliasByInterface ... get alias name by interface name
 func (ptp4lCfg *PTP4lConfig) GetAliasByInterface(p PTPInterface) string {
 	r := []rune(p.Name)
 	alias := string(r[:len(r)-1]) + "x"
 	return alias
 }
 
-//UpdateRole ...
+// UpdateRole ... update role
 func (pi *PTPInterface) UpdateRole(role types.PtpPortRole) {
 	pi.Role = role
 }
@@ -122,7 +123,7 @@ func (ptp4lCfg *PTP4lConfig) String() string {
 	return b.String()
 }
 
-//ByInterface ...
+// ByInterface ... get interface object by interface name
 func (ptp4lCfg *PTP4lConfig) ByInterface(iface string) (PTPInterface, error) {
 	for _, p := range ptp4lCfg.Interfaces {
 		if p != nil && p.Name == iface {
@@ -132,7 +133,7 @@ func (ptp4lCfg *PTP4lConfig) ByInterface(iface string) (PTPInterface, error) {
 	return PTPInterface{}, fmt.Errorf("interfaces not found for the interface %s", iface)
 }
 
-//ByPortID ...
+// ByPortID ... get ptp interface by port id
 func (ptp4lCfg *PTP4lConfig) ByPortID(id int) (PTPInterface, error) {
 	for _, p := range ptp4lCfg.Interfaces {
 		if p != nil && p.PortID == id {
@@ -148,12 +149,12 @@ type Watcher struct {
 	close     chan struct{}
 }
 
-//Close ...
+// Close ... close watcher
 func (w *Watcher) Close() {
 	close(w.close)
 }
 
-//NewPtp4lConfigWatcher ...
+// NewPtp4lConfigWatcher ... create new ptp4l config file watcher
 func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpdate) (w *Watcher, err error) {
 
 	fsWatcher, err := fsnotify.NewWatcher()
@@ -168,7 +169,7 @@ func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpd
 
 	go func() {
 		defer w.fsWatcher.Close()
-		//initialize all
+		// initialize all
 		for _, ptpConfig := range readAllConfig(dirToWatch) {
 			log.Infof("sending ptpconfig changes for %s", *ptpConfig.Name)
 			updatedConfig <- ptpConfig
@@ -246,13 +247,7 @@ func readConfig(path string) (*PtpConfigUpdate, error) {
 }
 
 func filename(path string) string {
-	r, e := regexp.Compile("([^/]+$)")
-
-	if e != nil {
-		log.Errorf("error finding ptp4l config filename for path %s error %s", path, e)
-		return path
-	}
-	return r.FindString(path)
+	return fileNameRegEx.FindString(path)
 }
 
 func checkIfPtP4lConf(filename string) bool {

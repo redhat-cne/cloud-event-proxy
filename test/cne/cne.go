@@ -14,7 +14,6 @@ import (
 	testclient "github.com/redhat-cne/cloud-event-proxy/test/utils/client"
 	"github.com/redhat-cne/cloud-event-proxy/test/utils/pods"
 	corev1 "k8s.io/api/core/v1"
-	v1core "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -74,9 +73,9 @@ var _ = ginkgo.Describe("validation", func() {
 	})
 
 	ginkgo.Describe("[e2e]", func() {
-		producerPod := v1core.Pod{}
-		consumerPod := v1core.Pod{}
-		routerPod := v1core.Pod{}
+		producerPod := corev1.Pod{}
+		consumerPod := corev1.Pod{}
+		routerPod := corev1.Pod{}
 
 		ginkgo.BeforeEach(func() {
 			producerPods, err := testclient.Client.Pods(testutils.NamespaceProducerTesting).List(context.Background(), metav1.ListOptions{
