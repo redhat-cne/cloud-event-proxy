@@ -8,7 +8,8 @@ if [ $? -ne 0 ]; then
 	GINKGO_TMP_DIR=$(mktemp -d)
 	cd $GINKGO_TMP_DIR
 	go mod init tmp
-	go get github.com/onsi/ginkgo/ginkgo@v1.16.5
+	go install -mod=mod github.com/onsi/ginkgo/v2/ginkgo
+  go get github.com/onsi/gomega/...
 	rm -rf $GINKGO_TMP_DIR
 	echo "Downloading ginkgo tool"
 	cd -
@@ -18,4 +19,4 @@ GOPATH="${GOPATH:-~/go}"
 JUNIT_OUTPUT="${JUNIT_OUTPUT:-/tmp/artifacts/unit_report.xml}"
 export PATH=$PATH:$GOPATH/bin
 
-GOFLAGS=-mod=vendor ginkgo "$SUITE" -- -junit $JUNIT_OUTPUT
+GOFLAGS=-mod=vendor ginkgo "$SUITE"  -junit $JUNIT_OUTPUT

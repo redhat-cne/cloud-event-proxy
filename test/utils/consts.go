@@ -1,6 +1,10 @@
 package utils
 
 const (
+	// NamespaceForPTP .. ptp namespace
+	NamespaceForPTP = "openshift-ptp"
+	// DeploymentForPTP  ptp deployment
+	DeploymentForPTP = "ptp-operator"
 	// NamespaceForTesting ...
 	NamespaceForTesting = "cne-testing"
 	// NamespaceProducerTesting contains the name of the testing namespace

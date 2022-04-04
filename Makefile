@@ -82,6 +82,9 @@ test:
 functests:
 	SUITE=./test/cne hack/run-functests.sh
 
+ptptests:
+	SUITE=./test/ptp hack/run-ptptests.sh
+
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
 deploy-example:kustomize
 	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-proxy=${IMG} && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}

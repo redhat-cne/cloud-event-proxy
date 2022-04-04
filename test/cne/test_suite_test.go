@@ -5,7 +5,6 @@ package cne_test
 
 import (
 	"context"
-	"flag"
 	"testing"
 	"time"
 
@@ -13,27 +12,17 @@ import (
 	testclient "github.com/redhat-cne/cloud-event-proxy/test/utils/client"
 	"github.com/redhat-cne/cloud-event-proxy/test/utils/namespaces"
 
-	. "github.com/onsi/ginkgo"
-	"github.com/onsi/ginkgo/reporters"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var junitPath *string
-
-func init() {
-	junitPath = flag.String("junit", "junit.xml", "the path for the junit format report")
-}
-
 func TestTest(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	rr := []Reporter{}
-	if junitPath != nil {
-		rr = append(rr, reporters.NewJUnitReporter(*junitPath))
-	}
-	RunSpecsWithDefaultAndCustomReporters(t, "cloud native event e2e integration tests", rr)
+	RunSpecs(t, "cloud native event e2e integration tests")
+
 }
 
 var _ = BeforeSuite(func() {

@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang/glog"
 
+	ptpv1 "github.com/openshift/ptp-operator/pkg/client/clientset/versioned/typed/ptp/v1"
 	apiext "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	discovery "k8s.io/client-go/discovery"
@@ -31,6 +32,7 @@ type Set struct {
 	networkv1client.NetworkingV1Client
 	appsv1client.AppsV1Interface
 	discovery.DiscoveryInterface
+	ptpv1.PtpV1Interface
 	Config *rest.Config
 }
 
@@ -60,6 +62,7 @@ func New(kubeConfig string) *Set {
 	clientSet.AppsV1Interface = appsv1client.NewForConfigOrDie(config)
 	clientSet.NetworkingV1Client = *networkv1client.NewForConfigOrDie(config)
 	clientSet.DiscoveryInterface = discovery.NewDiscoveryClientForConfigOrDie(config)
+	clientSet.PtpV1Interface = ptpv1.NewForConfigOrDie(config)
 	clientSet.Config = config
 
 	myScheme := runtime.NewScheme()
