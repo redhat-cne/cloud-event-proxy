@@ -82,6 +82,24 @@ var (
 			Name:      "clock_class",
 			Help:      "",
 		}, []string{"process", "node"})
+
+	// ProcessStatus  ... update process status
+	ProcessStatus = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: ptpNamespace,
+			Subsystem: ptpSubsystem,
+			Name:      "process_status",
+			Help:      "0 = DOWN, 1 = UP",
+		}, []string{"process", "node", "config"})
+
+	// ProcessReStartCount update process status cound
+	ProcessReStartCount = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: ptpNamespace,
+			Subsystem: ptpSubsystem,
+			Name:      "process_restart_count",
+			Help:      "",
+		}, []string{"process", "node", "config"})
 )
 
 var registerMetrics sync.Once
@@ -97,6 +115,8 @@ func RegisterMetrics(nodeName string) {
 		prometheus.MustRegister(Threshold)
 		prometheus.MustRegister(InterfaceRole)
 		prometheus.MustRegister(ClockClassMetrics)
+		prometheus.MustRegister(ProcessStatus)
+		prometheus.MustRegister(ProcessReStartCount)
 
 		// Including these stats kills performance when Prometheus polls with multiple targets
 		prometheus.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
@@ -170,4 +190,14 @@ func UpdateInterfaceRoleMetrics(process, ptpInterface string, role types.PtpPort
 func DeleteInterfaceRoleMetrics(process, ptpInterface string) {
 	InterfaceRole.Delete(prometheus.Labels{
 		"process": process, "node": ptpNodeName, "iface": ptpInterface})
+}
+
+// UpdateProcessStatusMetrics  -- update process status metrics
+func UpdateProcessStatusMetrics(process, cfgName string, status int64) {
+	ProcessStatus.With(prometheus.Labels{
+		"process": process, "node": ptpNodeName, "config": cfgName}).Set(float64(status))
+	if status == PtpProcessUp {
+		ProcessReStartCount.With(prometheus.Labels{
+			"process": process, "node": ptpNodeName, "config": cfgName}).Inc()
+	}
 }

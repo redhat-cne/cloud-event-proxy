@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -8,6 +9,8 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	log "github.com/sirupsen/logrus"
 )
+
+var ptpProcessStatusIdentifier = "PTP_PROCESS_STATUS"
 
 func extractSummaryMetrics(processName, output string) (iface string, ptpOffset, maxPtpOffset, frequencyAdjustment, delay float64) {
 	// remove everything before the rms string
@@ -230,4 +233,21 @@ func isOffsetInRange(ptpOffset, maxOffsetThreshold, minOffsetThreshold int64) bo
 		return true
 	}
 	return false
+}
+
+func parsePTPStatus(output string, fields []string) (int64, error) {
+	// ptp4l 5196819.100 ptp4l.0.config PTP_PROCESS_STOPPED:0/1
+	if len(fields) < 5 {
+		e := fmt.Errorf("ptp process status is not in right format %s", output)
+		log.Println(e)
+		return PtpProcessDown, e
+	}
+	status, err := strconv.ParseInt(fields[4], 10, 64)
+	if err != nil {
+		log.Error("error process status value")
+		return PtpProcessDown, err
+	}
+	// ptp4l 5196819.100 ptp4l.0.config PTP_PROCESS_STOPPED:0/1
+	UpdateProcessStatusMetrics(fields[0], fields[2], status)
+	return status, nil
 }

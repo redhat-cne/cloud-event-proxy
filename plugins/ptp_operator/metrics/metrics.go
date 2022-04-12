@@ -49,6 +49,10 @@ const (
 	phc    = "phc"
 	sys    = "sys"
 	master = "master"
+	// PtpProcessDown ... process is down
+	PtpProcessDown int64 = 0
+	// PtpProcessUp process is up
+	PtpProcessUp int64 = 1
 )
 
 // ExtractMetrics ... extract metrics from ptp logs.
@@ -91,6 +95,27 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	}
 
 	var ptpInterface ptp4lconf.PTPInterface
+
+	//  check if ptp4l or phc2sys process are dead
+	// if process is down fire an event
+	if strings.Contains(output, ptpProcessStatusIdentifier) {
+		if status, e := parsePTPStatus(output, fields); e == nil {
+			if status == PtpProcessDown {
+				if m, ok := ptpStats[master]; ok {
+					masterResource := fmt.Sprintf("%s/%s", m.Alias(), MasterClockType)
+					p.GenPTPEvent(profileName, m, masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
+				}
+				if s, ok := ptpStats[ClockRealTime]; ok {
+					if t, ok := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && t.Phc2SysEnabled() {
+						p.GenPTPEvent(profileName, s, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
+					}
+				}
+			}
+		} else {
+			log.Errorf("error in process status %s", output)
+		}
+		return
+	}
 
 	if strings.Contains(output, " max ") { // this get generated in case -u is passed as an option to phy2sys opts
 		interfaceName, ptpOffset, maxPtpOffset, frequencyAdjustment, delay := extractSummaryMetrics(processName, output)
