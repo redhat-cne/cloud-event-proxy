@@ -13,7 +13,7 @@ jobs:
       - name: tidy
         run: go mod tidy
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v2
+        uses: golangci/golangci-lint-action@v3.1.0
         with:
           # Caching conflicts happen in GHA, so just disable for now
           skip-pkg-cache: true
