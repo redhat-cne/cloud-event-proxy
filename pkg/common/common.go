@@ -215,7 +215,7 @@ func APIHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
 	return
 }
 
-// InitLogger initilaize logger
+// InitLogger initialize logger
 func InitLogger() {
 	lvl, ok := os.LookupEnv("LOG_LEVEL")
 	// LOG_LEVEL not set, let's default to debug
