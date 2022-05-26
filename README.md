@@ -17,7 +17,8 @@
 * [Events](#events)
   * [Event via sdk](#publisher-event-create-via-go-sdk)
   * [Event via rest api](#publisher-event-create-via-rest-api)
-* [Metrics](#metrics)    
+* [Metrics](#metrics)
+* [Plugin](#plugin)
   
 ## Creating Publisher
 #### Publisher JSON Example 
@@ -267,5 +268,6 @@ Cloud native events rest API comes with following metrics collectors .
 1. Number of events received.
 
 [Metrics details ](docs/metrics.md)
-
+## Plugin
+[Plugin details](plugins/README.md)
 
