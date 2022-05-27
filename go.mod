@@ -9,8 +9,8 @@ require (
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.17.0
 	github.com/prometheus/client_golang v1.11.1
-	github.com/redhat-cne/rest-api v0.1.1-0.20220324184430-c3b65824b158
-	github.com/redhat-cne/sdk-go v0.1.1-0.20220324183018-77240adc404d
+	github.com/redhat-cne/rest-api v0.1.1-0.20220527130557-a6f65b4b9a77
+	github.com/redhat-cne/sdk-go v0.1.1-0.20220526200012-719244ead29f
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/net v0.0.0-20220225172249-27dd8689420f
@@ -65,7 +65,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
+	gopkg.in/yaml.v3 v3.0.0 // indirect
 	k8s.io/klog/v2 v2.9.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20211109043538-20434351676c // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.1.2 // indirect
