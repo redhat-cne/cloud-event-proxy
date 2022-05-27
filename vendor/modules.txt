@@ -159,11 +159,11 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/redhat-cne/rest-api v0.1.1-0.20220324184430-c3b65824b158
+# github.com/redhat-cne/rest-api v0.1.1-0.20220527130557-a6f65b4b9a77
 ## explicit; go 1.17
 github.com/redhat-cne/rest-api
 github.com/redhat-cne/rest-api/pkg/localmetrics
-# github.com/redhat-cne/sdk-go v0.1.1-0.20220324183018-77240adc404d
+# github.com/redhat-cne/sdk-go v0.1.1-0.20220526200012-719244ead29f
 ## explicit; go 1.17
 github.com/redhat-cne/sdk-go/pkg/channel
 github.com/redhat-cne/sdk-go/pkg/errorhandler
@@ -307,7 +307,7 @@ gopkg.in/tomb.v1
 # gopkg.in/yaml.v2 v2.4.0
 ## explicit; go 1.15
 gopkg.in/yaml.v2
-# gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
+# gopkg.in/yaml.v3 v3.0.0
 ## explicit
 gopkg.in/yaml.v3
 # k8s.io/api v0.22.4 => k8s.io/api v0.22.4
