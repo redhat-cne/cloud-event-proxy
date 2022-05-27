@@ -18,7 +18,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"sync"
@@ -151,7 +151,7 @@ func server() {
 
 func ackEvent(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
-	bodyBytes, err := ioutil.ReadAll(req.Body)
+	bodyBytes, err := io.ReadAll(req.Body)
 	if err != nil {
 		log.Errorf("error reading acknowledgment  %v", err)
 	}

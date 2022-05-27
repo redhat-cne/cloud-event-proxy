@@ -18,7 +18,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -339,7 +338,7 @@ func (l *LinuxPTPConfigMapUpdate) updatePtpConfig(nodeName string) {
 		log.Errorf("error stating node profile %v: %v", nodeName, err)
 		return
 	}
-	nodeProfilesJSON, err := ioutil.ReadFile(nodeProfile)
+	nodeProfilesJSON, err := os.ReadFile(nodeProfile)
 	if err != nil {
 		log.Errorf("error reading node profile: %v", nodeProfile)
 		return
