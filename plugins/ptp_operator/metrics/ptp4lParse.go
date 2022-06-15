@@ -106,6 +106,9 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			// update role metrics
 			UpdateInterfaceRoleMetrics(processName, ptpIFace, role)
 		}
+		if lastRole != types.SLAVE {
+			return // no need to go to holdover state if the Fault was in master(slave) port
+		}
 		if _, ok := ptpStats[master]; !ok { //
 			log.Errorf("no offset stats found for master for  portid %d with role %s (the port started in fault state)", portID, role)
 			return
