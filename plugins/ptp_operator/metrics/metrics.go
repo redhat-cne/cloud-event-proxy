@@ -101,7 +101,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	if strings.Contains(output, ptpProcessStatusIdentifier) {
 		if status, e := parsePTPStatus(output, fields); e == nil {
 			if status == PtpProcessDown {
-				if m, ok := ptpStats[master]; ok {
+				if m, ok := ptpStats[master]; ok && processName == ptp4lProcessName {
 					masterResource := fmt.Sprintf("%s/%s", m.Alias(), MasterClockType)
 					p.GenPTPEvent(profileName, m, masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
 				}
