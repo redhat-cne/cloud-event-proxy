@@ -430,6 +430,12 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				// update role metrics
 				UpdateInterfaceRoleMetrics(processName, ptpIFace, role)
 			}
+
+			if lastRole != types.SLAVE {
+				log.Infof("faulty found in non slave port with lastRole %s", lastRole)
+				return // no need to go to holdover state if the Fault was in master port
+			}
+
 			if _, ok := ptpStats[master]; !ok { //
 				log.Errorf("no offset stats found for master for  portid %d with role %s (the port started in fault state)", portID, role)
 				return
@@ -447,7 +453,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				//// Put CLOCK_REALTIME in FREERUN state
 				p.PublishEvent(ptp.FREERUN, ptpStats[ClockRealTime].LastOffset(), ClockRealTime, ptp.PtpStateChange)
 				ptpStats[ClockRealTime].SetLastSyncState(ptp.FREERUN)
-				UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ClockRealTime, syncState)
+				UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ClockRealTime, ptp.FREERUN)
 
 				threshold := p.PtpThreshold(ptp4lCfg.Profile)
 				go func(ptpManager *PTPEventManager, holdoverTimeout int64, ptpIFace string, role types.PtpPortRole, c chan struct{}) {
