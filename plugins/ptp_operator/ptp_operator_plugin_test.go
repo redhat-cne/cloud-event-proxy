@@ -61,7 +61,6 @@ func TestMain(m *testing.M) {
 		APIPath:    "/api/test-cloud/",
 		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
 		StorePath:  storePath,
-		AMQPHost:   "amqp:localhost:5672",
 		BaseURL:    nil,
 	}
 
@@ -84,8 +83,8 @@ func Test_StartWithAMQP(t *testing.T) {
 	defer cleanUP()
 	scConfig.CloseCh = make(chan struct{})
 	scConfig.PubSubAPI.EnableTransport()
-	log.Printf("loading amqp with host %s", scConfig.AMQPHost)
-	amqpInstance, err := v1amqp.GetAMQPInstance(scConfig.AMQPHost, scConfig.EventInCh, scConfig.EventOutCh, scConfig.CloseCh)
+	log.Printf("loading amqp with host %s", scConfig.TransportHost.URL)
+	amqpInstance, err := v1amqp.GetAMQPInstance(scConfig.TransportHost.URL, scConfig.EventInCh, scConfig.EventOutCh, scConfig.CloseCh)
 	if err != nil {
 		t.Skipf("ampq.Dial(%#v): %v", amqpInstance, err)
 	}
@@ -131,7 +130,7 @@ func Test_StartWithOutAMQP(t *testing.T) {
 	defer cleanUP()
 	scConfig.CloseCh = make(chan struct{})
 	scConfig.PubSubAPI.DisableTransport()
-	log.Printf("loading amqp with host %s", scConfig.AMQPHost)
+	log.Printf("loading amqp with host %s", scConfig.TransportHost.URL)
 	go ProcessInChannel()
 
 	// build your client
@@ -180,9 +179,9 @@ func ProcessInChannel() {
 	for { //nolint:gosimple
 		select {
 		case d := <-scConfig.EventInCh:
-			if d.Type == channel.LISTENER {
+			if d.Type == channel.SUBSCRIBER {
 				log.Printf("amqp disabled,no action taken: request to create listener address %s was called,but transport is not enabled", d.Address)
-			} else if d.Type == channel.SENDER {
+			} else if d.Type == channel.PUBLISHER {
 				log.Printf("no action taken: request to create sender for address %s was called,but transport is not enabled", d.Address)
 			} else if d.Type == channel.EVENT && d.Status == channel.NEW {
 				out := channel.DataChan{

@@ -39,7 +39,8 @@ spec:
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
-            - "--transport-host=amqp://router.router.svc.cluster.local"
+            #- "--transport-host=amqp://router.router.svc.cluster.local"
+            - "--transport-host=http://ptp.event.publisher.svc.cluster.local:9043"
             - "--api-port=8089"
           env:
             - name: NODE_NAME
@@ -56,6 +57,8 @@ spec:
           ports:
             - name: metrics-port
               containerPort: 9091
+            - name: subscription-port
+              containerPort: 9043
         - name: kube-rbac-proxy
           image: quay.io/coreos/kube-rbac-proxy:v0.5.0
           args:

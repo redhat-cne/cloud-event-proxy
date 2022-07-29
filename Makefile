@@ -59,6 +59,7 @@ lint:
 build-plugins:
 	go build  -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 	go build  -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
+	go build -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
 	go build  -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
 
 build-amqp-plugin:
@@ -66,6 +67,9 @@ build-amqp-plugin:
 
 build-ptp-operator-plugin:
 	go build -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
+
+build-http-plugin:
+	go build -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
 
 build-mock-plugin:
 	go build -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
@@ -97,6 +101,7 @@ gha:
 	go build -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 	go build -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 	go build -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
+	go build -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
 	go test ./... --tags=unittests -coverprofile=cover.out
 
 docker-build: #test ## Build docker image with the manager.

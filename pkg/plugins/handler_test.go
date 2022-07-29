@@ -45,8 +45,14 @@ func init() {
 		APIPath:    "/api/cne/",
 		PubSubAPI:  v1pubsub.GetAPIInstance("../.."),
 		StorePath:  "../..",
-		AMQPHost:   "amqp:localhost:5672",
 		BaseURL:    nil,
+		TransportHost: common.TransportHost{
+			Type: 0,
+			URL:  "",
+			Host: "",
+			Port: 0,
+			Err:  nil,
+		},
 	}
 }
 
@@ -112,6 +118,37 @@ func TestLoadPTPPlugin(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			pLoader = Handler{Path: tc.pgPath}
 			err := pLoader.LoadPTPPlugin(wg, scConfig, nil)
+			if tc.wantErr != nil && err != nil {
+				assert.EqualError(t, err, tc.wantErr.Error())
+			}
+		})
+	}
+}
+
+func TestLoadHTTPPlugin(t *testing.T) {
+	scConfig.CloseCh = make(chan struct{})
+	wg := &sync.WaitGroup{}
+	_, err := common.StartPubSubService(scConfig)
+	assert.Nil(t, err)
+
+	testCases := map[string]struct {
+		pgPath  string
+		wantErr error
+	}{
+		"Invalid Plugin Path": {
+			pgPath:  "wrong",
+			wantErr: fmt.Errorf("http plugin not found in the path wrong"),
+		},
+		"Valid Plugin Path": {
+			pgPath:  "../../plugins",
+			wantErr: nil,
+		},
+	}
+
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			pLoader = Handler{Path: tc.pgPath}
+			_, err := pLoader.LoadHTTPPlugin(wg, scConfig, nil, nil)
 			if tc.wantErr != nil && err != nil {
 				assert.EqualError(t, err, tc.wantErr.Error())
 			}

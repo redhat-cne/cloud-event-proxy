@@ -16,6 +16,7 @@ package config
 // config reads ptp configmap (not ptp4l.x.config, but k8s configmap)  and update threshold values for all interfaces
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -254,7 +255,7 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 
 // UpdateConfig ... update profile
 func (l *LinuxPTPConfigMapUpdate) UpdateConfig(nodeProfilesJSON []byte) error {
-	if string(l.appliedNodeProfileJSON) == string(nodeProfilesJSON) {
+	if bytes.Equal(l.appliedNodeProfileJSON, nodeProfilesJSON) {
 		return nil
 	}
 	log.Info("updating PROFILE")

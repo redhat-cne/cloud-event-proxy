@@ -16,20 +16,19 @@ package main
 
 import (
 	"sync"
-	"time"
 
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
-
-	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
+	"github.com/redhat-cne/sdk-go/pkg/channel"
+	v1http "github.com/redhat-cne/sdk-go/v1/http"
 )
 
 // Start amqp  services to process events,metrics and status
-func Start(wg *sync.WaitGroup, config *common.SCConfiguration) (amqpInstance *v1amqp.AMQP, err error) { //nolint:deadcode,unused
-	if amqpInstance, err = v1amqp.GetAMQPInstance(config.TransportHost.URL, config.EventInCh, config.EventOutCh, config.CloseCh); err != nil {
+func Start(wg *sync.WaitGroup, config *common.SCConfiguration, onStatusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error, processEventFn func(e interface{}) error) (httpInstance *v1http.HTTP, err error) { //nolint:deadcode,unused
+	if httpInstance, err = v1http.GetHTTPInstance(config.TransportHost.URL, config.TransportHost.Port, config.StorePath,
+		config.EventInCh, config.EventOutCh, config.CloseCh, onStatusReceiveOverrideFn, processEventFn); err != nil {
 		return
 	}
-	amqpInstance.Router.CancelTimeOut(2 * time.Second)
-	amqpInstance.Router.RetryTime(1 * time.Second)
-	amqpInstance.Start(wg)
+	httpInstance.Start(wg)
 	return
 }
