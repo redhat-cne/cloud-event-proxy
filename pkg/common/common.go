@@ -126,7 +126,7 @@ type SCConfiguration struct {
 	PubSubAPI         *v1pubsub.API
 	StorePath         string
 	BaseURL           *types.URI
-	TransportHost     TransportHost
+	TransportHost     *TransportHost
 	TransPortInstance interface{}
 }
 

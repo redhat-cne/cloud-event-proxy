@@ -83,7 +83,7 @@ func main() {
 		transportHost = strings.Replace(transportHost, "NODE_IP", nodeIP, 1)
 		log.Infof("transport host path is set to %s", transportHost)
 	}
-	parsedTransportHost := common.TransportHost{URL: transportHost}
+	parsedTransportHost := &common.TransportHost{URL: transportHost}
 
 	parsedTransportHost.ParseTransportHost()
 	if parsedTransportHost.Err != nil {
@@ -221,6 +221,7 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) { /
 						}
 					} else if sub, ok := scConfig.PubSubAPI.HasSubscription(d.Address); ok {
 						if sub.EndPointURI != nil {
+							log.Infof("sub.EndPointURI %s", event)
 							restClient := restclient.New()
 							event.ID = sub.ID // set ID to the subscriptionID
 							err := restClient.PostEvent(sub.EndPointURI, event)

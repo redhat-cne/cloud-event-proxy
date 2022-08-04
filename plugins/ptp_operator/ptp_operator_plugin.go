@@ -175,7 +175,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 			v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", baseURL, "status"), onReceiveOverrideFn, fn)
 		}
 	} else if config.TransportHost.Type == common.HTTP {
-		if httpInstance, ok := config.TransPortInstance.(v1http.HTTP); ok {
+		if httpInstance, ok := config.TransPortInstance.(*v1http.HTTP); ok {
 			httpInstance.SetOnStatusReceiveOverrideFn(onReceiveOverrideFn)
 		} else {
 			log.Error("could not set receiver for http ")

@@ -27,6 +27,7 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/errorhandler"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 	"github.com/stretchr/testify/assert"
+	"os"
 )
 
 var (
@@ -46,7 +47,7 @@ func init() {
 		PubSubAPI:  v1pubsub.GetAPIInstance("../.."),
 		StorePath:  "../..",
 		BaseURL:    nil,
-		TransportHost: common.TransportHost{
+		TransportHost: &common.TransportHost{
 			Type: 0,
 			URL:  "",
 			Host: "",
@@ -86,6 +87,8 @@ func TestLoadAMQPPlugin(t *testing.T) {
 				default:
 					if tc.wantErr != nil && err != nil {
 						assert.EqualError(t, err, tc.wantErr.Error())
+					} else if tc.wantErr == nil {
+						assert.Nil(t, err)
 					}
 				}
 			}
@@ -95,6 +98,7 @@ func TestLoadAMQPPlugin(t *testing.T) {
 }
 
 func TestLoadPTPPlugin(t *testing.T) {
+	os.Setenv("NODE_NAME", "test_node")
 	scConfig.CloseCh = make(chan struct{})
 	wg := &sync.WaitGroup{}
 	_, err := common.StartPubSubService(scConfig)
@@ -120,12 +124,15 @@ func TestLoadPTPPlugin(t *testing.T) {
 			err := pLoader.LoadPTPPlugin(wg, scConfig, nil)
 			if tc.wantErr != nil && err != nil {
 				assert.EqualError(t, err, tc.wantErr.Error())
+			} else if tc.wantErr == nil {
+				assert.Nil(t, err)
 			}
 		})
 	}
 }
 
 func TestLoadHTTPPlugin(t *testing.T) {
+	os.Setenv("NODE_NAME", "test_node")
 	scConfig.CloseCh = make(chan struct{})
 	wg := &sync.WaitGroup{}
 	_, err := common.StartPubSubService(scConfig)
@@ -151,6 +158,8 @@ func TestLoadHTTPPlugin(t *testing.T) {
 			_, err := pLoader.LoadHTTPPlugin(wg, scConfig, nil, nil)
 			if tc.wantErr != nil && err != nil {
 				assert.EqualError(t, err, tc.wantErr.Error())
+			} else if tc.wantErr == nil {
+				assert.Nil(t, err)
 			}
 		})
 	}

@@ -23,7 +23,7 @@ import (
 	v1http "github.com/redhat-cne/sdk-go/v1/http"
 )
 
-// Start amqp  services to process events,metrics and status
+// Start http transport services to process events,metrics and status
 func Start(wg *sync.WaitGroup, config *common.SCConfiguration, onStatusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error, processEventFn func(e interface{}) error) (httpInstance *v1http.HTTP, err error) { //nolint:deadcode,unused
 	if httpInstance, err = v1http.GetHTTPInstance(config.TransportHost.URL, config.TransportHost.Port, config.StorePath,
 		config.EventInCh, config.EventOutCh, config.CloseCh, onStatusReceiveOverrideFn, processEventFn); err != nil {

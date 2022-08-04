@@ -52,7 +52,7 @@ func TestSidecar_MainWithAMQP(t *testing.T) {
 		APIPath:    "/api/cloudNotifications/v1/",
 		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
 		StorePath:  storePath,
-		TransportHost: common.TransportHost{
+		TransportHost: &common.TransportHost{
 			Type: common.AMQ,
 			URL:  "amqp:localhost:5672",
 			Host: "",
@@ -121,7 +121,7 @@ func TestSidecar_MainWithOutAMQP(t *testing.T) {
 		APIPath:       "/api/cloudNotifications/v1/",
 		PubSubAPI:     v1pubsub.GetAPIInstance(storePath),
 		StorePath:     storePath,
-		TransportHost: common.TransportHost{},
+		TransportHost: &common.TransportHost{},
 	}
 	log.Infof("Configuration set to %#v", scConfig)
 
@@ -180,7 +180,7 @@ func TestSidecar_MainWithHTTP(t *testing.T) {
 		APIPath:    "/api/cloudNotifications/v1/",
 		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
 		StorePath:  storePath,
-		TransportHost: common.TransportHost{
+		TransportHost: &common.TransportHost{
 			Type: common.HTTP,
 			URL:  "localhost:8089",
 			Host: "localhost",

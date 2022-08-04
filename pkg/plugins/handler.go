@@ -73,16 +73,16 @@ func (pl Handler) LoadAMQPPlugin(wg *sync.WaitGroup, scConfig *common.SCConfigur
 
 // LoadPTPPlugin loads ptp plugin
 func (pl Handler) LoadPTPPlugin(wg *sync.WaitGroup, scConfig *common.SCConfiguration, fn func(e interface{}) error) error {
-	httpPlugin, err := filepath.Glob(fmt.Sprintf("%s/http_plugin.so", pl.Path))
+	pttPlugin, err := filepath.Glob(fmt.Sprintf("%s/ptp_operator_plugin.so", pl.Path))
 	if err != nil {
-		log.Errorf("cannot load http plugin %v", err)
+		log.Errorf("cannot load ptp plugin %v", err)
 	}
-	if len(httpPlugin) == 0 {
+	if len(pttPlugin) == 0 {
 		return fmt.Errorf("ptp plugin not found in the path %s", pl.Path)
 	}
-	p, err := plugin.Open(httpPlugin[0])
+	p, err := plugin.Open(pttPlugin[0])
 	if err != nil {
-		log.Errorf("cannot open http plugin %v", err)
+		log.Errorf("cannot open ptp plugin %v", err)
 		return err
 	}
 
