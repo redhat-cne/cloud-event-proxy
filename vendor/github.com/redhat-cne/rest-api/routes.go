@@ -91,7 +91,7 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("subscription created successfully.")
 	// go ahead and create QDR to this address
-	s.sendOut(channel.LISTENER, &newSub)
+	s.sendOut(channel.SUBSCRIBER, &newSub)
 	localmetrics.UpdateSubscriptionCount(localmetrics.ACTIVE, 1)
 	respondWithJSON(w, http.StatusCreated, newSub)
 }
@@ -146,7 +146,7 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("publisher created successfully.")
 	// go ahead and create QDR to this address
-	s.sendOut(channel.SENDER, &newPub)
+	s.sendOut(channel.PUBLISHER, &newPub)
 	localmetrics.UpdatePublisherCount(localmetrics.ACTIVE, 1)
 	respondWithJSON(w, http.StatusCreated, newPub)
 }

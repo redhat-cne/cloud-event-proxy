@@ -3,14 +3,14 @@ module github.com/redhat-cne/cloud-event-proxy
 go 1.17
 
 require (
-	github.com/cloudevents/sdk-go/v2 v2.5.0
+	github.com/cloudevents/sdk-go/v2 v2.6.0
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.17.0
 	github.com/prometheus/client_golang v1.11.1
-	github.com/redhat-cne/rest-api v0.1.1-0.20220527130557-a6f65b4b9a77
-	github.com/redhat-cne/sdk-go v0.1.1-0.20220526200012-719244ead29f
+	github.com/redhat-cne/rest-api v0.1.1-0.20220803013959-5d7ee3144c47
+	github.com/redhat-cne/sdk-go v0.1.1-0.20220802200502-457a1cec928a
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/net v0.0.0-20220225172249-27dd8689420f
@@ -78,3 +78,7 @@ replace (
 	k8s.io/apimachinery => k8s.io/apimachinery v0.22.4
 	k8s.io/client-go => k8s.io/client-go v0.22.4
 )
+
+replace github.com/redhat-cne/sdk-go => github.com/redhat-cne/sdk-go v0.1.1-0.20220802200502-457a1cec928a
+
+replace github.com/redhat-cne/rest-api => github.com/redhat-cne/rest-api v0.1.1-0.20220803013959-5d7ee3144c47

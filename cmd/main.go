@@ -44,13 +44,14 @@ import (
 	sdkMetrics "github.com/redhat-cne/sdk-go/pkg/localmetrics"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
+	v1http "github.com/redhat-cne/sdk-go/v1/http"
 	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
 )
 
 var (
 	// defaults
 	storePath         string
-	amqpHost          string
+	transportHost     string
 	apiPort           int
 	channelBufferSize = 100
 	scConfig          *common.SCConfiguration
@@ -63,7 +64,7 @@ func main() {
 	common.InitLogger()
 	flag.StringVar(&metricsAddr, "metrics-addr", ":9091", "The address the metric endpoint binds to.")
 	flag.StringVar(&storePath, "store-path", ".", "The path to store publisher and subscription info.")
-	flag.StringVar(&amqpHost, "transport-host", "amqp:localhost:5672", "The transport bus hostname or service name.")
+	flag.StringVar(&transportHost, "transport-host", "amqp:localhost:5672", "The transport bus hostname or service name.")
 	flag.IntVar(&apiPort, "api-port", 8089, "The address the rest api endpoint binds to.")
 
 	flag.Parse()
@@ -79,20 +80,26 @@ func main() {
 
 	nodeIP := os.Getenv("NODE_IP")
 	if nodeIP != "" {
-		amqpHost = strings.Replace(amqpHost, "NODE_IP", nodeIP, 1)
-		log.Infof("amqp host path is set to %s", amqpHost)
+		transportHost = strings.Replace(transportHost, "NODE_IP", nodeIP, 1)
+		log.Infof("transport host path is set to %s", transportHost)
+	}
+	parsedTransportHost := &common.TransportHost{URL: transportHost}
+
+	parsedTransportHost.ParseTransportHost()
+	if parsedTransportHost.Err != nil {
+		log.Errorf("error parsing transport host, data will written to log %s", parsedTransportHost.Err.Error())
 	}
 
 	scConfig = &common.SCConfiguration{
-		EventInCh:  make(chan *channel.DataChan, channelBufferSize),
-		EventOutCh: make(chan *channel.DataChan, channelBufferSize),
-		CloseCh:    make(chan struct{}),
-		APIPort:    apiPort,
-		APIPath:    apiPath,
-		PubSubAPI:  v1pubs.GetAPIInstance(storePath),
-		StorePath:  storePath,
-		AMQPHost:   amqpHost,
-		BaseURL:    nil,
+		EventInCh:     make(chan *channel.DataChan, channelBufferSize),
+		EventOutCh:    make(chan *channel.DataChan, channelBufferSize),
+		CloseCh:       make(chan struct{}),
+		APIPort:       apiPort,
+		APIPath:       apiPath,
+		PubSubAPI:     v1pubs.GetAPIInstance(storePath),
+		StorePath:     storePath,
+		BaseURL:       nil,
+		TransportHost: parsedTransportHost,
 	}
 
 	metricServer(metricsAddr)
@@ -114,17 +121,29 @@ func main() {
 
 	pl := plugins.Handler{Path: "./plugins"}
 	// load amqp
-	_, err = pl.LoadAMQPPlugin(&wg, scConfig)
-	if err != nil {
-		log.Warnf("requires QPID router installed to function fully %s", err.Error())
-		scConfig.PubSubAPI.DisableTransport()
-		wg.Add(1)
-		go ProcessInChannel(&wg, scConfig)
+	if scConfig.TransportHost.Type == common.AMQ {
+		_, err = pl.LoadAMQPPlugin(&wg, scConfig)
+		if err != nil {
+			log.Warnf("requires QPID router installed to function fully %s", err.Error())
+			scConfig.PubSubAPI.DisableTransport()
+
+		}
+	} else if scConfig.TransportHost.Type == common.HTTP {
+		var httpServer *v1http.HTTP
+		httpServer, err = pl.LoadHTTPPlugin(&wg, scConfig, nil, nil)
+		if err != nil {
+			log.Warnf("requires QPID router installed to function fully %s", err.Error())
+			scConfig.PubSubAPI.DisableTransport()
+		} else {
+			scConfig.TransPortInstance = httpServer
+		}
 	}
+	wg.Add(1)
+	go ProcessInChannel(&wg, scConfig)
 
 	// load all senders and listeners from the existing store files.
 	loadFromPubSubStore()
-	// assume this depends on rest plugin or you can use api to create subscriptions
+	// assume this depends on rest plugin, or you can use api to create subscriptions
 	if common.GetBoolEnv("PTP_PLUGIN") {
 		err := pl.LoadPTPPlugin(&wg, scConfig, nil)
 		if err != nil {
@@ -191,7 +210,7 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) { /
 		case d := <-scConfig.EventOutCh: // do something that is put out by QDR
 			event, err := v1event.GetCloudNativeEvents(*d.Data)
 			if err != nil {
-				log.Errorf("error marshalling event data when reading from amqp %v\n %#v", err, d)
+				log.Errorf("error marshalling event data when reading from transport %v\n %#v", err, d)
 				log.Infof("data %#v", d.Data)
 			} else if d.Type == channel.EVENT {
 				if d.Status == channel.NEW {
@@ -202,6 +221,7 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) { /
 						}
 					} else if sub, ok := scConfig.PubSubAPI.HasSubscription(d.Address); ok {
 						if sub.EndPointURI != nil {
+							log.Infof("sub.EndPointURI %s", event)
 							restClient := restclient.New()
 							event.ID = sub.ID // set ID to the subscriptionID
 							err := restClient.PostEvent(sub.EndPointURI, event)
@@ -237,15 +257,15 @@ func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 	for { //nolint:gosimple
 		select {
 		case d := <-scConfig.EventInCh:
-			if d.Type == channel.LISTENER {
-				log.Warnf("amqp disabled,no action taken: request to create listener address %s was called,but transport is not enabled", d.Address)
-			} else if d.Type == channel.SENDER {
+			if d.Type == channel.SUBSCRIBER {
+				log.Warnf("event transport disabled,no action taken: request to create listener address %s was called,but transport is not enabled", d.Address)
+			} else if d.Type == channel.PUBLISHER {
 				log.Warnf("no action taken: request to create sender for address %s was called,but transport is not enabled", d.Address)
 			} else if d.Type == channel.EVENT && d.Status == channel.NEW {
 				if e, err := v1event.GetCloudNativeEvents(*d.Data); err != nil {
 					log.Warnf("error marshalling event data")
 				} else {
-					log.Warnf("amqp disabled,no action taken(can't send to a desitination): logging new event %s\n", e.JSONString())
+					log.Warnf("event disabled,no action taken(can't send to a desitination): logging new event %s\n", e.JSONString())
 				}
 				out := channel.DataChan{
 					Address:        d.Address,
@@ -264,7 +284,7 @@ func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 				}
 				scConfig.EventOutCh <- &out
 			} else if d.Type == channel.STATUS && d.Status == channel.NEW {
-				log.Warnf("amqp disabled,no action taken(can't send to a destination): logging new status check %v\n", d)
+				log.Warnf("event disabled,no action taken(can't send to a destination): logging new status check %v\n", d)
 				out := channel.DataChan{
 					Address:        d.Address,
 					Data:           d.Data,
@@ -288,12 +308,21 @@ func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 }
 
 func loadFromPubSubStore() {
-	pubs := scConfig.PubSubAPI.GetPublishers()
-	for _, pub := range pubs {
-		v1amqp.CreateSender(scConfig.EventInCh, pub.Resource)
+	if scConfig.TransportHost.Type == common.AMQ {
+		pubs := scConfig.PubSubAPI.GetPublishers()
+		for _, pub := range pubs {
+			v1amqp.CreateSender(scConfig.EventInCh, pub.Resource)
+		}
+		subs := scConfig.PubSubAPI.GetSubscriptions()
+		for _, sub := range subs {
+			v1amqp.CreateListener(scConfig.EventInCh, sub.Resource)
+		}
+	} else if scConfig.TransportHost.Type == common.HTTP {
+		subs := scConfig.PubSubAPI.GetSubscriptions() // the publisher wont have any subscription usually the consumer gets this publisher
+		for _, sub := range subs {
+			v1http.CreateSubscription(scConfig.EventInCh, sub.ID, sub.Resource)
+		}
+
 	}
-	subs := scConfig.PubSubAPI.GetSubscriptions()
-	for _, sub := range subs {
-		v1amqp.CreateListener(scConfig.EventInCh, sub.Resource)
-	}
+
 }

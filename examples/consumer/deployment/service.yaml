@@ -4,6 +4,25 @@ metadata:
   annotations:
     prometheus.io/scrape: "true"
     service.alpha.openshift.io/serving-cert-secret-name: sidecar-consumer-secret
+  name: consumer-events-subscription-service
+  namespace: cloud-events
+  labels:
+    app: consumer-service
+spec:
+  ports:
+    - name: subscription-port
+      port: 9043
+      targetPort: http
+  selector:
+    app: consumer
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    prometheus.io/scrape: "true"
+    service.alpha.openshift.io/serving-cert-secret-name: sidecar-consumer-secret
   name: consumer-sidecar-service
   namespace: cloud-events
   labels:
