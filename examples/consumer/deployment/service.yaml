@@ -10,11 +10,12 @@ metadata:
     app: consumer-service
 spec:
   ports:
-    - name: subscription-port
+    - name: sub-port
       port: 9043
-      targetPort: http
   selector:
     app: consumer
+  clusterIP: None
+  sessionAffinity: None
   type: ClusterIP
 ---
 apiVersion: v1

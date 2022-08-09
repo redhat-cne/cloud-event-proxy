@@ -25,7 +25,7 @@ import (
 
 // Start http transport services to process events,metrics and status
 func Start(wg *sync.WaitGroup, config *common.SCConfiguration, onStatusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error, processEventFn func(e interface{}) error) (httpInstance *v1http.HTTP, err error) { //nolint:deadcode,unused
-	if httpInstance, err = v1http.GetHTTPInstance(config.TransportHost.URL, config.TransportHost.Port, config.StorePath,
+	if httpInstance, err = v1http.GetHTTPInstance(config.TransportHost.URI.String(), config.TransportHost.Port, config.StorePath,
 		config.EventInCh, config.EventOutCh, config.CloseCh, onStatusReceiveOverrideFn, processEventFn); err != nil {
 		return
 	}

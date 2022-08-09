@@ -100,7 +100,7 @@ func Test_StartWithAMQP(t *testing.T) {
 	wg.Add(1)
 	amqpInstance.Start(&wg)
 	// build your client
-	//CLIENT SUBSCRIPTION: create a subscription to consume events
+	// SUBSCRIPTION: create a subscription to consume events
 	endpointURL := fmt.Sprintf("%s%s", scConfig.BaseURL, "dummy")
 	for _, pTypes := range pubsubTypes {
 		sub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), fmt.Sprintf(resourcePrefix, "test_node", string(pTypes.Resource)))
@@ -139,7 +139,7 @@ func Test_StartWithOutAMQP(t *testing.T) {
 	defer cleanUP()
 	scConfig.CloseCh = make(chan struct{})
 	scConfig.PubSubAPI.DisableTransport()
-	log.Printf("loading amqp with host %s", scConfig.TransportHost.URL)
+	log.Printf("loading amqp with host %s", scConfig.TransportHost.Host)
 	go ProcessInChannel()
 
 	// build your client
@@ -200,7 +200,7 @@ func Test_StartWithHTTP(t *testing.T) {
 	defer cleanUP()
 	scConfig.CloseCh = make(chan struct{})
 	scConfig.PubSubAPI.EnableTransport()
-	log.Printf("loading http with host %s", scConfig.TransportHost.URL)
+	log.Printf("loading http with host %s", scConfig.TransportHost.Host)
 	wg := sync.WaitGroup{}
 	httpTransportInstance, err := pl.LoadHTTPPlugin(&wg, scConfig, nil, nil)
 	if err != nil {

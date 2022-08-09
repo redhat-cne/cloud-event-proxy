@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
 	"strings"
 	"sync"
 	"syscall"
@@ -50,13 +51,15 @@ import (
 
 var (
 	// defaults
-	storePath         string
-	transportHost     string
-	apiPort           int
-	channelBufferSize = 100
-	scConfig          *common.SCConfiguration
-	metricsAddr       string
-	apiPath           = "/api/cloudNotifications/v1/"
+	storePath          string
+	transportHost      string
+	apiPort            int
+	channelBufferSize  = 100
+	scConfig           *common.SCConfiguration
+	metricsAddr        string
+	apiPath            = "/api/cloudNotifications/v1/"
+	httpEventPublisher string
+	pluginHandler      plugins.Handler
 )
 
 func main() {
@@ -66,6 +69,7 @@ func main() {
 	flag.StringVar(&storePath, "store-path", ".", "The path to store publisher and subscription info.")
 	flag.StringVar(&transportHost, "transport-host", "amqp:localhost:5672", "The transport bus hostname or service name.")
 	flag.IntVar(&apiPort, "api-port", 8089, "The address the rest api endpoint binds to.")
+	flag.StringVar(&httpEventPublisher, "http-event-publishers", "", "Comma separated address of the publishers available.")
 
 	flag.Parse()
 
@@ -114,49 +118,50 @@ func main() {
 		os.Exit(1)
 	}()
 
+	pluginHandler = plugins.Handler{Path: "./plugins"}
+	transportEnabled := true
+	// load amqp
+	if scConfig.TransportHost.Type == common.AMQ {
+		log.Infof("AMQ enabled as event transport %s", scConfig.TransportHost.String())
+		_, pluginErr := pluginHandler.LoadAMQPPlugin(&wg, scConfig)
+		if pluginErr != nil {
+			log.Warnf("requires QPID router installed to function fully %s", pluginErr.Error())
+			scConfig.PubSubAPI.DisableTransport()
+			transportEnabled = false
+		}
+	} else if scConfig.TransportHost.Type == common.HTTP {
+		transportEnabled = enableHTTPTransport(&wg)
+	}
+	// if all transport types failed then process internally
+	if !transportEnabled {
+		log.Errorf("No transport is enabled for sending events %s", scConfig.TransportHost.String())
+		wg.Add(1)
+		go ProcessInChannel(&wg, scConfig)
+	}
+
+	/* Enable pub/sub services */
 	_, err := common.StartPubSubService(scConfig)
 	if err != nil {
 		log.Fatal("pub/sub service API failed to start.")
 	}
 
-	pl := plugins.Handler{Path: "./plugins"}
-	// load amqp
-	if scConfig.TransportHost.Type == common.AMQ {
-		_, err = pl.LoadAMQPPlugin(&wg, scConfig)
-		if err != nil {
-			log.Warnf("requires QPID router installed to function fully %s", err.Error())
-			scConfig.PubSubAPI.DisableTransport()
-
-		}
-	} else if scConfig.TransportHost.Type == common.HTTP {
-		var httpServer *v1http.HTTP
-		httpServer, err = pl.LoadHTTPPlugin(&wg, scConfig, nil, nil)
-		if err != nil {
-			log.Warnf("requires QPID router installed to function fully %s", err.Error())
-			scConfig.PubSubAPI.DisableTransport()
-		} else {
-			scConfig.TransPortInstance = httpServer
-		}
-	}
-	wg.Add(1)
-	go ProcessInChannel(&wg, scConfig)
-
-	// load all senders and listeners from the existing store files.
+	// load all publishers or subscribers from the existing store files.
 	loadFromPubSubStore()
 	// assume this depends on rest plugin, or you can use api to create subscriptions
 	if common.GetBoolEnv("PTP_PLUGIN") {
-		err := pl.LoadPTPPlugin(&wg, scConfig, nil)
+		err := pluginHandler.LoadPTPPlugin(&wg, scConfig, nil)
 		if err != nil {
 			log.Fatalf("error loading ptp plugin %v", err)
 		}
 	}
 
 	if common.GetBoolEnv("MOCK_PLUGIN") {
-		err := pl.LoadMockPlugin(&wg, scConfig, nil)
+		err := pluginHandler.LoadMockPlugin(&wg, scConfig, nil)
 		if err != nil {
 			log.Fatalf("error loading mock plugin %v", err)
 		}
 	}
+	// process data that are coming from api server requests
 	ProcessOutChannel(&wg, scConfig)
 }
 
@@ -182,14 +187,15 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) { /
 		if pub, ok := scConfig.PubSubAPI.HasPublisher(address); ok {
 			if status == channel.SUCCESS {
 				localmetrics.UpdateEventAckCount(address, localmetrics.SUCCESS)
+				if pub.EndPointURI != nil {
+					log.Debugf("posting event with status: %s to publisher: %s", status, pub.EndPointURI)
+					restClient := restclient.New()
+					_ = restClient.Post(pub.EndPointURI,
+						[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, status)))
+				}
 			} else {
+				log.Debugf("failed to process event with status: %s to publisher: %s", status, pub.EndPointURI)
 				localmetrics.UpdateEventAckCount(address, localmetrics.FAILED)
-			}
-			if pub.EndPointURI != nil {
-				log.Debugf("posting event status %s to publisher %s", status, pub.Resource)
-				restClient := restclient.New()
-				_ = restClient.Post(pub.EndPointURI,
-					[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, status)))
 			}
 		} else {
 			log.Warnf("could not send ack to publisher ,`publisher` for address %s not found", address)
@@ -207,15 +213,19 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) { /
 
 	for { //nolint:gosimple
 		select { //nolint:gosimple
-		case d := <-scConfig.EventOutCh: // do something that is put out by QDR
-			event, err := v1event.GetCloudNativeEvents(*d.Data)
-			if err != nil {
-				log.Errorf("error marshalling event data when reading from transport %v\n %#v", err, d)
-				log.Infof("data %#v", d.Data)
-			} else if d.Type == channel.EVENT {
-				if d.Status == channel.NEW {
+		case d := <-scConfig.EventOutCh: // do something that is put out by transporter
+			if d.Type == channel.EVENT {
+				if d.Data == nil {
+					log.Errorf("nil event data was sent via event channel,ignoring")
+					continue
+				}
+				event, err := v1event.GetCloudNativeEvents(*d.Data)
+				if err != nil {
+					log.Errorf("error marshalling event data when reading from transport %v\n %#v", err, d)
+					log.Infof("data %#v", d.Data)
+				} else if d.Status == channel.NEW {
 					if d.ProcessEventFn != nil { // always leave event to handle by default method for events
-						if err := d.ProcessEventFn(event); err != nil {
+						if err = d.ProcessEventFn(event); err != nil {
 							log.Errorf("error processing data %v", err)
 							localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
 						}
@@ -224,7 +234,7 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) { /
 							log.Infof("sub.EndPointURI %s", event)
 							restClient := restclient.New()
 							event.ID = sub.ID // set ID to the subscriptionID
-							err := restClient.PostEvent(sub.EndPointURI, event)
+							err = restClient.PostEvent(sub.EndPointURI, event)
 							postHandler(err, sub.EndPointURI, d.Address)
 						} else {
 							log.Warnf("endpoint uri not given, posting event to log %#v for address %s\n", event, d.Address)
@@ -244,6 +254,8 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) { /
 					log.Errorf("failed to receive status request to address %s", d.Address)
 					localmetrics.UpdateStatusAckCount(d.Address, localmetrics.FAILED)
 				}
+			} else if d.Type == channel.SUBSCRIBER {
+				log.Infof("subscriber processed for %s", d.Address)
 			}
 		case <-scConfig.CloseCh:
 			return
@@ -318,11 +330,55 @@ func loadFromPubSubStore() {
 			v1amqp.CreateListener(scConfig.EventInCh, sub.Resource)
 		}
 	} else if scConfig.TransportHost.Type == common.HTTP {
-		subs := scConfig.PubSubAPI.GetSubscriptions() // the publisher wont have any subscription usually the consumer gets this publisher
+		subs := scConfig.PubSubAPI.GetSubscriptions() // the publisher won't have any subscription usually the consumer gets this publisher
 		for _, sub := range subs {
 			v1http.CreateSubscription(scConfig.EventInCh, sub.ID, sub.Resource)
 		}
 
 	}
 
+}
+
+func enableHTTPTransport(wg *sync.WaitGroup) bool {
+	log.Infof("HTTP enabled as event transport %s", scConfig.TransportHost.String())
+	var httpServer *v1http.HTTP
+	httpServer, err := pluginHandler.LoadHTTPPlugin(wg, scConfig, nil, nil)
+	if err != nil {
+		log.Warnf(" failied to  load http plugin for tansport %s", err.Error())
+		scConfig.PubSubAPI.DisableTransport()
+		return false
+	}
+	/*** wait till you get the publisher service running  */
+	time.Sleep(5 * time.Second)
+RETRY:
+	tHost := types.ParseURI(scConfig.TransportHost.URI.String())
+	if ok := httpServer.IsReadyToServe(tHost); !ok {
+		goto RETRY
+	}
+
+	scConfig.TransPortInstance = httpServer
+	func(addr ...string) {
+		for _, s := range addr {
+			if s == "" {
+				continue
+			}
+			th := common.TransportHost{URL: httpEventPublisher}
+			th.ParseTransportHost()
+			if th.URI != nil {
+				s = th.URI.String()
+				th.URI.Path = path.Join(th.URI.Path, "health")
+				if ok, _ := common.HTTPTransportHealthCheck(th.URI, 2*time.Second); ok {
+					log.Infof("Registering publisher %s", s)
+					httpServer.RegisterPublishers(types.ParseURI(s))
+				} else {
+					log.Errorf("health check failed, skipping registration for %s", s)
+				}
+			} else {
+				log.Errorf("failed to parse publisher url %s", s)
+			}
+		}
+	}(httpEventPublisher)
+
+	log.Infof("following publishers are registered %s", httpEventPublisher)
+	return true
 }

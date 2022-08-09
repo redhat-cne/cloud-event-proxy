@@ -15,13 +15,20 @@
 package http
 
 import (
+	"fmt"
+	"net/http"
+	"path"
 	"sync"
 	"sync/atomic"
+	"time"
+
+	"github.com/redhat-cne/sdk-go/pkg/types"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"github.com/redhat-cne/sdk-go/pkg/errorhandler"
 	cneHTTP "github.com/redhat-cne/sdk-go/pkg/protocol/http"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -32,7 +39,7 @@ var (
 //HTTP exposes http api methods
 type HTTP struct {
 	server  *cneHTTP.Server
-	started *int32 // accessed with atomics
+	started int32 // accessed with atomics
 }
 
 //GetHTTPInstance get event instance
@@ -55,22 +62,27 @@ func GetHTTPInstance(serviceName string, port int, storePath string, dataIn <-ch
 
 //Start start amqp processors
 func (h *HTTP) Start(wg *sync.WaitGroup) {
-	if h.started != nil { // protection for starting by other instances
-		atomic.AddInt32(h.started, 1)
-		go instance.server.Start(wg)
-		go instance.server.HTTPProcessor(wg)
+	if atomic.CompareAndSwapInt32(&h.started, 0, 1) { // protection for starting by other instances
+		log.Info("Starting http transport....")
+		if err := h.server.Start(wg); err != nil {
+			log.Errorf("failed to start http transport. implment re-connect")
+			atomic.CompareAndSwapInt32(&h.started, 1, 0)
+		}
+		h.server.HTTPProcessor(wg)
+	} else {
+		log.Warn("http transport service is already running or couldn't start")
 	}
-
 }
 
 // Shutdown ...
 func (h *HTTP) Shutdown() {
+	log.Warn("Shutting down http transport service")
 	h.server.Shutdown()
-	atomic.AddInt32(h.started, 0)
+	atomic.CompareAndSwapInt32(&h.started, 1, 0)
 }
 
-// RegisterPublisher ...
-func (h *HTTP) RegisterPublisher(publisherURL ...string) {
+// RegisterPublishers ...
+func (h *HTTP) RegisterPublishers(publisherURL ...*types.URI) {
 	h.server.RegisterPublishers(publisherURL...)
 }
 
@@ -82,6 +94,42 @@ func (h *HTTP) SetOnStatusReceiveOverrideFn(fn func(e cloudevents.Event, dataCha
 // SetProcessEventFn ...
 func (h *HTTP) SetProcessEventFn(fn func(e interface{}) error) {
 	h.server.SetProcessEventFn(fn)
+}
+
+// IsReadyToServe ... check if the server is ready
+func (h *HTTP) IsReadyToServe(uri *types.URI) bool {
+	uri.Path = path.Join(uri.Path, "health")
+	if ok, _ := httpTransportHealthCheck(uri, 2*time.Second); !ok {
+		return false
+	}
+	return true
+}
+
+func httpTransportHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
+	log.Printf("checking for http transport health\n")
+	for i := 0; i <= 5; i++ {
+		log.Infof("health check %s ", uri.String())
+		response, errResp := http.Get(uri.String())
+		if errResp != nil {
+			log.Warnf("try %d, return health check of the http transportfor error  %v", i, errResp)
+			time.Sleep(delay)
+			err = errResp
+			continue
+		}
+		if response != nil && response.StatusCode == http.StatusOK {
+			response.Body.Close()
+			log.Info("http transport returned healthy status")
+			time.Sleep(delay)
+			err = nil
+			ok = true
+			return
+		}
+		response.Body.Close()
+	}
+	if err != nil {
+		err = fmt.Errorf("error connecting to http transport %s", err.Error())
+	}
+	return
 }
 
 // DeleteSubscription ...
