@@ -3,7 +3,6 @@ package subscriber
 import (
 	"fmt"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
-	"github.com/redhat-cne/sdk-go/pkg/store"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	"net/url"
 	"strings"
@@ -14,11 +13,6 @@ var _ Writer = (*Subscriber)(nil)
 // SetClientID  ...
 func (s *Subscriber) SetClientID(clientID string) {
 	s.ClientID = clientID
-}
-
-// SetSubStore ...
-func (s *Subscriber) SetSubStore(store store.PubSubStore) {
-	s.SubStore = &store
 }
 
 // SetEndPointURI set uri location  (return url)

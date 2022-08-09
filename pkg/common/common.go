@@ -57,6 +57,7 @@ type TransportHost struct {
 	Host   string
 	Port   int
 	Scheme string
+	URI    *types.URI
 	Err    error
 }
 
@@ -95,22 +96,26 @@ func (t *TransportHost) ParseTransportHost() {
 		t.Err = err
 		return
 	}
+
 	t.Scheme = parsedURL.Scheme
 	switch t.Scheme {
 	case "amqp":
 		t.Type = AMQ
 	case "http", "https":
 		t.Type = HTTP
-
 	}
 	if t.Type == AMQ { // no need to parse further host and port doesn't mean anything
+		t.Host = t.URL
 		return
 	}
+	t.URI = types.ParseURI(uri)
+
 	if host, sPort, err = net.SplitHostPort(parsedURL.Host); err != nil {
 		t.Err = err
 		return
 	}
 	t.Host = host
+
 	port, err = strconv.Atoi(sPort)
 	t.Port = port
 	t.Err = err
@@ -246,7 +251,7 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 	return nil
 }
 
-// PublishEventViaAPI ... publish events by not using http request  but direct api
+// PublishEventViaAPI ... publish events by not using http request but direct api
 func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error {
 	pub, err := scConfig.PubSubAPI.GetPublisher(cneEvent.ID)
 	if err != nil {
@@ -260,16 +265,17 @@ func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error
 	}
 	scConfig.EventInCh <- &channel.DataChan{
 		Type:    channel.EVENT,
+		Status:  channel.NEW,
 		Data:    ceEvent,
 		Address: pub.GetResource(),
 	}
-	log.Debugf("event sent %s", cneEvent.JSONString())
+	log.Debugf("event type %s sent to queue to process %s", ceEvent.Source(), cneEvent.JSONString())
 	localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.SUCCESS, 1)
 	return nil
 
 }
 
-// APIHealthCheck .. rest api sh5671ould be ready before starting to consume api
+// APIHealthCheck ... rest api should be ready before starting to consume api
 func APIHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
 	log.Printf("checking for rest service health\n")
 	for i := 0; i <= 5; i++ {
@@ -293,6 +299,34 @@ func APIHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
 	}
 	if err != nil {
 		err = fmt.Errorf("error connecting to rest api %s", err.Error())
+	}
+	return
+}
+
+// HTTPTransportHealthCheck ... http transport should be ready before starting to consume events
+func HTTPTransportHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
+	log.Printf("checking for http transport health\n")
+	for i := 0; i <= 5; i++ {
+		log.Infof("health check %s ", uri.String())
+		response, errResp := http.Get(uri.String())
+		if errResp != nil {
+			log.Warnf("try %d, return health check of the http transportfor error  %v", i, errResp)
+			time.Sleep(delay)
+			err = errResp
+			continue
+		}
+		if response != nil && response.StatusCode == http.StatusOK {
+			response.Body.Close()
+			log.Info("http transport returned healthy status")
+			time.Sleep(delay)
+			err = nil
+			ok = true
+			return
+		}
+		response.Body.Close()
+	}
+	if err != nil {
+		err = fmt.Errorf("error connecting to http transport %s", err.Error())
 	}
 	return
 }

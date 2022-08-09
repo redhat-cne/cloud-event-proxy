@@ -15,19 +15,12 @@ spec:
       labels:
         app: consumer
     spec:
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-              - matchExpressions:
-                  - key: app
-                    operator: In
-                    values:
-                      - local
+      nodeSelector:
+        node-role.kubernetes.io/worker: ""
       serviceAccountName: sidecar-consumer-sa
       containers:
         - name: cloud-event-consumer
-          image: quay.io/redhat-cne/cloud-event-consumer
+          image: cloud-event-consumer
           args:
             - "--local-api-addr=127.0.0.1:9089"
             - "--api-path=/api/cloudNotifications/v1/"
@@ -38,13 +31,17 @@ spec:
                 fieldRef:
                   fieldPath: spec.nodeName
             - name: CONSUMER_TYPE
-              value: "HW"
+              value: "PTP"
+            - name: ENABLE_STATUS_CHECK
+              value: "false"
         - name: cloud-event-sidecar
-          image: quay.io/jacding/cloud-event-proxy
+          image: cloud-event-sidecar
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
-            - "--transport-host=amqp://amq-interconnect.$(AMQP_NAMESPACE).svc.cluster.local"
+            #- "--transport-host=amqp://amq-interconnect.$(AMQP_NAMESPACE).svc.cluster.local"
+            - "--transport-host=consumer-events-subscription-service.cloud-events.svc.cluster.local:9043"
+            - "--http-event-publishers=ptp-event-publisher-service.openshift-ptp.svc.cluster.local:9043"
             - "--api-port=8089"
           env:
             - name: AMQP_NAMESPACE

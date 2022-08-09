@@ -42,8 +42,6 @@ type Writer interface {
 
 	// SetID performs event.SetID.
 	SetStatus(status Status)
-	// SetSubStore persist the store data
-	SetSubStore(store store.PubSubStore)
 
 	// SetHealthEndPoint set health endpoint
 	SetEndPointURI(url string) error

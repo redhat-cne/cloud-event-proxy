@@ -159,7 +159,6 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 						} else {
 							eventManager.PublishEvent(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.PtpStateChange)
 						}
-
 					}
 				}
 			}

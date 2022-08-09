@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
-	"github.com/redhat-cne/sdk-go/pkg/util/wait"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/gorilla/mux"
+	"github.com/redhat-cne/sdk-go/pkg/types"
+	"github.com/redhat-cne/sdk-go/pkg/util/wait"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	httpClient "github.com/cloudevents/sdk-go/v2/client"
@@ -26,9 +29,8 @@ import (
 )
 
 var (
-	cancelTimeout     = 100 * time.Millisecond
-	retryTimeout      = 500 * time.Millisecond
-	channelBuffer int = 10
+	cancelTimeout = 100 * time.Millisecond
+	retryTimeout  = 500 * time.Millisecond
 )
 
 //Protocol ...
@@ -37,27 +39,18 @@ type Protocol struct {
 	Protocol *httpP.Protocol
 }
 
-const (
-	connectionError = iota
-	connected
-	connecting
-	closed
-)
-
 // Server ...
 type Server struct {
 	sync.RWMutex
 	Sender        map[string]*Protocol
-	Publishers    []string
+	Publishers    []*types.URI
 	ServiceName   string
 	Port          int
 	DataIn        <-chan *channel.DataChan
 	DataOut       chan<- *channel.DataChan
 	Client        httpClient.Client
-	state         uint32
 	cancelTimeout time.Duration
 	retryTimeout  time.Duration
-	protocol      *httpP.Protocol
 	subscriberAPI *subscriberApi.API
 	//close on true
 	CloseCh                 <-chan struct{}
@@ -119,21 +112,25 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 
 			if obj.Action == channel.NEW {
 				if _, ok := h.Sender[obj.GetEndPointURI()]; !ok { // we have a sender object
-					log.Infof("(1)subscriber not found for the following address, %s will attempt to create", obj.GetEndPointURI())
+					log.Infof("(1)subscriber not found for the following address %s by %s ,will attempt to create", e.Source(), obj.GetEndPointURI())
 					if err := h.NewSender(obj.GetEndPointURI()); err != nil {
 						log.Errorf("(1)error creating subscriber %v for address %s", err, obj.GetEndPointURI())
 						localmetrics.UpdateSenderCreatedCount(obj.GetEndPointURI(), localmetrics.FAILED, 1)
+						out.Status = channel.FAILED
 					} else {
-						h.subscriberAPI.CreateSubscription(obj.ClientID, obj)
+						_, _ = h.subscriberAPI.CreateSubscription(obj.ClientID, obj)
 						localmetrics.UpdateSenderCreatedCount(obj.GetEndPointURI(), localmetrics.ACTIVE, 1)
+						out.Status = channel.SUCCESS
 					}
 				} else {
-					log.Infof("(1)subscriber already found will update again %s\n", obj.GetEndPointURI())
-					h.subscriberAPI.CreateSubscription(obj.ClientID, obj)
+					log.Infof("(1)subscriber already found for %s, by %s will update again\n", e.Source(), obj.GetEndPointURI())
+					out.Status = channel.SUCCESS
+					_, _ = h.subscriberAPI.CreateSubscription(obj.ClientID, obj)
 				}
 			} else {
 				if subscriber, ok := h.Sender[obj.GetEndPointURI()]; !ok {
-					h.subscriberAPI.DeleteClient(obj.ClientID)
+					log.Infof("deleting subscribers")
+					_ = h.subscriberAPI.DeleteClient(obj.ClientID)
 					h.DeleteSender(obj.GetEndPointURI())
 					subscriber.Protocol.Client.CloseIdleConnections()
 					subscriber.Client = nil
@@ -177,7 +174,7 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 	}
 	eventHandler, err := cloudevents.NewHTTPReceiveHandler(ctx, p, func(e cloudevents.Event) {
 		out := channel.DataChan{
-			Address: e.Source(),
+			Address: e.Source(), // cloud event source is bus address
 			Data:    &e,
 			Status:  channel.NEW,
 			Type:    channel.EVENT,
@@ -189,13 +186,48 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 		log.Errorf("failed to create event handler: %s", err.Error())
 		return err
 	}
+
 	r := mux.NewRouter()
+
+	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	})
 
 	r.Handle("/event", eventHandler)
 	r.Handle("/subscription", subscriptionHandler)
 	r.Handle("/status", statusHandler)
 
+	err = r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
+		pathTemplate, err := route.GetPathTemplate()
+		if err == nil {
+			log.Println("ROUTE:", pathTemplate)
+		}
+		pathRegexp, err := route.GetPathRegexp()
+		if err == nil {
+			log.Println("Path regexp:", pathRegexp)
+		}
+		queriesTemplates, err := route.GetQueriesTemplates()
+		if err == nil {
+			log.Println("Queries templates:", strings.Join(queriesTemplates, ","))
+		}
+		queriesRegexps, err := route.GetQueriesRegexp()
+		if err == nil {
+			log.Println("Queries regexps:", strings.Join(queriesRegexps, ","))
+		}
+		methods, err := route.GetMethods()
+		if err == nil {
+			log.Println("Methods:", strings.Join(methods, ","))
+		}
+		log.Println()
+		return nil
+	})
+
+	if err != nil {
+		log.Println(err)
+	}
+
 	wg.Add(1)
+	log.Infof("starting  publisher/subscriber http transporter %d", h.Port)
 	go wait.Until(func() {
 		h.httpServer = &http.Server{
 			Addr:    fmt.Sprintf(":%d", h.Port),
@@ -223,8 +255,33 @@ func (h *Server) SetClientID(clientID uuid.UUID) {
 }
 
 // RegisterPublishers this will register publisher
-func (h *Server) RegisterPublishers(publisherURL ...string) {
-	h.Publishers = publisherURL
+func (h *Server) RegisterPublishers(publisherURL ...*types.URI) {
+	var publishers []*types.URI
+	for _, p1 := range publisherURL {
+		var found = false
+		for _, p2 := range h.Publishers {
+			if p2.String() == p1.String() {
+				log.Infof("publisher %s already exists ,skipping registration", p1)
+				found = true
+				break
+			}
+		}
+		if !found {
+			log.Infof("publisher %s does not exists,registering", p1)
+			publishers = append(publishers, p1)
+		}
+	}
+	h.Publishers = publishers
+}
+
+// UnRegisterPublishers this will un register publisher
+func (h *Server) UnRegisterPublishers(publisherURL *types.URI) {
+	for i, p := range h.Publishers {
+		if p.String() == publisherURL.String() {
+			h.Publishers = append(h.Publishers[:i], h.Publishers[i+1:]...)
+			return
+		}
+	}
 }
 
 // SetOnStatusReceiveOverrideFn ... sets receiver function
@@ -234,7 +291,7 @@ func (h *Server) SetOnStatusReceiveOverrideFn(fn func(e cloudevents.Event, dataC
 
 // SetProcessEventFn ...
 func (h *Server) SetProcessEventFn(fn func(e interface{}) error) {
-	h.processEventFn(fn)
+	h.processEventFn = fn
 }
 
 // HTTPProcessor ...
@@ -275,11 +332,21 @@ func (h *Server) HTTPProcessor(wg *sync.WaitGroup) {
 		for { //nolint:gosimple    Producer: Sender Object--->Event       Default Listener:Consumer
 			select {
 			case d := <-h.DataIn:
-				if d.Type == channel.SUBSCRIBER { // Listener  means subscriber aka sender
+				if d.Type == channel.PUBLISHER {
+					if s := types.ParseURI(d.Address); s != nil {
+						if d.Status == channel.NEW {
+							h.RegisterPublishers(s)
+						} else {
+							h.UnRegisterPublishers(s)
+						}
+					} else {
+						log.Errorf("failed to parse address %s for publisher", d.Address)
+					}
+				} else if d.Type == channel.SUBSCRIBER { // Listener  means subscriber aka sender
 					// post it to the address that has been specified : to target URL
 					subs := subscriber.New(h.ClientID.String())
 					//Self URL
-					subs.SetEndPointURI(h.ServiceName)
+					_ = subs.SetEndPointURI(h.ServiceName)
 					obj := pubsub.PubSub{ // all we need is ID and  resource address
 						ID:       d.ID,
 						Resource: d.Address,
@@ -290,28 +357,37 @@ func (h *Server) HTTPProcessor(wg *sync.WaitGroup) {
 					ce, _ := subs.CreateCloudEvents()
 					ce.SetSubject(d.Status.String())
 
-					if err := Post(fmt.Sprintf("%s/subscription", h.Publishers[0]), *ce); err != nil {
-						log.Errorf("(1)error creating subscriber %v at  %s", err, h.Publishers[0])
-						localmetrics.UpdateSenderCreatedCount(d.Address, localmetrics.ACTIVE, -1)
-						d.Status = channel.FAILED
-						h.DataOut <- d
+					if len(h.Publishers) > 0 {
+						if err := Post(fmt.Sprintf("%s/subscription", h.Publishers[0]), *ce); err != nil {
+							log.Errorf("(1)error creating  eror: %v at  %s with data %s=%s", err, h.Publishers[0], ce.String(), ce.Data())
+							log.Errorf("Data sent Address := %s ", d.Address)
+							localmetrics.UpdateSenderCreatedCount(d.Address, localmetrics.ACTIVE, -1)
+							d.Status = channel.FAILED
+							h.DataOut <- d
+						} else {
+							log.Infof("successfully created subscriptionf for %s", d.Address)
+							localmetrics.UpdateSenderCreatedCount(d.Address, localmetrics.ACTIVE, 1)
+							d.Status = channel.SUCCESS
+							h.DataOut <- d
+						}
 					} else {
-						localmetrics.UpdateSenderCreatedCount(d.Address, localmetrics.ACTIVE, 1)
-						d.Status = channel.SUCCESS
+						log.Errorf("no publishere endpoint found to request for subscription %s", d.Address)
+						d.Status = channel.FAILED
 						h.DataOut <- d
 					}
 				} else if d.Type == channel.EVENT && d.Status == channel.NEW {
 					// post the events to the address specified
-					log.Info("fetch all urls to send events to ")
+					log.Infof("fetch all urls to send events for %s", d.Address)
 					urls := h.subscriberAPI.GetSubscriberURLByResource(d.Address)
 					if len(urls) == 0 {
+						log.Errorf("no subscriber found for resource %s", d.Address)
 						d.Status = channel.FAILED
 						localmetrics.UpdateEventCreatedCount(d.Address, localmetrics.FAILED, -1)
 						h.DataOut <- d
 					} else {
 						localmetrics.UpdateEventCreatedCount(d.Address, localmetrics.SUCCESS, 1)
 						for _, url := range urls {
-							log.Infof("Loop and post events who have subscribed to  %s", url) // this address is event address
+							log.Infof("Loop and post events %s, who have subscribed to  %s", d.Address, url) // this address is event address
 							//TODO write efficient way to multi thread this call
 							data := &channel.DataChan{
 								ID:                  d.ID,
@@ -325,11 +401,11 @@ func (h *Server) HTTPProcessor(wg *sync.WaitGroup) {
 							}
 							if err := Post(fmt.Sprintf("%s/event", url), *data.Data); err != nil {
 								log.Errorf("error %s sending event %v at  %s", err, *data.Data, url)
-								data.Address = url
+								data.Address = d.Address
 								data.Status = channel.FAILED
 								h.DataOut <- data
 							} else {
-								data.Address = url
+								data.Address = d.Address
 								data.Status = channel.SUCCESS
 								h.DataOut <- data
 							}
@@ -346,7 +422,7 @@ func (h *Server) HTTPProcessor(wg *sync.WaitGroup) {
 					// post it to the address that has been specified : to target URL
 					subs := subscriber.New(h.ClientID.String())
 					//Self URL
-					subs.SetEndPointURI(h.ServiceName)
+					_ = subs.SetEndPointURI(h.ServiceName)
 					obj := pubsub.PubSub{}
 					if d.Address != "" {
 						obj.Resource = d.Address
@@ -527,6 +603,22 @@ func (h *Server) NewSender(address string) error {
 	return nil
 }
 
+// GET ... getter method
+func GET(address string) (int, error) {
+	log.Infof("health check %s ", address)
+	response, errResp := http.Get(address)
+	if errResp != nil {
+		log.Warnf("return health check of the rest service for error  %v", errResp)
+		return http.StatusBadRequest, errResp
+	}
+	if response != nil && response.StatusCode == http.StatusOK {
+		response.Body.Close()
+		log.Info("rest service returned healthy status")
+		return http.StatusOK, nil
+	}
+	return http.StatusInternalServerError, nil
+}
+
 // Post ...
 func Post(address string, e cloudevents.Event) error {
 
@@ -534,22 +626,36 @@ func Post(address string, e cloudevents.Event) error {
 	ctx := cloudevents.ContextWithTarget(context.Background(), address)
 	p, err := cloudevents.NewHTTP()
 	if err != nil {
-		log.Fatalf("failed to create protocol: %s", err.Error())
+		log.Errorf("failed to create protocol: %s", err.Error())
+		return err
 	}
 
 	c, err := cloudevents.NewClient(p, cloudevents.WithUUIDs(), cloudevents.WithTimeNow())
 	if err != nil {
 		log.Errorf("failed to create http client: %s", err.Error())
-
+		return err
 	}
 	log.Infof("posting now %s, to  %s", e.Type(), address)
+	e.SetDataContentType(cloudevents.ApplicationJSON)
 	result := c.Send(ctx, e)
 	if cloudevents.IsUndelivered(result) {
 		log.Errorf("failed to send to address %s with %s", address, result)
 		return result
+	} else if !cloudevents.IsACK(result) {
+		log.Printf("sent: not accepted : %t", cloudevents.IsACK(result))
+		return result
 	}
 	var httpResult *cehttp.Result
-	cloudevents.ResultAs(result, &httpResult)
-	log.Printf("Sent with status code %d", httpResult.StatusCode)
-	return nil
+
+	if cloudevents.ResultAs(result, &httpResult) {
+		if httpResult.StatusCode == http.StatusOK {
+			log.Infof("sent with status code %d::%v", httpResult.StatusCode, result)
+			return nil
+		}
+		log.Printf("Sent with status code %d, result: %v", httpResult.StatusCode, result)
+		return fmt.Errorf(httpResult.Format, httpResult.Args...)
+	} else {
+		log.Printf("Send did not return an HTTP response: %s", result)
+		return fmt.Errorf("send did not return an HTTP response: %s", result)
+	}
 }

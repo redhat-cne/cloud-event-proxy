@@ -31,8 +31,11 @@ var mu sync.Mutex
 // NewSubscriber create new subscribers connections
 func NewSubscriber(clientID string) subscriber.Subscriber {
 	return subscriber.Subscriber{
-		ClientID:    clientID,
-		SubStore:    &store.PubSubStore{},
+		ClientID: clientID,
+		SubStore: &store.PubSubStore{
+			RWMutex: sync.RWMutex{},
+			Store:   nil,
+		},
 		EndPointURI: nil,
 		Status:      1,
 	}
@@ -63,6 +66,7 @@ func GetAPIInstance(storeFilePath string) *API {
 // ReloadStore reload store if there is any change or refresh is required
 func (p *API) ReloadStore() {
 	// load for file
+	log.Info("reloading subscribers from the store")
 	if files, err := loadFileNamesFromDir(p.storeFilePath); err == nil {
 		for _, f := range files {
 			if b, err := loadFromFile(fmt.Sprintf("%s/%s", p.storeFilePath, f)); err == nil {
@@ -74,6 +78,10 @@ func (p *API) ReloadStore() {
 				}
 			}
 		}
+	}
+	log.Infof("following subscribers reloaded")
+	for k, v := range p.subscriberStore.Store {
+		log.Infof("Registered clients %s : %s", k, v.String())
 	}
 }
 
@@ -138,7 +146,7 @@ func (p *API) CreateSubscription(clientID string, sub subscriber.Subscriber) (su
 	if subscriptionClient, ok = p.HasClient(clientID); !ok {
 		subscriptionClient = subscriber.New(clientID)
 	}
-	subscriptionClient.SetEndPointURI(sub.GetEndPointURI())
+	_ = subscriptionClient.SetEndPointURI(sub.GetEndPointURI())
 	subscriptionClient.SetStatus(subscriber.Active)
 	pubStore := subscriptionClient.GetSubStore()
 	var hasResource bool
@@ -202,7 +210,7 @@ func (p *API) GetSubscription(clientID, subID string) (sub pubsub.PubSub) {
 	return
 }
 
-// GetSubscriberURLByResource  get  subscriptionOne inforamtions
+// GetSubscriberURLByResource  get  subscriptionOne information
 func (p *API) GetSubscriberURLByResource(resource string) (urls []string) {
 	for _, subscriber := range p.subscriberStore.Store {
 		for _, sub := range subscriber.SubStore.Store {
@@ -298,9 +306,7 @@ func deleteFromFile(sub pubsub.PubSub, filePath string) error {
 			return err
 		}
 	}
-	if _, ok := persistedSubClient.SubStore.Store[sub.ID]; ok {
-		delete(persistedSubClient.SubStore.Store, sub.ID)
-	}
+	delete(persistedSubClient.SubStore.Store, sub.ID)
 
 	newBytes, err := json.MarshalIndent(&persistedSubClient, "", " ")
 	if err != nil {
@@ -367,7 +373,7 @@ func writeToFile(subscriberClient subscriber.Subscriber, filePath string) error 
 	} else {
 		persistedSubClient = *subscriber.New(subscriberClient.ClientID)
 	} // no  file found
-	persistedSubClient.SetEndPointURI(subscriberClient.GetEndPointURI())
+	_ = persistedSubClient.SetEndPointURI(subscriberClient.GetEndPointURI())
 	persistedSubClient.SetStatus(subscriber.Active)
 	for subID, sub := range subscriberClient.SubStore.Store {
 		persistedSubClient.SubStore.Store[subID] = sub

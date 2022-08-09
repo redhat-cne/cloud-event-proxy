@@ -37,7 +37,7 @@ type PubSub struct {
 	EndPointURI *types.URI `json:"endpointUri" example:"http://localhost:9090/ack/event" omit:"empty"`
 
 	// URILocation - A URI describing the producer/subscription get link.
-	URILocation *types.URI `json:"uriLocation" omit:"empty" omit:"empty"`
+	URILocation *types.URI `json:"uriLocation" omit:"empty"`
 	// Resource - The type of the Resource.
 	// +required
 	Resource string `json:"resource" example:"/east-edge-10/vdu3/o-ran-sync/sync-group/sync-status/sync-state"`
