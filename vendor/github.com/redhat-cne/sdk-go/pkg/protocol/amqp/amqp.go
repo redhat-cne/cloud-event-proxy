@@ -560,7 +560,6 @@ func NewReceiver(hostName string, port int, receiverAddress string) (*Protocol, 
 	if err != nil {
 		log.Errorf("failed to create amqp protocol for a receiver: %v", err)
 		return nil, errorhandler.ReceiverError{Desc: err.Error()}
-
 	}
 	log.Infof("(New Receiver) Connection established %s\n", receiverAddress)
 

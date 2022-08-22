@@ -23,11 +23,11 @@ import (
 type Reader interface {
 	// GetClientID returns event.GetResource()
 	GetClientID() string
-	// GetStatus Get Status of teh subcribers
+	// GetStatus Get Status of the subscribers
 	GetStatus() Status
 	// String returns a pretty-printed representation of the PubSub.
 	String() string
-	// GetSubStore return pubsub sdata
+	// GetSubStore return pubsub data
 	GetSubStore() *store.PubSubStore
 	// EndPointURI return   endpoint
 	GetEndPointURI() string

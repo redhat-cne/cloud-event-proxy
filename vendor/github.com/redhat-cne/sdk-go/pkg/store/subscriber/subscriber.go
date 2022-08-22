@@ -1,8 +1,9 @@
 package subscriber
 
 import (
-	"github.com/redhat-cne/sdk-go/pkg/subscriber"
 	"sync"
+
+	"github.com/redhat-cne/sdk-go/pkg/subscriber"
 )
 
 // Store  defines subscribers connection store struct

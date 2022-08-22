@@ -2,10 +2,11 @@ package subscriber
 
 import (
 	"fmt"
-	"github.com/redhat-cne/sdk-go/pkg/pubsub"
-	"github.com/redhat-cne/sdk-go/pkg/types"
 	"net/url"
 	"strings"
+
+	"github.com/redhat-cne/sdk-go/pkg/pubsub"
+	"github.com/redhat-cne/sdk-go/pkg/types"
 )
 
 var _ Writer = (*Subscriber)(nil)
@@ -29,7 +30,6 @@ func (s *Subscriber) SetEndPointURI(endPointURI string) error {
 	}
 	s.EndPointURI = &types.URI{URL: *endPointURL}
 	return nil
-
 }
 
 // SetStatus set status of the connection

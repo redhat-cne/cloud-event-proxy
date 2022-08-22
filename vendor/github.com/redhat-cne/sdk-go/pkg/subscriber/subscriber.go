@@ -15,16 +15,17 @@ package subscriber
 // limitations under the License.
 
 import (
-	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"strings"
 	"sync"
+
+	"github.com/redhat-cne/sdk-go/pkg/channel"
 
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/store"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 )
 
-// Status of teh client connections
+// Status of the client connections
 type Status int64
 
 const (

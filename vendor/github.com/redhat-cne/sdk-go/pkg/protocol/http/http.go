@@ -29,8 +29,9 @@ import (
 )
 
 var (
-	cancelTimeout = 100 * time.Millisecond
-	retryTimeout  = 500 * time.Millisecond
+	cancelTimeout            = 100 * time.Millisecond
+	retryTimeout             = 500 * time.Millisecond
+	RequestReadHeaderTimeout = 2 * time.Second
 )
 
 //Protocol ...
@@ -80,7 +81,6 @@ func InitServer(serviceName string, port int, storePath string, dataIn <-chan *c
 		ClientID:                uuid.New(), //TODO: Persists this UUID to save so when restarts uses same UUID
 	}
 	return &server, nil
-
 }
 
 // Start ...
@@ -112,7 +112,7 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 
 			if obj.Action == channel.NEW {
 				if _, ok := h.Sender[obj.GetEndPointURI()]; !ok { // we have a sender object
-					log.Infof("(1)subscriber not found for the following address %s by %s ,will attempt to create", e.Source(), obj.GetEndPointURI())
+					log.Infof("(1)subscriber not found for the following address %s by %s, will attempt to create", e.Source(), obj.GetEndPointURI())
 					if err := h.NewSender(obj.GetEndPointURI()); err != nil {
 						log.Errorf("(1)error creating subscriber %v for address %s", err, obj.GetEndPointURI())
 						localmetrics.UpdateSenderCreatedCount(obj.GetEndPointURI(), localmetrics.FAILED, 1)
@@ -230,14 +230,14 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 	log.Infof("starting  publisher/subscriber http transporter %d", h.Port)
 	go wait.Until(func() {
 		h.httpServer = &http.Server{
-			Addr:    fmt.Sprintf(":%d", h.Port),
-			Handler: r,
+			ReadHeaderTimeout: RequestReadHeaderTimeout,
+			Addr:              fmt.Sprintf(":%d", h.Port),
+			Handler:           r,
 		}
 		err := h.httpServer.ListenAndServe()
 		if err != nil {
 			log.Errorf("restarting due to error with http messaging server %s\n", err.Error())
 		}
-
 	}, 1*time.Second, h.CloseCh)
 
 	return nil
@@ -261,13 +261,13 @@ func (h *Server) RegisterPublishers(publisherURL ...*types.URI) {
 		var found = false
 		for _, p2 := range h.Publishers {
 			if p2.String() == p1.String() {
-				log.Infof("publisher %s already exists ,skipping registration", p1)
+				log.Infof("publisher %s already exists, skipping registration", p1)
 				found = true
 				break
 			}
 		}
 		if !found {
-			log.Infof("publisher %s does not exists,registering", p1)
+			log.Infof("publisher %s does not exists, registering", p1)
 			publishers = append(publishers, p1)
 		}
 	}
@@ -359,19 +359,19 @@ func (h *Server) HTTPProcessor(wg *sync.WaitGroup) {
 
 					if len(h.Publishers) > 0 {
 						if err := Post(fmt.Sprintf("%s/subscription", h.Publishers[0]), *ce); err != nil {
-							log.Errorf("(1)error creating  eror: %v at  %s with data %s=%s", err, h.Publishers[0], ce.String(), ce.Data())
+							log.Errorf("(1)error creating: %v at  %s with data %s=%s", err, h.Publishers[0], ce.String(), ce.Data())
 							log.Errorf("Data sent Address := %s ", d.Address)
 							localmetrics.UpdateSenderCreatedCount(d.Address, localmetrics.ACTIVE, -1)
 							d.Status = channel.FAILED
 							h.DataOut <- d
 						} else {
-							log.Infof("successfully created subscriptionf for %s", d.Address)
+							log.Infof("successfully created subscription for %s", d.Address)
 							localmetrics.UpdateSenderCreatedCount(d.Address, localmetrics.ACTIVE, 1)
 							d.Status = channel.SUCCESS
 							h.DataOut <- d
 						}
 					} else {
-						log.Errorf("no publishere endpoint found to request for subscription %s", d.Address)
+						log.Errorf("no publisher endpoint found to request for subscription %s", d.Address)
 						d.Status = channel.FAILED
 						h.DataOut <- d
 					}
@@ -488,7 +488,6 @@ func (h *Server) SendTo(wg *sync.WaitGroup, address string, e *cloudevents.Event
 			c, err := cloudevents.NewClient(sender.Protocol, cloudevents.WithUUIDs(), cloudevents.WithTimeNow())
 			if err != nil {
 				log.Errorf("failed to create http client: %s", err.Error())
-
 			}
 			log.Infof("posting now %s", address)
 			if result := c.Send(ctx, *e); cloudevents.IsUndelivered(result) {
@@ -559,7 +558,6 @@ func (h *Server) NewClient(host string, connOption []httpP.Option) (httpClient.C
 	}
 
 	return c, nil
-
 }
 
 // SetSender is a wrapper for setting the value of a key in the underlying map
@@ -604,9 +602,10 @@ func (h *Server) NewSender(address string) error {
 }
 
 // GET ... getter method
-func GET(address string) (int, error) {
-	log.Infof("health check %s ", address)
-	response, errResp := http.Get(address)
+func GET(url string) (int, error) {
+	log.Infof("health check %s ", url)
+	// using variable url is security hole. Do we need to fix this
+	response, errResp := http.Get(url)
 	if errResp != nil {
 		log.Warnf("return health check of the rest service for error  %v", errResp)
 		return http.StatusBadRequest, errResp
@@ -621,7 +620,6 @@ func GET(address string) (int, error) {
 
 // Post ...
 func Post(address string, e cloudevents.Event) error {
-
 	//server.NewClient(host, []httpP.Option{})
 	ctx := cloudevents.ContextWithTarget(context.Background(), address)
 	p, err := cloudevents.NewHTTP()
@@ -654,8 +652,7 @@ func Post(address string, e cloudevents.Event) error {
 		}
 		log.Printf("Sent with status code %d, result: %v", httpResult.StatusCode, result)
 		return fmt.Errorf(httpResult.Format, httpResult.Args...)
-	} else {
-		log.Printf("Send did not return an HTTP response: %s", result)
-		return fmt.Errorf("send did not return an HTTP response: %s", result)
 	}
+	log.Printf("Send did not return an HTTP response: %s", result)
+	return fmt.Errorf("send did not return an HTTP response: %s", result)
 }

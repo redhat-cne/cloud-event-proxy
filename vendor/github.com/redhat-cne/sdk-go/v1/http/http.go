@@ -139,7 +139,6 @@ func DeleteSubscription(inChan chan<- *channel.DataChan, resource string) {
 		Status:  channel.DELETE,
 		Type:    channel.SUBSCRIBER,
 	}
-
 }
 
 // CreateSubscription ...

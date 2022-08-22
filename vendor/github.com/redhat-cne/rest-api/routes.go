@@ -245,7 +245,6 @@ func (s *Server) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteAllSubscriptions(w http.ResponseWriter, r *http.Request) {
-
 	size := len(s.pubSubAPI.GetSubscriptions())
 	if err := s.pubSubAPI.DeleteAllSubscriptions(); err != nil {
 		respondWithError(w, err.Error())

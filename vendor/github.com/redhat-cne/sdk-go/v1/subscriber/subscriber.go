@@ -141,7 +141,6 @@ func (p *API) HasClient(clientID string) (*subscriber.Subscriber, bool) {
 
 // CreateSubscription create a subscriptionOne and store it in a file and cache
 func (p *API) CreateSubscription(clientID string, sub subscriber.Subscriber) (subscriptionClient *subscriber.Subscriber, err error) {
-
 	var ok bool
 	if subscriptionClient, ok = p.HasClient(clientID); !ok {
 		subscriptionClient = subscriber.New(clientID)
@@ -161,7 +160,6 @@ func (p *API) CreateSubscription(clientID string, sub subscriber.Subscriber) (su
 		if !hasResource {
 			subscriptionClient.SubStore.Set(key, *value)
 		}
-
 	}
 	p.subscriberStore.Set(clientID, *subscriptionClient)
 	// persist the subscriptionOne -
@@ -171,7 +169,7 @@ func (p *API) CreateSubscription(clientID string, sub subscriber.Subscriber) (su
 		log.Errorf("error writing to a store %v\n", err)
 		return nil, err
 	}
-	log.Infof("subscriptionOne persisted into a file %s", fmt.Sprintf("%s/%s  - content %s", p.storeFilePath, fmt.Sprintf("%s.json", clientID), subscriptionClient.String()))
+	log.Infof("subscription persisted into a file %s", fmt.Sprintf("%s/%s  - content %s", p.storeFilePath, fmt.Sprintf("%s.json", clientID), subscriptionClient.String()))
 	// store the publisher
 
 	return subscriptionClient, nil
@@ -201,7 +199,6 @@ func (p *API) GetSubscriptions(clientID string) (sub map[string]*pubsub.PubSub) 
 
 // GetSubscription  get  subscriptionOne inforamtions
 func (p *API) GetSubscription(clientID, subID string) (sub pubsub.PubSub) {
-
 	if subscriber, ok := p.subscriberStore.Store[clientID]; ok {
 		if subscription, ok2 := subscriber.SubStore.Store[subID]; ok2 {
 			return *subscription

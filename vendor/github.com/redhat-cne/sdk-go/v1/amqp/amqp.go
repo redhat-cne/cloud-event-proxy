@@ -15,8 +15,9 @@
 package amqp
 
 import (
-	"github.com/Azure/go-amqp"
 	"sync"
+
+	"github.com/Azure/go-amqp"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/redhat-cne/sdk-go/pkg/channel"

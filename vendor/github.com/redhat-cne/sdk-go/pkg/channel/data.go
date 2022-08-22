@@ -23,8 +23,7 @@ type DataChan struct {
 	ID      string
 	Address string
 	Data    *cloudevents.Event
-	//Subscriber *subscriber.Subscriber
-	Status Status
+	Status  Status
 	//Type defines type of data (Notification,Metric,Status)
 	Type Type
 	// OnReceiveFn  to do on OnReceive

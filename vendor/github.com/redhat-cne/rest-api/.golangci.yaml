@@ -1,0 +1,70 @@
+run:
+  concurrency: 8
+  deadline: 3m
+  issues-exit-code: 1
+  tests: true
+  skip-dirs:
+    - vendor
+    - .go
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+
+linters-settings:
+  gocyclo:
+    # minimal code complexity to report, 30 by default (but we recommend 10-20)
+    min-complexity: 30
+  govet:
+    check-shadowing: false
+  goconst:
+    min-len: 3
+    min-occurrences: 4
+
+linters:
+  disable-all: true
+  enable: # NOTE: please keep this list alphabetically sorted
+    - bodyclose
+    - deadcode
+    - dogsled
+    - errcheck
+    - goconst
+    - gocyclo
+    - goimports
+    - revive
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - megacheck
+    - misspell
+    - structcheck
+    - typecheck
+    - unconvert
+    - unparam
+    - unused
+    - varcheck
+    - whitespace
+  fast: false
+
+issues:
+  # Excluding configuration per-path, per-linter, per-text and per-source
+  exclude-rules:
+    - linters:
+        - revive
+      text: "don't use ALL_CAPS in Go names; use CamelCase"
+    - linters:
+        - revive
+      text: "don't use an underscore in package name"
+    - path: ".*_test.go"
+      linters:
+        - goconst
+    - linters:
+        - gosec
+      text: "G306: Expect WriteFile permissions to be 0600 or less"
+    - linters:
+        - gosec
+      text: "G107: Potential HTTP request made with variable url"
+
+
+
