@@ -59,6 +59,7 @@ lint:
 build-plugins:
 	go build  -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 	go build  -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
+	go build -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
 	go build  -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
 
 build-amqp-plugin:
@@ -66,6 +67,9 @@ build-amqp-plugin:
 
 build-ptp-operator-plugin:
 	go build -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
+
+build-http-plugin:
+	go build -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
 
 build-mock-plugin:
 	go build -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
@@ -83,13 +87,13 @@ functests:
 	SUITE=./test/cne hack/run-functests.sh
 
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
-deploy-example:kustomize
-	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-proxy=${IMG} && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
+deploy-consumer:kustomize
+	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-sidecar=${IMG} && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl apply -f -
 
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
-undeploy-example:kustomize
-	cd ./examples/manifests  && $(KUSTOMIZE) edit set image cloud-event-proxy=${IMG} && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
+undeploy-consumer:kustomize
+	cd ./examples/manifests  && $(KUSTOMIZE) edit set image cloud-event-sidecar=${IMG} && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl delete -f -
 
 # For GitHub Actions CI
@@ -97,6 +101,7 @@ gha:
 	go build -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 	go build -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 	go build -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
+	go build -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
 	go test ./... --tags=unittests -coverprofile=cover.out
 
 docker-build: #test ## Build docker image with the manager.

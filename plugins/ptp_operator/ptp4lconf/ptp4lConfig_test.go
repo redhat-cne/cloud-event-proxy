@@ -27,7 +27,7 @@ var (
 
 func SetUp() error {
 	cleanUp()
-	f, err := os.OpenFile(filepath.Join(dirToWatch, ptp4l0Conf), os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(filepath.Join(dirToWatch, ptp4l0Conf), os.O_CREATE|os.O_WRONLY, os.FileMode(0o644))
 	if err != nil {
 		log.Errorf("create file error %s", err)
 		return err
@@ -67,7 +67,7 @@ func Test_Config(t *testing.T) {
 	// Update config
 	newText := fmt.Sprintf("%d", time.Now().UnixNano())
 	log.Infof("writing to %s", filepath.Join(dirToWatch, ptp4l0Conf))
-	err = ioutil.WriteFile(filepath.Join(dirToWatch, ptp4l0Conf), []byte(newText), 0600)
+	err = ioutil.WriteFile(filepath.Join(dirToWatch, ptp4l0Conf), []byte(newText), os.FileMode(0o600))
 	assert.Nil(t, err)
 	log.Info("waiting...")
 	// WriteFile creates two events it might be an issue with test only

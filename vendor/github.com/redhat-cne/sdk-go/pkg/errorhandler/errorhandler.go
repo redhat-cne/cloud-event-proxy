@@ -75,6 +75,16 @@ func (a AMQPConnectionError) Error() string {
 	return fmt.Sprintf("amqp connection error %s", a.Desc)
 }
 
+// HTTPConnectionError custom http connection error
+type HTTPConnectionError struct {
+	Desc string
+}
+
+// Error HTTPConnectionError connection error string
+func (a HTTPConnectionError) Error() string {
+	return fmt.Sprintf("http connection error %s", a.Desc)
+}
+
 // CloudEventsClientError custom cloud events client error
 type CloudEventsClientError struct {
 	Desc string

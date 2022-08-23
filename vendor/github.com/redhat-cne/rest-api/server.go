@@ -49,6 +49,8 @@ var healthCheckPause time.Duration = 2 * time.Second
 
 type serverStatus int
 
+const HTTPReadHeaderTimeout = 2 * time.Second
+
 const (
 	starting = iota
 	started
@@ -323,8 +325,9 @@ func (s *Server) Start() {
 	go wait.Until(func() {
 		s.status = started
 		s.httpServer = &http.Server{
-			Addr:    fmt.Sprintf(":%d", s.port),
-			Handler: api,
+			ReadHeaderTimeout: HTTPReadHeaderTimeout,
+			Addr:              fmt.Sprintf(":%d", s.port),
+			Handler:           api,
 		}
 		err := s.httpServer.ListenAndServe()
 		if err != nil {

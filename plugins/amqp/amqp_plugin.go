@@ -25,7 +25,7 @@ import (
 
 // Start amqp  services to process events,metrics and status
 func Start(wg *sync.WaitGroup, config *common.SCConfiguration) (amqpInstance *v1amqp.AMQP, err error) { //nolint:deadcode,unused
-	if amqpInstance, err = v1amqp.GetAMQPInstance(config.AMQPHost, config.EventInCh, config.EventOutCh, config.CloseCh); err != nil {
+	if amqpInstance, err = v1amqp.GetAMQPInstance(config.TransportHost.URL, config.EventInCh, config.EventOutCh, config.CloseCh); err != nil {
 		return
 	}
 	amqpInstance.Router.CancelTimeOut(2 * time.Second)

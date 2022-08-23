@@ -25,12 +25,12 @@ import (
 	"testing"
 	"time"
 
-	ptpEvent "github.com/redhat-cne/sdk-go/pkg/event/ptp"
-
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
+	"github.com/redhat-cne/cloud-event-proxy/pkg/plugins"
 	ptpTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
 	restapi "github.com/redhat-cne/rest-api"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
+	ptpEvent "github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
@@ -61,7 +61,6 @@ func TestMain(m *testing.M) {
 		APIPath:    "/api/test-cloud/",
 		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
 		StorePath:  storePath,
-		AMQPHost:   "amqp:localhost:5672",
 		BaseURL:    nil,
 	}
 
@@ -84,15 +83,24 @@ func Test_StartWithAMQP(t *testing.T) {
 	defer cleanUP()
 	scConfig.CloseCh = make(chan struct{})
 	scConfig.PubSubAPI.EnableTransport()
-	log.Printf("loading amqp with host %s", scConfig.AMQPHost)
-	amqpInstance, err := v1amqp.GetAMQPInstance(scConfig.AMQPHost, scConfig.EventInCh, scConfig.EventOutCh, scConfig.CloseCh)
+	scConfig.TransportHost = &common.TransportHost{
+		Type:   0,
+		URL:    "amqp:localhost:5672",
+		Host:   "",
+		Port:   0,
+		Scheme: "",
+		Err:    nil,
+	}
+	scConfig.TransportHost.ParseTransportHost()
+	log.Printf("loading amqp with host %s", scConfig.TransportHost.URL)
+	amqpInstance, err := v1amqp.GetAMQPInstance(scConfig.TransportHost.URL, scConfig.EventInCh, scConfig.EventOutCh, scConfig.CloseCh)
 	if err != nil {
 		t.Skipf("ampq.Dial(%#v): %v", amqpInstance, err)
 	}
 	wg.Add(1)
 	amqpInstance.Start(&wg)
 	// build your client
-	//CLIENT SUBSCRIPTION: create a subscription to consume events
+	// SUBSCRIPTION: create a subscription to consume events
 	endpointURL := fmt.Sprintf("%s%s", scConfig.BaseURL, "dummy")
 	for _, pTypes := range pubsubTypes {
 		sub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), fmt.Sprintf(resourcePrefix, "test_node", string(pTypes.Resource)))
@@ -131,7 +139,7 @@ func Test_StartWithOutAMQP(t *testing.T) {
 	defer cleanUP()
 	scConfig.CloseCh = make(chan struct{})
 	scConfig.PubSubAPI.DisableTransport()
-	log.Printf("loading amqp with host %s", scConfig.AMQPHost)
+	log.Printf("loading amqp with host %s", scConfig.TransportHost.Host)
 	go ProcessInChannel()
 
 	// build your client
@@ -175,14 +183,73 @@ func Test_StartWithOutAMQP(t *testing.T) {
 
 }
 
+//Test_StartWithAMQP this is integration test skips if QDR is not connected
+func Test_StartWithHTTP(t *testing.T) {
+	os.Setenv("NODE_NAME", "test_node")
+	scConfig.TransportHost = &common.TransportHost{
+		Type:   0,
+		URL:    "http://localhost:9096",
+		Host:   "",
+		Port:   0,
+		Scheme: "",
+		Err:    nil,
+	}
+	scConfig.TransportHost.ParseTransportHost()
+	pl := plugins.Handler{Path: "../../plugins"}
+
+	defer cleanUP()
+	scConfig.CloseCh = make(chan struct{})
+	scConfig.PubSubAPI.EnableTransport()
+	log.Printf("loading http with host %s", scConfig.TransportHost.Host)
+	wg := sync.WaitGroup{}
+	httpTransportInstance, err := pl.LoadHTTPPlugin(&wg, scConfig, nil, nil)
+	if err != nil {
+		t.Skipf("http.Dial(%#v): %v", httpTransportInstance, err)
+	}
+
+	// build your client
+	//CLIENT SUBSCRIPTION: create a subscription to consume events
+	endpointURL := fmt.Sprintf("%s%s", scConfig.BaseURL, "dummy")
+	for _, pTypes := range pubsubTypes {
+		sub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), fmt.Sprintf(resourcePrefix, "test_node", string(pTypes.Resource)))
+		sub, _ = common.CreateSubscription(scConfig, sub)
+		assert.NotEmpty(t, sub.ID)
+		assert.NotEmpty(t, sub.URILocation)
+		pTypes.PubID = sub.ID
+		pTypes.Pub = &sub
+	}
+	log.Printf("created subscriptions")
+
+	// start ptp plugin
+	//err = ptpPlugin.Start(&wg, scConfig, nil)
+	err = pl.LoadPTPPlugin(&wg, scConfig, nil)
+	assert.Nil(t, err)
+	log.Printf("started ptpPlugin")
+	for _, pTypes := range pubsubTypes {
+		e := v1event.CloudNativeEvent()
+		ce, _ := v1event.CreateCloudEvents(e, *pTypes.Pub)
+		ce.SetSource(pTypes.Pub.Resource)
+		v1event.SendNewEventToDataChannel(scConfig.EventInCh, fmt.Sprintf("%s", pTypes.Pub.Resource), ce)
+	}
+	log.Printf("waiting for Event Chan")
+	//EventData := <-scConfig.EventOutCh // status updated
+	//assert.Equal(t, channel.EVENT, EventData.Type)
+
+	close(scConfig.CloseCh) // close the channel
+	pubs := scConfig.PubSubAPI.GetPublishers()
+	assert.Equal(t, 3, len(pubs))
+	subs := scConfig.PubSubAPI.GetSubscriptions()
+	assert.Equal(t, 3, len(subs))
+}
+
 // ProcessInChannel will be  called if Transport is disabled
 func ProcessInChannel() {
 	for { //nolint:gosimple
 		select {
 		case d := <-scConfig.EventInCh:
-			if d.Type == channel.LISTENER {
+			if d.Type == channel.SUBSCRIBER {
 				log.Printf("amqp disabled,no action taken: request to create listener address %s was called,but transport is not enabled", d.Address)
-			} else if d.Type == channel.SENDER {
+			} else if d.Type == channel.PUBLISHER {
 				log.Printf("no action taken: request to create sender for address %s was called,but transport is not enabled", d.Address)
 			} else if d.Type == channel.EVENT && d.Status == channel.NEW {
 				out := channel.DataChan{

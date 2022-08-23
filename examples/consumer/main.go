@@ -96,6 +96,7 @@ RETRY:
 	if ok, _ := common.APIHealthCheck(healthURL, 2*time.Second); !ok {
 		goto RETRY
 	}
+
 	var subs []*pubsub.PubSub
 	for _, resource := range subscribeTo {
 		subs = append(subs, &pubsub.PubSub{
@@ -103,11 +104,15 @@ RETRY:
 		})
 	}
 
-	if enableStatusCheck {
+	// uncomment this if using AMQ only
+	/*if enableStatusCheck {
 		for _, s := range subs {
 			createPublisherForStatusPing(s.Resource) // ptp // disable this for testing else you will see context deadline error
 		}
-	}
+	}*/
+	// if AMQ enabled the subscription will create an AMQ listener client
+	// IF HTTP enabled, the subscription will post a subscription  requested to alll
+	// publishers that are defined in http-event-publisher variable
 	for _, s := range subs {
 		su, e := createSubscription(s.Resource)
 		if e != nil {
@@ -121,7 +126,7 @@ RETRY:
 	}
 
 	// ping  for status every n secs
-
+	// uncomment only if you enable AMQ
 	if enableStatusCheck {
 		wg.Add(1)
 		go func() {

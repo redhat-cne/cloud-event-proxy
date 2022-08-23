@@ -33,6 +33,7 @@ import (
 	ptpSocket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
 	ptpTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
+	v1http "github.com/redhat-cne/sdk-go/v1/http"
 	log "github.com/sirupsen/logrus"
 
 	ptpMetrics "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
@@ -158,7 +159,6 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 						} else {
 							eventManager.PublishEvent(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.PtpStateChange)
 						}
-
 					}
 				}
 			}
@@ -167,10 +167,18 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		return nil
 	}
 	log.Infof("setting up status listener")
-	for _, pType := range publishers {
-		baseURL := fmt.Sprintf(resourcePrefix, nodeName, string(pType.Resource))
-		log.Infof("for %s", fmt.Sprintf("%s/%s", baseURL, "status"))
-		v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", baseURL, "status"), onReceiveOverrideFn, fn)
+	if config.TransportHost.Type == common.AMQ {
+		for _, pType := range publishers {
+			baseURL := fmt.Sprintf(resourcePrefix, nodeName, string(pType.Resource))
+			log.Infof("for %s", fmt.Sprintf("%s/%s", baseURL, "status"))
+			v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", baseURL, "status"), onReceiveOverrideFn, fn)
+		}
+	} else if config.TransportHost.Type == common.HTTP {
+		if httpInstance, ok := config.TransPortInstance.(*v1http.HTTP); ok {
+			httpInstance.SetOnStatusReceiveOverrideFn(onReceiveOverrideFn)
+		} else {
+			log.Error("could not set receiver for http ")
+		}
 	}
 	return nil
 }

@@ -174,13 +174,13 @@ in <- &channel.DataChan{
 //create a sender
 in <- &channel.DataChan{
 	Address: addr,
-	Type:    channel.SENDER,
+	Type:    channel.PUBLISHER,
 }
 
 // create a listener
 in <- &channel.DataChan{
 	Address: addr,
-	Type:    channel.LISTENER,
+	Type:    channel.SUBSCRIBER,
 }
 
 // send data
@@ -198,7 +198,7 @@ func (q *Router) QDRRouter(wg *sync.WaitGroup) {
 		for { //nolint:gosimple
 			select {
 			case d := <-q.DataIn:
-				if d.Type == channel.LISTENER {
+				if d.Type == channel.SUBSCRIBER {
 					// create receiver and let it run
 					if d.Status == channel.DELETE {
 						if listener, ok := q.Listeners[d.Address]; ok {
@@ -216,7 +216,7 @@ func (q *Router) QDRRouter(wg *sync.WaitGroup) {
 							log.Infof("(1)listener already found so not creating again %s\n", d.Address)
 						}
 					}
-				} else if d.Type == channel.SENDER {
+				} else if d.Type == channel.PUBLISHER {
 					if d.Status == channel.DELETE {
 						if sender, ok := q.Senders[d.Address]; ok {
 							q.DeleteSender(d.Address)
@@ -414,7 +414,7 @@ func (q *Router) Receive(wg *sync.WaitGroup, address string, fn func(e cloudeven
 			q.listenerReConnectCh <- &channel.DataChan{
 				Address:     address,
 				Status:      channel.NEW,
-				Type:        channel.LISTENER,
+				Type:        channel.SUBSCRIBER,
 				OnReceiveFn: fn,
 			}
 		} else {
@@ -560,7 +560,6 @@ func NewReceiver(hostName string, port int, receiverAddress string) (*Protocol, 
 	if err != nil {
 		log.Errorf("failed to create amqp protocol for a receiver: %v", err)
 		return nil, errorhandler.ReceiverError{Desc: err.Error()}
-
 	}
 	log.Infof("(New Receiver) Connection established %s\n", receiverAddress)
 

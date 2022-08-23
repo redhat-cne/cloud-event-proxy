@@ -17,9 +17,12 @@ package common
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/redhat-cne/rest-api/pkg/localmetrics"
@@ -35,17 +38,101 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// TransportType  defines transport type supported
+type TransportType int
+
+const (
+	// AMQ ...
+	AMQ TransportType = iota
+	// HTTP ...
+	HTTP
+	// UNKNOWN ...
+	UNKNOWN
+)
+
+// TransportHost  holds transport url type
+type TransportHost struct {
+	Type   TransportType
+	URL    string
+	Host   string
+	Port   int
+	Scheme string
+	URI    *types.URI
+	Err    error
+}
+
+func (t *TransportHost) String() string {
+	s := strings.Builder{}
+	s.WriteString("Host: " + t.Host + "\n")
+	s.WriteString("URL: " + t.URL + "\n")
+	s.WriteString("Port: " + fmt.Sprintf("%d", t.Port) + "\n")
+	s.WriteString("Scheme: " + t.Scheme + "\n")
+	s.WriteString("Type: " + fmt.Sprintf("%d", t.Type) + "\n")
+	if t.Err != nil {
+		s.WriteString("Error: " + t.Err.Error() + "\n")
+	} else {
+		s.WriteString("Error:  \n")
+	}
+
+	return s.String()
+}
+
+// ParseTransportHost ... prase the url to identify type
+func (t *TransportHost) ParseTransportHost() {
+	var (
+		host      string
+		sPort     string
+		port      int
+		parsedURL *url.URL
+		err       error
+		uri       string
+	)
+	t.Type = UNKNOWN
+	uri = t.URL
+	if !strings.Contains(t.URL, "http") && !strings.Contains(t.URL, "amqp:") {
+		uri = fmt.Sprintf("http://%s", t.URL)
+	}
+	if parsedURL, err = url.Parse(uri); err != nil {
+		t.Err = err
+		return
+	}
+
+	t.Scheme = parsedURL.Scheme
+	switch t.Scheme {
+	case "amqp":
+		t.Type = AMQ
+	case "http", "https":
+		t.Type = HTTP
+	}
+	if t.Type == AMQ { // no need to parse further host and port doesn't mean anything
+		t.Host = t.URL
+		return
+	}
+	t.URI = types.ParseURI(uri)
+
+	if host, sPort, err = net.SplitHostPort(parsedURL.Host); err != nil {
+		t.Err = err
+		return
+	}
+	t.Host = host
+
+	port, err = strconv.Atoi(sPort)
+	t.Port = port
+	t.Err = err
+}
+
 // SCConfiguration simple configuration to initialize variables
 type SCConfiguration struct {
-	EventInCh  chan *channel.DataChan
-	EventOutCh chan *channel.DataChan
-	CloseCh    chan struct{}
-	APIPort    int
-	APIPath    string
-	PubSubAPI  *v1pubsub.API
-	StorePath  string
-	AMQPHost   string
-	BaseURL    *types.URI
+	EventInCh         chan *channel.DataChan
+	EventOutCh        chan *channel.DataChan
+	CloseCh           chan struct{}
+	APIPort           int
+	APIPath           string
+	PubSubAPI         *v1pubsub.API
+	StorePath         string
+	BaseURL           *types.URI
+	TransportHost     *TransportHost
+	TransPortInstance interface{}
 }
 
 // GetIntEnv get int value from env
@@ -152,9 +239,9 @@ func CreateEvent(pubSubID, eventType, source string, data ceevent.Data) (ceevent
 
 // PublishEvent publishes event
 func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
-	url := fmt.Sprintf("%s%s", scConfig.BaseURL.String(), "create/event")
+	publishToURL := fmt.Sprintf("%s%s", scConfig.BaseURL.String(), "create/event")
 	rc := restclient.New()
-	err := rc.PostEvent(types.ParseURI(url), e)
+	err := rc.PostEvent(types.ParseURI(publishToURL), e)
 	if err != nil {
 		log.Errorf("error posting cloud native events %v", err)
 		return err
@@ -164,7 +251,7 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 	return nil
 }
 
-// PublishEventViaAPI ... publish events by not using http request  but direct api
+// PublishEventViaAPI ... publish events by not using http request but direct api
 func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error {
 	pub, err := scConfig.PubSubAPI.GetPublisher(cneEvent.ID)
 	if err != nil {
@@ -178,16 +265,17 @@ func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error
 	}
 	scConfig.EventInCh <- &channel.DataChan{
 		Type:    channel.EVENT,
+		Status:  channel.NEW,
 		Data:    ceEvent,
 		Address: pub.GetResource(),
 	}
-	log.Debugf("event sent %s", cneEvent.JSONString())
+	log.Debugf("event type %s sent to queue to process %s", ceEvent.Source(), cneEvent.JSONString())
 	localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.SUCCESS, 1)
 	return nil
 
 }
 
-// APIHealthCheck .. rest api should be ready before starting to consume api
+// APIHealthCheck ... rest api should be ready before starting to consume api
 func APIHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
 	log.Printf("checking for rest service health\n")
 	for i := 0; i <= 5; i++ {
@@ -211,6 +299,34 @@ func APIHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
 	}
 	if err != nil {
 		err = fmt.Errorf("error connecting to rest api %s", err.Error())
+	}
+	return
+}
+
+// HTTPTransportHealthCheck ... http transport should be ready before starting to consume events
+func HTTPTransportHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
+	log.Printf("checking for http transport health\n")
+	for i := 0; i <= 5; i++ {
+		log.Infof("health check %s ", uri.String())
+		response, errResp := http.Get(uri.String())
+		if errResp != nil {
+			log.Warnf("try %d, return health check of the http transportfor error  %v", i, errResp)
+			time.Sleep(delay)
+			err = errResp
+			continue
+		}
+		if response != nil && response.StatusCode == http.StatusOK {
+			response.Body.Close()
+			log.Info("http transport returned healthy status")
+			time.Sleep(delay)
+			err = nil
+			ok = true
+			return
+		}
+		response.Body.Close()
+	}
+	if err != nil {
+		err = fmt.Errorf("error connecting to http transport %s", err.Error())
 	}
 	return
 }
