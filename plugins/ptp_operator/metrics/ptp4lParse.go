@@ -20,7 +20,6 @@ var classChangeIdentifier = "CLOCK_CLASS_CHANGE"
 // ParsePTP4l ... parse ptp4l for various events
 func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, output string, fields []string,
 	ptpInterface ptp4lconf.PTPInterface, ptp4lCfg *ptp4lconf.PTP4lConfig, ptpStats map[types.IFace]*stats.Stats) {
-
 	var err error
 	if strings.Contains(output, classChangeIdentifier) {
 		if len(fields) < 5 {
@@ -137,7 +136,6 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			go handleHoldOverState(p, ptpOpts, configName, profileName, threshold.HoldOverTimeout, MasterClockType, threshold.Close)
 		}
 	}
-
 }
 
 func handleHoldOverState(ptpManager *PTPEventManager,

@@ -97,7 +97,5 @@ func Test_Config(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		log.Infof("timeout...")
 	}
-
 	w.Close()
-
 }

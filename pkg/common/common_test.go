@@ -27,13 +27,11 @@ import (
 )
 
 func TestTransportHost_ParseTransportHost(t *testing.T) {
-
 	type test struct {
 		input *common.TransportHost
 		desc  string
 		want  common.TransportHost
 	}
-
 	tests := []test{
 		{input: &common.TransportHost{URL: "amqp:localhost:5671"}, desc: "valid amqp", want: common.TransportHost{Type: common.AMQ, URL: "amqp:localhost:5671", Host: "amqp:localhost:5671", Scheme: "amqp", Err: nil}},
 		{input: &common.TransportHost{URL: "amqp://router.router.svc.cluster.local"}, desc: "valid amqp", want: common.TransportHost{Type: common.AMQ, URL: "amqp://router.router.svc.cluster.local",
@@ -64,7 +62,5 @@ func TestTransportHost_ParseTransportHost(t *testing.T) {
 		} else {
 			assert.Nil(t, tc.want.Err, tc.input.Err, tc.input.String())
 		}
-
 	}
-
 }

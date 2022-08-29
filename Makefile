@@ -53,7 +53,6 @@ build-examples:
 	go build -o ./build/cloud-event-consumer ./examples/consumer/main.go
 
 lint:
-	golint -set_exit_status `go list ./... | grep -v vendor`
 	golangci-lint run
 
 build-plugins:

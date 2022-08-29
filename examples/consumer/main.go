@@ -59,6 +59,7 @@ var (
 	resourcePrefix  string = "/cluster/node/%s%s"
 	mockResource    string = "/mock"
 	mockResourceKey string = "mock"
+	tType           string = "HTTP"
 )
 
 func main() {
@@ -66,6 +67,7 @@ func main() {
 	flag.StringVar(&localAPIAddr, "local-api-addr", "localhost:8989", "The address the local api binds to .")
 	flag.StringVar(&apiPath, "api-path", "/api/cloudNotifications/v1/", "The rest api path.")
 	flag.StringVar(&apiAddr, "api-addr", "localhost:8089", "The address the framework api endpoint binds to.")
+	flag.StringVar(&tType, "transport-type", "HTTP", "Transport Type used by the side car.")
 	flag.Parse()
 
 	nodeName := os.Getenv("NODE_NAME")
@@ -105,13 +107,13 @@ RETRY:
 	}
 
 	// uncomment this if using AMQ only
-	/*if enableStatusCheck {
+	if enableStatusCheck && tType == "AMQ" {
 		for _, s := range subs {
 			createPublisherForStatusPing(s.Resource) // ptp // disable this for testing else you will see context deadline error
 		}
-	}*/
+	}
 	// if AMQ enabled the subscription will create an AMQ listener client
-	// IF HTTP enabled, the subscription will post a subscription  requested to alll
+	// IF HTTP enabled, the subscription will post a subscription  requested to all
 	// publishers that are defined in http-event-publisher variable
 	for _, s := range subs {
 		su, e := createSubscription(s.Resource)

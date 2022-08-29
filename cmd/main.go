@@ -180,22 +180,20 @@ func metricServer(address string) {
 
 // ProcessOutChannel this process the out channel;data put out by amqp
 func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) { // nolint:unused
-	// qdr throws out the data on this channel ,listen to data coming out of qdrEventOutCh
 	// Send back the acknowledgement to publisher
 	defer wg.Done()
 	postProcessFn := func(address string, status channel.Status) {
 		if pub, ok := scConfig.PubSubAPI.HasPublisher(address); ok {
 			if status == channel.SUCCESS {
 				localmetrics.UpdateEventAckCount(address, localmetrics.SUCCESS)
-				if pub.EndPointURI != nil {
-					log.Debugf("posting event with status: %s to publisher: %s", status, pub.EndPointURI)
-					restClient := restclient.New()
-					_ = restClient.Post(pub.EndPointURI,
-						[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, status)))
-				}
 			} else {
-				log.Debugf("failed to process event with status: %s to publisher: %s", status, pub.EndPointURI)
 				localmetrics.UpdateEventAckCount(address, localmetrics.FAILED)
+			}
+			if pub.EndPointURI != nil {
+				log.Debugf("posting acknowledgment with status: %s to publisher: %s", status, pub.EndPointURI)
+				restClient := restclient.New()
+				_ = restClient.Post(pub.EndPointURI,
+					[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, status)))
 			}
 		} else {
 			log.Warnf("could not send ack to publisher ,`publisher` for address %s not found", address)
@@ -334,9 +332,7 @@ func loadFromPubSubStore() {
 		for _, sub := range subs {
 			v1http.CreateSubscription(scConfig.EventInCh, sub.ID, sub.Resource)
 		}
-
 	}
-
 }
 
 func enableHTTPTransport(wg *sync.WaitGroup) bool {

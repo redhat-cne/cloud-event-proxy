@@ -97,5 +97,4 @@ func processTestMetrics2(c net.Conn) {
 		msg := scanner.Text()
 		eventProcessor.ExtractMetrics(msg)
 	}
-
 }

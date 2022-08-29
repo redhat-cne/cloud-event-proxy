@@ -18,6 +18,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/google/uuid"
+
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
@@ -29,6 +31,9 @@ import (
 type Status int64
 
 const (
+	SetConnectionToFailAfter = 10
+)
+const (
 	// InActive client
 	InActive Status = iota
 	// Active Client
@@ -39,7 +44,7 @@ const (
 type Subscriber struct {
 	// ClientID of the sub
 	// +required
-	ClientID string `json:"clientID" omit:"empty"`
+	ClientID uuid.UUID `json:"clientID" omit:"empty"`
 	// +required
 	SubStore *store.PubSubStore `json:"subStore" omit:"empty"`
 	// EndPointURI - A URI describing the subscriber link .
@@ -49,6 +54,21 @@ type Subscriber struct {
 	Status Status `json:"status" omit:"empty"`
 	// Action ...
 	Action channel.Status
+	// FailedCount ...
+	failedCount int
+}
+
+// IncFailCount ...
+func (s *Subscriber) IncFailCount() {
+	s.failedCount++
+	if s.failedCount >= SetConnectionToFailAfter {
+		s.Action = channel.DELETE
+		s.Status = InActive
+	}
+}
+
+func (s *Subscriber) FailedCount() int {
+	return s.failedCount
 }
 
 // String returns a pretty-printed representation of the Event.
@@ -56,7 +76,7 @@ func (s *Subscriber) String() string {
 	b := strings.Builder{}
 
 	b.WriteString("  EndPointURI: " + s.GetEndPointURI() + "\n")
-	b.WriteString("  ID: " + s.GetClientID() + "\n")
+	b.WriteString("  ID: " + s.GetClientID().String() + "\n")
 	b.WriteString("  sub :{")
 	for _, v := range s.SubStore.Store {
 		b.WriteString(" {")
@@ -68,7 +88,7 @@ func (s *Subscriber) String() string {
 }
 
 // New create new subscriber
-func New(clientID string) *Subscriber {
+func New(clientID uuid.UUID) *Subscriber {
 	return &Subscriber{
 		ClientID: clientID,
 		SubStore: &store.PubSubStore{

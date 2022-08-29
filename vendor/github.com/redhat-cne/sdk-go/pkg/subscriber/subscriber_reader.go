@@ -10,7 +10,7 @@ import (
 var _ Reader = (*Subscriber)(nil)
 
 // GetClientID ... Get subscriber ClientID
-func (s *Subscriber) GetClientID() string {
+func (s *Subscriber) GetClientID() uuid.UUID {
 	return s.ClientID
 }
 

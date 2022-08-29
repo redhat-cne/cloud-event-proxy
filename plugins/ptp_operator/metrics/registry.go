@@ -177,7 +177,6 @@ func UpdateSyncStateMetrics(process, iface string, state ptp.SyncState) {
 	}
 	SyncState.With(prometheus.Labels{
 		"process": process, "node": ptpNodeName, "iface": iface}).Set(clockState)
-
 }
 
 // UpdateInterfaceRoleMetrics ... update interface role metrics
