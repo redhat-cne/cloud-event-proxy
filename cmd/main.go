@@ -195,9 +195,6 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) { /
 				_ = restClient.Post(pub.EndPointURI,
 					[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, status)))
 			}
-		} else {
-			log.Warnf("could not send ack to publisher ,`publisher` for address %s not found", address)
-			localmetrics.UpdateEventAckCount(address, localmetrics.FAILED)
 		}
 	}
 	postHandler := func(err error, endPointURI *types.URI, address string) {
@@ -229,7 +226,6 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) { /
 						}
 					} else if sub, ok := scConfig.PubSubAPI.HasSubscription(d.Address); ok {
 						if sub.EndPointURI != nil {
-							log.Infof("sub.EndPointURI %s", event)
 							restClient := restclient.New()
 							event.ID = sub.ID // set ID to the subscriptionID
 							err = restClient.PostEvent(sub.EndPointURI, event)

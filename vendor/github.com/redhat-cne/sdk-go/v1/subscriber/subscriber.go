@@ -83,9 +83,9 @@ func (p *API) ReloadStore() {
 			}
 		}
 	}
-	log.Infof("following subscribers reloaded")
+	log.Infof("%d registered clients reloaded", len(p.subscriberStore.Store))
 	for k, v := range p.subscriberStore.Store {
-		log.Infof("Registered clients %s : %s", k, v.String())
+		log.Infof("registered clients %s : %s", k, v.String())
 	}
 }
 
@@ -149,6 +149,7 @@ func (p *API) CreateSubscription(clientID uuid.UUID, sub subscriber.Subscriber) 
 	if subscriptionClient, ok = p.HasClient(clientID); !ok {
 		subscriptionClient = subscriber.New(clientID)
 	}
+	subscriptionClient.ResetFailCount()
 	_ = subscriptionClient.SetEndPointURI(sub.GetEndPointURI())
 	subscriptionClient.SetStatus(subscriber.Active)
 	pubStore := subscriptionClient.GetSubStore()
@@ -209,6 +210,22 @@ func (p *API) GetSubscription(clientID uuid.UUID, subID string) (sub pubsub.PubS
 		}
 	}
 	return
+}
+
+// GetSubscriberURLByResourceAndClientID  get  subscription information by client id/resource
+func (p *API) GetSubscriberURLByResourceAndClientID(clientID uuid.UUID, resource string) (url *string) {
+	for _, subscriber := range p.subscriberStore.Store {
+		if subscriber.ClientID == clientID {
+			for _, sub := range subscriber.SubStore.Store {
+				if sub.GetResource() == resource {
+					return func(s string) *string {
+						return &s
+					}(subscriber.GetEndPointURI())
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // GetSubscriberURLByResource  get  subscriptionOne information

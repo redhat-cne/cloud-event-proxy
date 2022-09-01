@@ -22,6 +22,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/redhat-cne/sdk-go/pkg/types"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -72,6 +74,14 @@ func (h *HTTP) Start(wg *sync.WaitGroup) {
 	} else {
 		log.Warn("http transport service is already running or couldn't start")
 	}
+}
+
+// ClientID return clientID that was set by  publisher/subscriber service
+func (h *HTTP) ClientID() uuid.UUID {
+	if h.server != nil {
+		return h.server.ClientID()
+	}
+	return uuid.Nil
 }
 
 // Shutdown ...
