@@ -139,5 +139,4 @@ func Test_Config(t *testing.T) {
 		})
 	}
 	closeCh <- struct{}{}
-
 }

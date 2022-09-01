@@ -1,6 +1,7 @@
 package subscriber
 
 import (
+	"github.com/google/uuid"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/store"
 )
@@ -21,29 +22,29 @@ import (
 
 // Reader is the interface for reading through an event from attributes.
 type Reader interface {
-	// GetClientID returns event.GetResource()
-	GetClientID() string
+	// GetClientID returns clientID
+	GetClientID() uuid.UUID
 	// GetStatus Get Status of the subscribers
 	GetStatus() Status
 	// String returns a pretty-printed representation of the PubSub.
 	String() string
 	// GetSubStore return pubsub data
 	GetSubStore() *store.PubSubStore
-	// EndPointURI return   endpoint
+	// GetEndPointURI EndPointURI return   endpoint
 	GetEndPointURI() string
 }
 
 // Writer is the interface for writing through an event onto attributes.
-// If an error is thrown by a sub-component, Writer caches the error
+// If an error is thrown by a subcomponent, Writer caches the error
 // internally and exposes errors with a call to Writer.Validate().
 type Writer interface {
-	// Resource performs event.SetResource()
-	SetClientID(string)
+	// SetClientID Resource performs event.SetResource()
+	SetClientID(clientID uuid.UUID)
 
-	// SetID performs event.SetID.
+	// SetStatus SetID performs event.SetID.
 	SetStatus(status Status)
 
-	// SetHealthEndPoint set health endpoint
+	// SetEndPointURI SetHealthEndPoint set health endpoint
 	SetEndPointURI(url string) error
 
 	AddSubscription(sub ...pubsub.PubSub)

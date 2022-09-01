@@ -51,6 +51,7 @@ spec:
             - "--local-api-addr=127.0.0.1:9089"
             - "--api-path=/api/cloudNotifications/v1/"
             - "--api-addr=127.0.0.1:9095"
+            - "--transport-type=AMQ"
           env:
             - name: NODE_NAME
               valueFrom:

@@ -43,15 +43,12 @@ var (
 
 // Start mock plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
 func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e interface{}) error) error { //nolint:deadcode,unused
-
 	config = configuration
-
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
 		log.Error("cannot find NODE_NAME environment variable")
 		return fmt.Errorf("cannot find NODE_NAME environment variable %s", nodeName)
 	}
-
 	// 1. Create event Publication
 	var pub pubsub.PubSub
 	var err error

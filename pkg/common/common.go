@@ -272,7 +272,6 @@ func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error
 	log.Debugf("event type %s sent to queue to process %s", ceEvent.Source(), cneEvent.JSONString())
 	localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.SUCCESS, 1)
 	return nil
-
 }
 
 // APIHealthCheck ... rest api should be ready before starting to consume api

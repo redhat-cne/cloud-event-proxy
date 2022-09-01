@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 )
@@ -12,7 +14,7 @@ import (
 var _ Writer = (*Subscriber)(nil)
 
 // SetClientID  ...
-func (s *Subscriber) SetClientID(clientID string) {
+func (s *Subscriber) SetClientID(clientID uuid.UUID) {
 	s.ClientID = clientID
 }
 

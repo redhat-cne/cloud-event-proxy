@@ -97,7 +97,6 @@ func (p *PTPEventManager) AddPTPConfig(fileName types.ConfigName, ptpCfg *ptp4lc
 
 // GetPTPConfig ... Add PtpConfigUpdate obj
 func (p *PTPEventManager) GetPTPConfig(configName types.ConfigName) *ptp4lconf.PTP4lConfig {
-
 	if _, ok := p.Ptp4lConfigInterfaces[configName]; ok && p.Ptp4lConfigInterfaces[configName] != nil {
 		return p.Ptp4lConfigInterfaces[configName]
 	}

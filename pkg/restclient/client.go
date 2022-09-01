@@ -131,5 +131,6 @@ func (r *Rest) Put(url *types.URI) int {
 		log.Errorf("error in post response %v to %s ", err, url)
 		return http.StatusBadRequest
 	}
+	defer res.Body.Close()
 	return res.StatusCode
 }

@@ -5,7 +5,7 @@ In the cloud event proxy framework container, go plugins are utilized to modify 
 Following flags enable plugins.
 1. To load a PTP plugin, specify PTP_PLUGIN=true.
    
-2. Since AMQ is the required transport handler for cloud event proxy, it is loaded by default.
+2. Either HTTP OR  AMQ is the required transport handler for cloud event proxy, it is autoloaded based transport-host url schema.
 
 # PTP PLUGIN
 

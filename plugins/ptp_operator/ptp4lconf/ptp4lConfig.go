@@ -156,17 +156,14 @@ func (w *Watcher) Close() {
 
 // NewPtp4lConfigWatcher ... create new ptp4l config file watcher
 func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpdate) (w *Watcher, err error) {
-
 	fsWatcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		log.Errorf("error setting for file change notifier %s", err)
 	}
-
 	w = &Watcher{
 		fsWatcher: fsWatcher,
 		close:     make(chan struct{}),
 	}
-
 	go func() {
 		defer w.fsWatcher.Close()
 		// initialize all
@@ -211,7 +208,6 @@ func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpd
 	}()
 	err = w.fsWatcher.Add(dirToWatch)
 	return w, err
-
 }
 
 func readAllConfig(dir string) []*PtpConfigUpdate {
@@ -256,7 +252,6 @@ func checkIfPtP4lConf(filename string) bool {
 
 // GetPTPProfileName  ... get profile name from ptpconfig
 func GetPTPProfileName(ptpConfig string) string {
-
 	matches := profileRegEx.FindStringSubmatch(ptpConfig)
 	// a regular expression
 	if len(matches) > 1 {

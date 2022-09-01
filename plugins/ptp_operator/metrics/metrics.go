@@ -198,5 +198,4 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		p.ParsePTP4l(processName, configName, profileName, output, fields,
 			ptpInterface, ptp4lCfg, ptpStats)
 	}
-
 }

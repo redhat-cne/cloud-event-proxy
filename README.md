@@ -8,6 +8,9 @@
  [![Go Report Card](https://goreportcard.com/badge/github.com/redhat-cne/cloud-event-proxy)](https://goreportcard.com/report/github.com/redhat-cne/cloud-event-proxy)
  [![LICENSE](https://img.shields.io/github/license/redhat-cne/cloud-event-proxy.svg)](https://github.com/redhat-cne/cloud-event-proxy/blob/main/LICENSE)
 ## Contents
+* [Transport Protocol](#event-transporter)
+    * [AMQ Protocol](#amq-protocol)
+    * [HTTP Protocol](#http-protocol)
 * [Publishers](#creating-publisher)
     * [JSON Example](#publisher-json-example)
     * [Go Example](#creating-publisher-golang-example)
@@ -20,6 +23,69 @@
 * [Metrics](#metrics)
 * [Plugin](#plugin)
   
+## Event Transporter
+Cloud event proxy support two types of  transporter protocol
+1. AMQ Protocol 
+2. HTTP Protocol
+#### AMQ Protocol 
+ AMQ protocol required qdr router deployed and running manually or via AMQ interconnect operator.
+ Have `transport-host` variable set to AMQ instance example `amq:localhost:5672`
+The Producer will be sending  events to bus address specified by the  publisher and consumers connect to those bus address.
+AMQ producer example
+```json
+ - name: cloud-event-sidecar
+          image: quay.io/redhat-cne/cloud-event-proxy
+          args:
+            - "--metrics-addr=127.0.0.1:9091"
+            - "--store-path=/store"
+            - "--transport-host=amqp://router.router.svc.cluster.local"
+            - "--api-port=8089"
+```
+
+AMQ consumer example              
+```json
+ - name: cloud-event-sidecar
+          image: quay.io/redhat-cne/cloud-event-proxy
+          args:
+            - "--metrics-addr=127.0.0.1:9091"
+            - "--store-path=/store"
+            - "--transport-host=amqp://router.router.svc.cluster.local"
+            - "--api-port=8089"
+```
+#### HTTP Protocol
+##### Producer
+CloudEvents HTTP Protocol will be enabled based on  url in `transport-host`.
+If HTTP is identified then the publisher will start a publisher rest service, which is accessible outside the container via k8s service name.
+The Publisher service will have the ability to register  consumer endpoints to publish events.
+
+HTTP producer example  
+```json
+ - name: cloud-event-sidecar
+          image: quay.io/redhat-cne/cloud-event-proxy
+          args:
+            - "--metrics-addr=127.0.0.1:9091"
+            - "--store-path=/store"
+            - "--transport-host=ptp-event-publisher-service.openshift-ptp.svc.cluster.local:9043"
+            - "--api-port=8089"
+
+
+```
+##### Consumer
+Consumer application will also set its own `transport-host`, which enabled cloud event proxy to run a service to listen to
+incoming events posted by the publisher.
+Consumer will also use `http-event-publishers` variable to request for registering  publisher endpoints for consuming events.
+HTTP consumer example
+```json
+ - name: cloud-event-sidecar
+          image: quay.io/redhat-cne/cloud-event-proxy
+          args:
+            - "--metrics-addr=127.0.0.1:9091"
+            - "--store-path=/store"
+            - "--transport-host=consumer-events-subscription-service.cloud-events.svc.cluster.local:9043"
+            - "--http-event-publishers=ptp-event-publisher-service.openshift-ptp.svc.cluster.local:9043"
+            - "--api-port=8089"
+```
+
 ## Creating Publisher
 #### Publisher JSON Example 
 Create Publisher Resource: JSON request
@@ -39,7 +105,7 @@ Create Publisher Resource: JSON response
   "EndpointUri ": "http://localhost:8089/api/ocloudNotifications/v1/publishers/{publisherid}"
 }
 ```
-### Creating publisher golang example
+### Creating publisher golang example with AMQ as transporter protocol
 ```go
 package main
 import (
@@ -58,6 +124,25 @@ func main(){
     if err==nil{
         v1amqp.CreateSender(eventInCh, pub.GetResource())
     }
+}
+```
+
+
+### Creating publisher golang example with HTTP as transporter protocol
+```go
+package main
+import (
+	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
+	"github.com/redhat-cne/sdk-go/pkg/types"
+)
+func main(){
+  //channel for the transport handler subscribed to get and set events  
+    eventInCh := make(chan *channel.DataChan, 10)
+    pubSubInstance = v1pubsub.GetAPIInstance(".")
+    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8089", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
+    // create publisher 
+    pub, err := pubSubInstance.CreatePublisher(v1pubsub.NewPubSub(endpointURL, "test/test"))
+
 }
 ```
 
@@ -80,7 +165,7 @@ Example Create Subscription Resource: JSON response
 }
 ```
 
-### Creating subscription golang example  
+### Creating subscription golang example with AMQ as transporter protocol 
 ```go
 package main
 import (
@@ -101,6 +186,25 @@ func main(){
         v1amqp.CreateListener(eventInCh, pub.GetResource())
     }
 }
+```
+### Creating subscription golang example with HTTP as transporter protocol
+```go
+package main
+import (
+	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
+	"github.com/redhat-cne/sdk-go/pkg/types"
+)
+func main(){
+    //channel for the transport handler subscribed to get and set events  
+    eventInCh := make(chan *channel.DataChan, 10)
+    
+    pubSubInstance = v1pubsub.GetAPIInstance(".")
+    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8089", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
+    // create subscription 
+    pub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "test/test"))
+    
+}
+
 ```
 #### Rest-API to create a Publisher and Subscription.
 

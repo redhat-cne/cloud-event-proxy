@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/onsi/gomega/format"
+
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
 	testutils "github.com/redhat-cne/cloud-event-proxy/test/utils"
@@ -137,15 +139,16 @@ var _ = ginkgo.Describe("validation", func() {
 
 			ginkgo.It("Should check for event generated", func() {
 				ginkgo.By("Checking  logs")
+				format.MaxLength = 20000
 				podLogs, err := pods.GetLog(&producerPod, testutils.EventProxyContainerName)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Error to find needed log due to %s", err)
 				gomega.Expect(podLogs).Should(gomega.ContainSubstring("Created publisher"),
 					fmt.Sprintf("Event publisher was not created in pod %s", producerPod.Name))
-				gomega.Expect(podLogs).Should(gomega.ContainSubstring("event sent"),
+				gomega.Expect(podLogs).Should(gomega.ContainSubstring("event type"),
 					fmt.Sprintf("Event was not generated in the pod %s", producerPod.Name))
 				gomega.Expect(podLogs).ShouldNot(gomega.ContainSubstring("context deadline exceeded"),
 					fmt.Sprintf("AMQ failed to post due to context deadline exceeded %s", producerPod.Name))
-				gomega.Expect(podLogs).Should(gomega.ContainSubstring("posting event status SUCCESS to publisher"),
+				gomega.Expect(podLogs).Should(gomega.ContainSubstring("SUCCESS to publisher"),
 					fmt.Sprintf("Event posting did not succeed  %s", producerPod.Name))
 			})
 

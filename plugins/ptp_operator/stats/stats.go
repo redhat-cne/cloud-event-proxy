@@ -27,9 +27,7 @@ type Stats struct {
 
 // AddValue ...add value
 func (s *Stats) AddValue(val int64) {
-
 	oldMean := s.mean
-
 	if s.max < val {
 		s.max = val
 	}
@@ -40,7 +38,6 @@ func (s *Stats) AddValue(val int64) {
 	s.mean = oldMean + (val-oldMean)/s.num
 	s.sumSqr += val * val
 	s.sumDiffSqr += (val - oldMean) * (val - s.mean)
-
 }
 
 // StDev ... set dev
@@ -57,13 +54,11 @@ func (s *Stats) MaxAbs() int64 {
 		return s.max
 	}
 	return s.min
-
 }
 
 // OffsetSource ... get offset source
 func (s *Stats) OffsetSource() string {
 	return s.offsetSource
-
 }
 
 // SetOffsetSource ... set offset source ptp4/phc2sys/master
