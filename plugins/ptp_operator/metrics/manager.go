@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/cloudevents/sdk-go/v2/event"
+
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptpConfig "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/config"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
@@ -67,7 +69,7 @@ func (p *PTPEventManager) PtpThreshold(profileName string) ptpConfig.PtpClockThr
 	return ptpConfig.GetDefaultThreshold()
 }
 
-// MockTest .. use for test only
+// MockTest ... use for test only
 func (p *PTPEventManager) MockTest(t bool) {
 	p.mock = t
 }
@@ -262,4 +264,40 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 		oStats.SetLastSyncState(clockState)
 		oStats.SetLastOffset(ptpOffset)
 	}
+}
+
+func (p *PTPEventManager) GetPublishingEvent(state ptp.SyncState, ptpOffset int64, eventResourceName string, eventType ptp.EventType) (*event.Event, error) {
+	// create an event
+	if state == "" {
+		return nil, fmt.Errorf("stat has nil value %s", state)
+	}
+	source := fmt.Sprintf("/cluster/%s/ptp/%s", p.nodeName, eventResourceName)
+	data := ceevent.Data{
+		Version: "v1",
+		Values: []ceevent.DataValue{{
+			Resource:  string(p.publisherTypes[eventType].Resource),
+			DataType:  ceevent.NOTIFICATION,
+			ValueType: ceevent.ENUMERATION,
+			Value:     state,
+		}, {
+			Resource:  string(p.publisherTypes[eventType].Resource),
+			DataType:  ceevent.METRIC,
+			ValueType: ceevent.DECIMAL,
+			Value:     float64(ptpOffset),
+		},
+		},
+	}
+
+	if pubs, ok := p.publisherTypes[eventType]; ok {
+		e, err := common.CreateEvent(pubs.PubID, string(eventType), source, data)
+		if err != nil {
+			log.Errorf("failed to create ptp event, %s", err)
+			return nil, err
+		}
+		if !p.mock {
+			return common.GetPublishingCloudEvent(p.scConfig, e)
+		}
+	}
+	log.Errorf("failed to get  ptp event due to missing publisher for type %s", string(eventType))
+	return nil, fmt.Errorf("failed to get ptp event due to missing publisher for type %s", string(eventType))
 }

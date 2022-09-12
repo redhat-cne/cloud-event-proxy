@@ -113,7 +113,7 @@ func CreateListener(inChan chan<- *channel.DataChan, address string) {
 	}
 }
 
-//CreateNewStatusListener send status address information  on a channel to create it's listener object
+//CreateNewStatusListener send status address information  on a channel to create its listener object
 func CreateNewStatusListener(inChan chan<- *channel.DataChan, address string,
 	onReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error,
 	processEventFn func(e interface{}) error) {

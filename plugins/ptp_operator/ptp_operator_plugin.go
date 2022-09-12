@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
@@ -144,23 +145,29 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	// 2.Create Status Listener
 	// method to be called when ping received
 	onReceiveOverrideFn := func(e v2.Event, d *channel.DataChan) error {
-		log.Info("got status check call,fire events for above publisher")
+		log.Infof("got status check call,fire events for subscriber %s => %s", d.ClientID.String(), e.Source())
 		if len(eventManager.Stats) == 0 {
 			eventManager.PublishEvent(ptp.FREERUN, 0, "ptp-not-set", ptp.PtpStateChange)
 		} else {
-			for _, ptpInterfaces := range eventManager.Stats {
-				for ptpInterface, s := range ptpInterfaces {
-					if ptpInterface == ptpMetrics.MasterClockType || ptpInterface == ptpMetrics.ClockRealTime {
-						if ptpInterface == ptpMetrics.MasterClockType && s.Alias() != "" { // if its master stats then replace with slave interface(masked) +X
-							ptpInterface = ptpTypes.IFace(fmt.Sprintf("%s/%s", s.Alias(), ptpMetrics.MasterClockType))
-						}
-						if ptpInterface == ptpMetrics.ClockRealTime {
-							eventManager.PublishEvent(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.OsClockSyncStateChange)
-						} else {
-							eventManager.PublishEvent(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.PtpStateChange)
+			if strings.Contains(e.Source(), string(ptp.OsClockSyncState)) ||
+				strings.Contains(e.Source(), string(ptp.PtpLockState)) ||
+				strings.Contains(e.Source(), string(ptp.PtpClockClass)) { //TODO: persists clockclass so we can generate event for it
+				for _, ptpInterfaces := range eventManager.Stats {
+					for ptpInterface, s := range ptpInterfaces {
+						if ptpInterface == ptpMetrics.MasterClockType || ptpInterface == ptpMetrics.ClockRealTime {
+							if ptpInterface == ptpMetrics.MasterClockType && strings.Contains(e.Source(), string(ptp.PtpLockState)) { // if its master stats then replace with slave interface(masked) +X
+								if s.Alias() != "" {
+									ptpInterface = ptpTypes.IFace(fmt.Sprintf("%s/%s", s.Alias(), ptpMetrics.MasterClockType))
+								}
+								go eventManager.PublishEvent(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.PtpStateChange)
+							} else if ptpInterface == ptpMetrics.ClockRealTime && strings.Contains(e.Source(), string(ptp.OsClockSyncState)) {
+								go eventManager.PublishEvent(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.OsClockSyncStateChange)
+							}
 						}
 					}
 				}
+			} else {
+				log.Warnf("could not find any events for requested resource type %s", e.Source())
 			}
 		}
 		d.Type = channel.STATUS

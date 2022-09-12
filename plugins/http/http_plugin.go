@@ -29,6 +29,7 @@ func Start(wg *sync.WaitGroup, config *common.SCConfiguration, onStatusReceiveOv
 		config.EventInCh, config.EventOutCh, config.CloseCh, onStatusReceiveOverrideFn, processEventFn); err != nil {
 		return
 	}
+	_ = config.SetClientID(httpInstance.ClientID())
 	httpInstance.Start(wg)
 	return
 }

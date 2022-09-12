@@ -67,6 +67,11 @@ func (s *Subscriber) IncFailCount() {
 	}
 }
 
+// ResetFailCount ...
+func (s *Subscriber) ResetFailCount() {
+	s.failedCount = 0
+}
+
 func (s *Subscriber) FailedCount() int {
 	return s.failedCount
 }

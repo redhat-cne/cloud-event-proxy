@@ -6,11 +6,12 @@ require (
 	github.com/cloudevents/sdk-go/v2 v2.6.0
 	github.com/fsnotify/fsnotify v1.5.1
 	github.com/golang/glog v1.0.0
+	github.com/google/uuid v1.3.0
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.18.1
 	github.com/prometheus/client_golang v1.12.1
-	github.com/redhat-cne/rest-api v0.1.1-0.20220829195431-80d27f99f3db
-	github.com/redhat-cne/sdk-go v0.1.1-0.20220829185317-30eb4ee8e2f6
+	github.com/redhat-cne/rest-api v0.1.1-0.20220908131425-34b476033966
+	github.com/redhat-cne/sdk-go v0.1.1-0.20220907191325-02b031866855
 	github.com/sirupsen/logrus v1.8.1
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/net v0.0.0-20220225172249-27dd8689420f
@@ -40,7 +41,6 @@ require (
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/gnostic v0.5.7-v3refs // indirect
 	github.com/google/gofuzz v1.1.0 // indirect
-	github.com/google/uuid v1.3.0 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/josharian/intern v1.0.0 // indirect

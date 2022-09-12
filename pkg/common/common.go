@@ -25,6 +25,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudevents/sdk-go/v2/event"
+	"github.com/google/uuid"
+
 	"github.com/redhat-cne/rest-api/pkg/localmetrics"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
@@ -133,6 +136,21 @@ type SCConfiguration struct {
 	BaseURL           *types.URI
 	TransportHost     *TransportHost
 	TransPortInstance interface{}
+	clientID          uuid.UUID
+}
+
+// ClientID ... read clientID from the configurations
+func (sc *SCConfiguration) ClientID() uuid.UUID {
+	return sc.clientID
+}
+
+// SetClientID  set clientID for the configuration
+func (sc *SCConfiguration) SetClientID(clientID uuid.UUID) error {
+	if sc.clientID != uuid.Nil {
+		sc.clientID = clientID
+		return nil
+	}
+	return fmt.Errorf("clientID is already present, cannot reset clientID once assigned")
 }
 
 // GetIntEnv get int value from env
@@ -253,25 +271,36 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 
 // PublishEventViaAPI ... publish events by not using http request but direct api
 func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error {
+	if ceEvent, err := GetPublishingCloudEvent(scConfig, cneEvent); err == nil {
+		scConfig.EventInCh <- &channel.DataChan{
+			Type:     channel.EVENT,
+			Status:   channel.NEW,
+			Data:     ceEvent,
+			Address:  ceEvent.Source(),
+			ClientID: scConfig.ClientID(),
+		}
+
+		log.Debugf("event source %s sent to queue to process", ceEvent.Source())
+		log.Debugf("event sent %s", cneEvent.JSONString())
+
+		localmetrics.UpdateEventPublishedCount(ceEvent.Source(), localmetrics.SUCCESS, 1)
+	}
+	return nil
+}
+
+// GetPublishingCloudEvent ... Get Publishing cloud event
+func GetPublishingCloudEvent(scConfig *SCConfiguration, cneEvent ceevent.Event) (*event.Event, error) {
 	pub, err := scConfig.PubSubAPI.GetPublisher(cneEvent.ID)
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(cneEvent.ID, localmetrics.FAIL, 1)
-		return fmt.Errorf("no publisher data for id %s found to publish event for", cneEvent.ID)
+		return nil, fmt.Errorf("no publisher data for id %s found to publish event for", cneEvent.ID)
 	}
 	ceEvent, err := cneEvent.NewCloudEvent(&pub)
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
-		return fmt.Errorf("error converting to CloudEvents %s", err)
+		return nil, fmt.Errorf("error converting to CloudEvents %s", err)
 	}
-	scConfig.EventInCh <- &channel.DataChan{
-		Type:    channel.EVENT,
-		Status:  channel.NEW,
-		Data:    ceEvent,
-		Address: pub.GetResource(),
-	}
-	log.Debugf("event type %s sent to queue to process %s", ceEvent.Source(), cneEvent.JSONString())
-	localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.SUCCESS, 1)
-	return nil
+	return ceEvent, nil
 }
 
 // APIHealthCheck ... rest api should be ready before starting to consume api

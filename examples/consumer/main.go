@@ -124,7 +124,6 @@ RETRY:
 			s.URILocation = su.URILocation
 			s.ID = su.ID
 		}
-
 	}
 
 	// ping  for status every n secs
@@ -132,10 +131,11 @@ RETRY:
 	if enableStatusCheck {
 		wg.Add(1)
 		go func() {
+			time.Sleep(5 * time.Second)
 			defer wg.Done()
 			for range time.Tick(StatusCheckInterval * time.Second) {
 				for _, s := range subs {
-					pingForStatus(s.ID)
+					go pingForStatus(s.Resource, s.ID)
 				}
 			}
 		}()
@@ -196,7 +196,7 @@ func createPublisherForStatusPing(resourceAddress string) []byte {
 }
 
 // pingForStatus sends pings to fetch events status
-func pingForStatus(resourceID string) {
+func pingForStatus(resource string, resourceID string) {
 	//create publisher
 	url := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
@@ -206,7 +206,7 @@ func pingForStatus(resourceID string) {
 	if status != http.StatusAccepted {
 		log.Errorf("error pinging for status check %d to url %s", status, url.String())
 	} else {
-		log.Debugf("ping check submitted (%d)", status)
+		log.Debugf("ping check submitted for resource %s (%d)", resource, status)
 	}
 }
 

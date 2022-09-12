@@ -144,7 +144,7 @@ var _ = ginkgo.Describe("validation", func() {
 				gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Error to find needed log due to %s", err)
 				gomega.Expect(podLogs).Should(gomega.ContainSubstring("Created publisher"),
 					fmt.Sprintf("Event publisher was not created in pod %s", producerPod.Name))
-				gomega.Expect(podLogs).Should(gomega.ContainSubstring("event type"),
+				gomega.Expect(podLogs).Should(gomega.ContainSubstring("event sent"),
 					fmt.Sprintf("Event was not generated in the pod %s", producerPod.Name))
 				gomega.Expect(podLogs).ShouldNot(gomega.ContainSubstring("context deadline exceeded"),
 					fmt.Sprintf("AMQ failed to post due to context deadline exceeded %s", producerPod.Name))
