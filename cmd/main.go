@@ -51,15 +51,16 @@ import (
 
 var (
 	// defaults
-	storePath          string
-	transportHost      string
-	apiPort            int
-	channelBufferSize  = 100
-	scConfig           *common.SCConfiguration
-	metricsAddr        string
-	apiPath            = "/api/cloudNotifications/v1/"
-	httpEventPublisher string
-	pluginHandler      plugins.Handler
+	storePath               string
+	transportHost           string
+	apiPort                 int
+	channelBufferSize       = 100
+	statusChannelBufferSize = 50
+	scConfig                *common.SCConfiguration
+	metricsAddr             string
+	apiPath                 = "/api/cloudNotifications/v1/"
+	httpEventPublisher      string
+	pluginHandler           plugins.Handler
 )
 
 func main() {
@@ -97,6 +98,7 @@ func main() {
 	scConfig = &common.SCConfiguration{
 		EventInCh:     make(chan *channel.DataChan, channelBufferSize),
 		EventOutCh:    make(chan *channel.DataChan, channelBufferSize),
+		StatusCh:      make(chan *channel.StatusChan, statusChannelBufferSize),
 		CloseCh:       make(chan struct{}),
 		APIPort:       apiPort,
 		APIPath:       apiPath,
@@ -349,12 +351,16 @@ RETRY:
 	}
 
 	scConfig.TransPortInstance = httpServer
+	// TODO: Need a Better way to know if this publisher or consumer
+	if common.GetBoolEnv("PTP_PLUGIN") || common.GetBoolEnv("HW_PLUGIN") {
+		httpServer.RegisterPublishers(types.ParseURI(scConfig.TransportHost.URL))
+	}
 	func(addr ...string) {
 		for _, s := range addr {
 			if s == "" {
 				continue
 			}
-			th := common.TransportHost{URL: httpEventPublisher}
+			th := common.TransportHost{URL: s}
 			th.ParseTransportHost()
 			if th.URI != nil {
 				s = th.URI.String()

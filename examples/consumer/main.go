@@ -135,7 +135,12 @@ RETRY:
 			defer wg.Done()
 			for range time.Tick(StatusCheckInterval * time.Second) {
 				for _, s := range subs {
-					go pingForStatus(s.Resource, s.ID)
+					if tType == "AMQ" {
+						go pingForStatus(s.Resource, s.ID)
+					} else {
+						go getCurrentState(s.Resource)
+					}
+
 				}
 			}
 		}()
@@ -207,6 +212,21 @@ func pingForStatus(resource string, resourceID string) {
 		log.Errorf("error pinging for status check %d to url %s", status, url.String())
 	} else {
 		log.Debugf("ping check submitted for resource %s (%d)", resource, status)
+	}
+}
+
+// pingForStatus sends pings to fetch events status
+func getCurrentState(resource string) {
+	//create publisher
+	url := &types.URI{URL: url.URL{Scheme: "http",
+		Host: apiAddr,
+		Path: fmt.Sprintf("%s%s", apiPath, fmt.Sprintf("%s/CurrentState", resource))}}
+	rc := restclient.New()
+	status, event := rc.Get(url)
+	if status != http.StatusOK {
+		log.Errorf("CurrentState:error %d from url %s, %s", status, url.String(), event)
+	} else {
+		log.Debugf("CurrentState: %s ", event)
 	}
 }
 

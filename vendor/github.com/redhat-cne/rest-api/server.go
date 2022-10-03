@@ -63,12 +63,14 @@ type Server struct {
 	port    int
 	apiPath string
 	//data out is amqp in channel
-	dataOut    chan<- *channel.DataChan
-	closeCh    <-chan struct{}
-	HTTPClient *http.Client
-	httpServer *http.Server
-	pubSubAPI  *pubsubv1.API
-	status     serverStatus
+	dataOut          chan<- *channel.DataChan
+	closeCh          <-chan struct{}
+	HTTPClient       *http.Client
+	httpServer       *http.Server
+	pubSubAPI        *pubsubv1.API
+	status           serverStatus
+	transportType    string // AMQ or HTTP
+	transportAddress string // for AMQ this is base address to return events
 }
 
 // publisher/subscription data model
@@ -116,14 +118,16 @@ type swaggReqAccepted struct { //nolint:deadcode,unused
 }
 
 // InitServer is used to supply configurations for rest routes server
-func InitServer(port int, apiPath, storePath string, dataOut chan<- *channel.DataChan, closeCh <-chan struct{}) *Server {
+func InitServer(port int, apiPath, storePath string, transportType string, transportAddress string, dataOut chan<- *channel.DataChan, closeCh <-chan struct{}) *Server {
 	once.Do(func() {
 		ServerInstance = &Server{
-			port:    port,
-			apiPath: apiPath,
-			dataOut: dataOut,
-			closeCh: closeCh,
-			status:  notReady,
+			port:             port,
+			apiPath:          apiPath,
+			dataOut:          dataOut,
+			closeCh:          closeCh,
+			status:           notReady,
+			transportType:    transportType,
+			transportAddress: transportAddress,
 			HTTPClient: &http.Client{
 				Transport: &http.Transport{
 					MaxIdleConnsPerHost: 20,
@@ -193,6 +197,7 @@ func (s *Server) Start() {
 	}
 	s.status = starting
 	r := mux.NewRouter()
+
 	api := r.PathPrefix(s.apiPath).Subrouter()
 
 	// createSubscription create subscription and send it to a channel that is shared by middleware to process
@@ -262,6 +267,8 @@ func (s *Server) Start() {
 	//   "400":
 	//     "$ref": "#/responses/badReq"
 	api.HandleFunc("/subscriptions/status/{subscriptionid}", s.pingForSubscribedEventStatus).Methods(http.MethodPut)
+
+	api.HandleFunc("/{resourceAddress:.*}/CurrentState", s.getCurrentState).Methods(http.MethodGet)
 
 	api.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "OK") //nolint:errcheck

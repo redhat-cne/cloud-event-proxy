@@ -36,6 +36,7 @@ var logsData = [logLength]string{
 }
 var eventProcessor *metrics.PTPEventManager
 var scConfig *common.SCConfiguration
+var resourcePrefix = ""
 
 func setup() {
 	scConfig = &common.SCConfiguration{}
@@ -43,7 +44,7 @@ func setup() {
 
 func Test_WriteMetricsToSocket(t *testing.T) {
 	setup()
-	eventProcessor = metrics.NewPTPEventManager(nil, "tetsnode", scConfig)
+	eventProcessor = metrics.NewPTPEventManager(resourcePrefix, nil, "tetsnode", scConfig)
 	eventProcessor.MockTest(true)
 	go listenToTestMetrics()
 	time.Sleep(2 * time.Second)

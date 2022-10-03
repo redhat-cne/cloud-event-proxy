@@ -61,7 +61,14 @@ func TestMain(m *testing.M) {
 		APIPath:    "/api/test-cloud/",
 		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
 		StorePath:  storePath,
-		BaseURL:    nil,
+		TransportHost: &common.TransportHost{
+			Type: common.HTTP,
+			URL:  "localhost:8089",
+			Host: "localhost",
+			Port: 8089,
+			Err:  nil,
+		},
+		BaseURL: nil,
 	}
 
 	c = make(chan os.Signal)

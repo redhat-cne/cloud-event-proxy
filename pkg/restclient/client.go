@@ -61,7 +61,7 @@ func (r *Rest) PostEvent(url *types.URI, e event.Event) error {
 	return nil
 }
 
-// Post post with data
+// Post with data
 func (r *Rest) Post(url *types.URI, data []byte) int {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
@@ -133,4 +133,27 @@ func (r *Rest) Put(url *types.URI) int {
 	}
 	defer res.Body.Close()
 	return res.StatusCode
+}
+
+// Get  http request
+func (r *Rest) Get(url *types.URI) (int, string) {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, "GET", url.String(), nil)
+	if err != nil {
+		log.Errorf("error creating post request %v", err)
+		return http.StatusBadRequest, fmt.Sprintf("error creating post request %v", err)
+	}
+	request.Header.Set("content-type", "application/json")
+	res, err := r.client.Do(request)
+	if err != nil {
+		log.Errorf("error in post response %v to %s ", err, url)
+		return http.StatusBadRequest, fmt.Sprintf("error in post response %v to %s ", err, url)
+	}
+	defer res.Body.Close()
+	if body, readErr := ioutil.ReadAll(res.Body); readErr == nil {
+		return res.StatusCode, string(body)
+	}
+	return http.StatusBadRequest, fmt.Sprintf("error in post response %v to %s ", err, url)
 }
