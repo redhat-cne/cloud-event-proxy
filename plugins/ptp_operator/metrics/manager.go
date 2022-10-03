@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 
+	cloudevents "github.com/cloudevents/sdk-go/v2"
+
 	"github.com/cloudevents/sdk-go/v2/event"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
@@ -18,6 +20,7 @@ import (
 
 // PTPEventManager for PTP
 type PTPEventManager struct {
+	resourcePrefix string
 	publisherTypes map[ptp.EventType]*types.EventPublisherType
 	nodeName       string
 	scConfig       *common.SCConfiguration
@@ -31,9 +34,10 @@ type PTPEventManager struct {
 }
 
 // NewPTPEventManager to manage events and metrics
-func NewPTPEventManager(publisherTypes map[ptp.EventType]*types.EventPublisherType,
+func NewPTPEventManager(resourcePrefix string, publisherTypes map[ptp.EventType]*types.EventPublisherType,
 	nodeName string, config *common.SCConfiguration) (ptpEventManager *PTPEventManager) {
 	ptpEventManager = &PTPEventManager{
+		resourcePrefix:        resourcePrefix,
 		publisherTypes:        publisherTypes,
 		nodeName:              nodeName,
 		scConfig:              config,
@@ -138,48 +142,94 @@ func (p *PTPEventManager) DeletePTPConfig(key types.ConfigName) {
 
 // PublishClockClassEvent ...publish events
 func (p *PTPEventManager) PublishClockClassEvent(clockClass float64, eventResourceName string, eventType ptp.EventType) {
-	source := fmt.Sprintf("/cluster/%s/ptp/%s", p.nodeName, eventResourceName)
+	source := fmt.Sprintf(p.resourcePrefix, p.nodeName, eventResourceName)
+	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
 	data := ceevent.Data{
 		Version: "v1",
 		Values: []ceevent.DataValue{{
-			Resource:  string(p.publisherTypes[eventType].Resource),
+			Resource:  source,
 			DataType:  ceevent.METRIC,
 			ValueType: ceevent.DECIMAL,
 			Value:     clockClass,
 		},
 		},
 	}
-	p.publish(data, source, eventType)
+	p.publish(data, resourceAddress, eventType)
 }
 
-// PublishEvent ...publish events
-func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, eventResourceName string, eventType ptp.EventType) {
+func (p *PTPEventManager) GetPTPEventsData(state ptp.SyncState, ptpOffset int64, source string, eventType ptp.EventType) *ceevent.Data {
 	// create an event
+
 	if state == "" {
-		return
+		return nil
 	}
-	source := fmt.Sprintf("/cluster/%s/ptp/%s", p.nodeName, eventResourceName)
+	// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
+	eventSource := fmt.Sprintf(p.resourcePrefix, p.nodeName, source)
 	data := ceevent.Data{
 		Version: "v1",
 		Values: []ceevent.DataValue{{
-			Resource:  string(p.publisherTypes[eventType].Resource),
+			Resource:  eventSource,
 			DataType:  ceevent.NOTIFICATION,
 			ValueType: ceevent.ENUMERATION,
 			Value:     state,
 		}, {
-			Resource:  string(p.publisherTypes[eventType].Resource),
+			Resource:  eventSource,
 			DataType:  ceevent.METRIC,
 			ValueType: ceevent.DECIMAL,
 			Value:     float64(ptpOffset),
 		},
 		},
 	}
-	p.publish(data, source, eventType)
+	return &data
 }
 
-func (p *PTPEventManager) publish(data ceevent.Data, resource string, eventType ptp.EventType) {
+// GetPTPCloudEvents ...GetEvent events
+func (p *PTPEventManager) GetPTPCloudEvents(data ceevent.Data, eventType ptp.EventType) *cloudevents.Event {
+	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
 	if pubs, ok := p.publisherTypes[eventType]; ok {
-		e, err := common.CreateEvent(pubs.PubID, string(eventType), resource, data)
+		cneEvent, err := common.CreateEvent(pubs.PubID, string(eventType), resourceAddress, data)
+		if err != nil {
+			log.Errorf("failed to create ptp event, %s", err)
+			return nil
+		}
+		if ceEvent, err := common.GetPublishingCloudEvent(p.scConfig, cneEvent); err == nil {
+			// the saw because api is not processing this, returned  directly by currentState call
+			return ceEvent
+		}
+	}
+	return nil
+}
+
+// PublishEvent ...publish events
+func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, eventSource string, eventType ptp.EventType) {
+	// create an event
+	if state == "" {
+		return
+	}
+	// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
+	eventSource = fmt.Sprintf(p.resourcePrefix, p.nodeName, eventSource)
+	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
+	data := ceevent.Data{
+		Version: "v1",
+		Values: []ceevent.DataValue{{
+			Resource:  eventSource,
+			DataType:  ceevent.NOTIFICATION,
+			ValueType: ceevent.ENUMERATION,
+			Value:     state,
+		}, {
+			Resource:  eventSource,
+			DataType:  ceevent.METRIC,
+			ValueType: ceevent.DECIMAL,
+			Value:     float64(ptpOffset),
+		},
+		},
+	}
+	p.publish(data, resourceAddress, eventType)
+}
+
+func (p *PTPEventManager) publish(data ceevent.Data, eventSource string, eventType ptp.EventType) {
+	if pubs, ok := p.publisherTypes[eventType]; ok {
+		e, err := common.CreateEvent(pubs.PubID, string(eventType), eventSource, data)
 		if err != nil {
 			log.Errorf("failed to create ptp event, %s", err)
 			return
@@ -271,7 +321,7 @@ func (p *PTPEventManager) GetPublishingEvent(state ptp.SyncState, ptpOffset int6
 	if state == "" {
 		return nil, fmt.Errorf("stat has nil value %s", state)
 	}
-	source := fmt.Sprintf("/cluster/%s/ptp/%s", p.nodeName, eventResourceName)
+	source := fmt.Sprintf(p.resourcePrefix, p.nodeName, eventResourceName)
 	data := ceevent.Data{
 		Version: "v1",
 		Values: []ceevent.DataValue{{

@@ -53,6 +53,13 @@ const (
 	UNKNOWN
 )
 
+var transportTypes = [...]string{"AMQ", "HTTP", "UNKNOWN"}
+
+// ToString ...
+func (t TransportType) ToString() string {
+	return transportTypes[t]
+}
+
 // TransportHost  holds transport url type
 type TransportHost struct {
 	Type   TransportType
@@ -128,6 +135,7 @@ func (t *TransportHost) ParseTransportHost() {
 type SCConfiguration struct {
 	EventInCh         chan *channel.DataChan
 	EventOutCh        chan *channel.DataChan
+	StatusCh          chan *channel.StatusChan
 	CloseCh           chan struct{}
 	APIPort           int
 	APIPath           string
@@ -186,7 +194,12 @@ func GetBoolEnv(key string) bool {
 // StartPubSubService starts rest api service to manage events publishers and subscriptions
 func StartPubSubService(scConfig *SCConfiguration) (*restapi.Server, error) {
 	// init
-	server := restapi.InitServer(scConfig.APIPort, scConfig.APIPath, scConfig.StorePath, scConfig.EventInCh, scConfig.CloseCh)
+	if scConfig.TransportHost == nil {
+		scConfig.TransportHost.Type = UNKNOWN
+	}
+	server := restapi.InitServer(scConfig.APIPort, scConfig.APIPath,
+		scConfig.StorePath, scConfig.TransportHost.Type.ToString(),
+		scConfig.TransportHost.URL, scConfig.EventInCh, scConfig.CloseCh)
 	server.Start()
 	err := server.EndPointHealthChk()
 	if err == nil {
@@ -237,7 +250,7 @@ func CreateSubscription(config *SCConfiguration, subscription pubsub.PubSub) (su
 }
 
 // CreateEvent create an event
-func CreateEvent(pubSubID, eventType, source string, data ceevent.Data) (ceevent.Event, error) {
+func CreateEvent(pubSubID, eventType, resourceAddress string, data ceevent.Data) (ceevent.Event, error) {
 	// create an event
 	if pubSubID == "" {
 		return ceevent.Event{}, fmt.Errorf("id is a required field")
@@ -248,7 +261,7 @@ func CreateEvent(pubSubID, eventType, source string, data ceevent.Data) (ceevent
 	event := v1event.CloudNativeEvent()
 	event.ID = pubSubID
 	event.Type = eventType
-	event.SetSource(source)
+	event.SetSource(resourceAddress)
 	event.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
 	event.SetDataContentType(ceevent.ApplicationJSON)
 	event.SetData(data)
@@ -276,7 +289,7 @@ func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error
 			Type:     channel.EVENT,
 			Status:   channel.NEW,
 			Data:     ceEvent,
-			Address:  ceEvent.Source(),
+			Address:  ceEvent.Source(), // this is te publishing address
 			ClientID: scConfig.ClientID(),
 		}
 

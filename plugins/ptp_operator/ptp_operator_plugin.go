@@ -22,6 +22,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/redhat-cne/sdk-go/pkg/event"
+
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -92,7 +94,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	}
 
 	// Initialize the Event Manager
-	eventManager = ptpMetrics.NewPTPEventManager(publishers, nodeName, config)
+	eventManager = ptpMetrics.NewPTPEventManager(resourcePrefix, publishers, nodeName, config)
 	wg.Add(1)
 	// create socket listener
 	go listenToSocket(wg)
@@ -144,35 +146,9 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 
 	// 2.Create Status Listener
 	// method to be called when ping received
-	onReceiveOverrideFn := func(e v2.Event, d *channel.DataChan) error {
-		log.Infof("got status check call,fire events for subscriber %s => %s", d.ClientID.String(), e.Source())
-		if len(eventManager.Stats) == 0 {
-			eventManager.PublishEvent(ptp.FREERUN, 0, "ptp-not-set", ptp.PtpStateChange)
-		} else {
-			if strings.Contains(e.Source(), string(ptp.OsClockSyncState)) ||
-				strings.Contains(e.Source(), string(ptp.PtpLockState)) ||
-				strings.Contains(e.Source(), string(ptp.PtpClockClass)) { //TODO: persists clockclass so we can generate event for it
-				for _, ptpInterfaces := range eventManager.Stats {
-					for ptpInterface, s := range ptpInterfaces {
-						if ptpInterface == ptpMetrics.MasterClockType || ptpInterface == ptpMetrics.ClockRealTime {
-							if ptpInterface == ptpMetrics.MasterClockType && strings.Contains(e.Source(), string(ptp.PtpLockState)) { // if its master stats then replace with slave interface(masked) +X
-								if s.Alias() != "" {
-									ptpInterface = ptpTypes.IFace(fmt.Sprintf("%s/%s", s.Alias(), ptpMetrics.MasterClockType))
-								}
-								go eventManager.PublishEvent(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.PtpStateChange)
-							} else if ptpInterface == ptpMetrics.ClockRealTime && strings.Contains(e.Source(), string(ptp.OsClockSyncState)) {
-								go eventManager.PublishEvent(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.OsClockSyncStateChange)
-							}
-						}
-					}
-				}
-			} else {
-				log.Warnf("could not find any events for requested resource type %s", e.Source())
-			}
-		}
-		d.Type = channel.STATUS
-		return nil
-	}
+	//TODO support CurrentState for AMQ
+	onReceiveOverrideFn := getCurrentStatOverrideFn()
+
 	log.Infof("setting up status listener")
 	if config.TransportHost.Type == common.AMQ {
 		for _, pType := range publishers {
@@ -188,6 +164,71 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		}
 	}
 	return nil
+}
+
+// getCurrentStatOverrideFn is called when current state is received by rest api
+func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
+	return func(e v2.Event, d *channel.DataChan) error {
+		log.Infof("got status check call,fire events for subscriber %s => %s", d.ClientID.String(), e.Source())
+		if len(eventManager.Stats) == 0 {
+			if config.TransportHost.Type == common.AMQ {
+				eventManager.PublishEvent(ptp.FREERUN, 0, "ptp-not-set", ptp.PtpStateChange)
+			} else {
+				data := eventManager.GetPTPEventsData(ptp.FREERUN, 0, "ptp-not-set", ptp.PtpStateChange)
+				d.Data = eventManager.GetPTPCloudEvents(*data, ptp.PtpStateChange)
+			}
+			return nil
+		} else if strings.Contains(e.Source(), string(ptp.OsClockSyncState)) ||
+			strings.Contains(e.Source(), string(ptp.PtpLockState)) { //TODO: persists clock class so we can generate event for it
+			var data *event.Data
+			for _, ptpInterfaces := range eventManager.Stats {
+				for ptpInterface, s := range ptpInterfaces {
+					if ptpInterface == ptpMetrics.MasterClockType || ptpInterface == ptpMetrics.ClockRealTime {
+						if ptpInterface == ptpMetrics.MasterClockType && strings.Contains(e.Source(), string(ptp.PtpLockState)) {
+							// if its master stats then replace with slave interface(masked) +X
+							if s.Alias() != "" {
+								ptpInterface = ptpTypes.IFace(fmt.Sprintf("%s/%s", s.Alias(), ptpMetrics.MasterClockType))
+							}
+							if config.TransportHost.Type == common.AMQ {
+								eventManager.PublishEvent(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.PtpStateChange)
+							} else {
+								eventData := eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.PtpStateChange)
+								if data == nil {
+									data = eventData
+								} else {
+									data.Values = append(data.Values, eventData.Values...)
+								}
+							}
+						} else if ptpInterface == ptpMetrics.ClockRealTime && strings.Contains(e.Source(), string(ptp.OsClockSyncState)) {
+							if config.TransportHost.Type == common.AMQ {
+								eventManager.PublishEvent(ptp.FREERUN, 0, "ptp-not-set", ptp.PtpStateChange)
+							} else {
+								eventData := eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.OsClockSyncStateChange)
+								if data == nil {
+									data = eventData
+								} else {
+									data.Values = append(data.Values, eventData.Values...)
+								}
+							}
+						}
+					}
+				}
+			}
+			if config.TransportHost.Type != common.AMQ {
+				if data != nil {
+					d.Data = eventManager.GetPTPCloudEvents(*data, ptp.PtpStateChange)
+				} else {
+					return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
+				}
+			}
+		} else if strings.Contains(e.Source(), string(ptp.PtpClockClass)) {
+			return fmt.Errorf("not implmented  %s", e.Source())
+		} else {
+			log.Warnf("could not find any events for requested resource type %s", e.Source())
+			return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
+		}
+		return nil
+	}
 }
 
 // update interface and threshold details when ptpConfig change found
