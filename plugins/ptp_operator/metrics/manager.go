@@ -164,7 +164,7 @@ func (p *PTPEventManager) GetPTPEventsData(state ptp.SyncState, ptpOffset int64,
 		return nil
 	}
 	// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
-	eventSource := fmt.Sprintf(p.resourcePrefix, p.nodeName, source)
+	eventSource := fmt.Sprintf(p.resourcePrefix, p.nodeName, fmt.Sprintf("/%s", source))
 	data := ceevent.Data{
 		Version: "v1",
 		Values: []ceevent.DataValue{{
@@ -201,13 +201,13 @@ func (p *PTPEventManager) GetPTPCloudEvents(data ceevent.Data, eventType ptp.Eve
 }
 
 // PublishEvent ...publish events
-func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, eventSource string, eventType ptp.EventType) {
+func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, source string, eventType ptp.EventType) {
 	// create an event
 	if state == "" {
 		return
 	}
 	// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
-	eventSource = fmt.Sprintf(p.resourcePrefix, p.nodeName, eventSource)
+	eventSource := fmt.Sprintf(p.resourcePrefix, p.nodeName, fmt.Sprintf("/%s", source))
 	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
 	data := ceevent.Data{
 		Version: "v1",
