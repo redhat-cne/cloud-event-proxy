@@ -23,6 +23,7 @@ type Stats struct {
 	lastOffset          int64
 	lastSyncState       ptp.SyncState
 	aliasName           string
+	clackClass          int64
 }
 
 // AddValue ...add value
@@ -81,6 +82,11 @@ func (s *Stats) Offset() int64 {
 	return s.lastOffset
 }
 
+// ClockClass return last known ClockClass
+func (s *Stats) ClockClass() int64 {
+	return s.clackClass
+}
+
 // Alias return alias name
 func (s *Stats) Alias() string {
 	return s.aliasName
@@ -130,6 +136,11 @@ func (s *Stats) SetDelay(val int64) {
 // SetLastOffset ... set last offset value
 func (s *Stats) SetLastOffset(val int64) {
 	s.lastOffset = val
+}
+
+// SetClockClass ... set last clock class value
+func (s *Stats) SetClockClass(val int64) {
+	s.clackClass = val
 }
 
 // SetLastSyncState ... set last sync state
