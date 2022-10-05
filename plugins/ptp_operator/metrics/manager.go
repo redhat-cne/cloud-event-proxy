@@ -6,8 +6,6 @@ import (
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 
-	"github.com/cloudevents/sdk-go/v2/event"
-
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptpConfig "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/config"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
@@ -141,25 +139,14 @@ func (p *PTPEventManager) DeletePTPConfig(key types.ConfigName) {
 }
 
 // PublishClockClassEvent ...publish events
-func (p *PTPEventManager) PublishClockClassEvent(clockClass float64, eventResourceName string, eventType ptp.EventType) {
-	source := fmt.Sprintf(p.resourcePrefix, p.nodeName, eventResourceName)
+func (p *PTPEventManager) PublishClockClassEvent(clockClass float64, source string, eventType ptp.EventType) {
+	data := p.GetPTPEventsData(ptp.LOCKED, int64(clockClass), source, eventType)
 	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
-	data := ceevent.Data{
-		Version: "v1",
-		Values: []ceevent.DataValue{{
-			Resource:  source,
-			DataType:  ceevent.METRIC,
-			ValueType: ceevent.DECIMAL,
-			Value:     clockClass,
-		},
-		},
-	}
-	p.publish(data, resourceAddress, eventType)
+	p.publish(*data, resourceAddress, eventType)
 }
 
 func (p *PTPEventManager) GetPTPEventsData(state ptp.SyncState, ptpOffset int64, source string, eventType ptp.EventType) *ceevent.Data {
 	// create an event
-
 	if state == "" {
 		return nil
 	}
@@ -167,19 +154,23 @@ func (p *PTPEventManager) GetPTPEventsData(state ptp.SyncState, ptpOffset int64,
 	eventSource := fmt.Sprintf(p.resourcePrefix, p.nodeName, fmt.Sprintf("/%s", source))
 	data := ceevent.Data{
 		Version: "v1",
-		Values: []ceevent.DataValue{{
+		Values:  []ceevent.DataValue{},
+	}
+	if eventType != ptp.PtpClockClassChange {
+		data.Values = append(data.Values, ceevent.DataValue{
 			Resource:  eventSource,
 			DataType:  ceevent.NOTIFICATION,
 			ValueType: ceevent.ENUMERATION,
 			Value:     state,
-		}, {
-			Resource:  eventSource,
-			DataType:  ceevent.METRIC,
-			ValueType: ceevent.DECIMAL,
-			Value:     float64(ptpOffset),
-		},
-		},
+		})
 	}
+
+	data.Values = append(data.Values, ceevent.DataValue{
+		Resource:  eventSource,
+		DataType:  ceevent.METRIC,
+		ValueType: ceevent.DECIMAL,
+		Value:     ptpOffset,
+	})
 	return &data
 }
 
@@ -207,24 +198,9 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, sou
 		return
 	}
 	// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
-	eventSource := fmt.Sprintf(p.resourcePrefix, p.nodeName, fmt.Sprintf("/%s", source))
+	data := p.GetPTPEventsData(state, ptpOffset, source, eventType)
 	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
-	data := ceevent.Data{
-		Version: "v1",
-		Values: []ceevent.DataValue{{
-			Resource:  eventSource,
-			DataType:  ceevent.NOTIFICATION,
-			ValueType: ceevent.ENUMERATION,
-			Value:     state,
-		}, {
-			Resource:  eventSource,
-			DataType:  ceevent.METRIC,
-			ValueType: ceevent.DECIMAL,
-			Value:     float64(ptpOffset),
-		},
-		},
-	}
-	p.publish(data, resourceAddress, eventType)
+	p.publish(*data, resourceAddress, eventType)
 }
 
 func (p *PTPEventManager) publish(data ceevent.Data, eventSource string, eventType ptp.EventType) {
@@ -275,14 +251,15 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 				oStats.SetLastOffset(ptpOffset)
 				oStats.AddValue(ptpOffset) // update off set when its in locked state and hold over only
 			} else {
+				clockState = ptp.FREERUN
 				log.Infof(" publishing event for ( profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
 					ptpProfileName, eventResourceName, oStats.LastSyncState(), clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
-				p.PublishEvent(ptp.FREERUN, ptpOffset, eventResourceName, eventType)
-				oStats.SetLastSyncState(ptp.FREERUN)
+				p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType)
+				oStats.SetLastSyncState(clockState)
 				oStats.SetLastOffset(ptpOffset)
 			}
 		case ptp.HOLDOVER:
-			// do nothing, the timeout will switch holdover to FREERUN
+			// do nothing, the timeout will switch holdover to FREE-RUN
 		default: // not yet used states
 			log.Warnf("unknown %s sync state %s ,has last ptp state %s", eventResourceName, clockState, lastClockState)
 			if !isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
@@ -314,40 +291,4 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 		oStats.SetLastSyncState(clockState)
 		oStats.SetLastOffset(ptpOffset)
 	}
-}
-
-func (p *PTPEventManager) GetPublishingEvent(state ptp.SyncState, ptpOffset int64, eventResourceName string, eventType ptp.EventType) (*event.Event, error) {
-	// create an event
-	if state == "" {
-		return nil, fmt.Errorf("stat has nil value %s", state)
-	}
-	source := fmt.Sprintf(p.resourcePrefix, p.nodeName, eventResourceName)
-	data := ceevent.Data{
-		Version: "v1",
-		Values: []ceevent.DataValue{{
-			Resource:  string(p.publisherTypes[eventType].Resource),
-			DataType:  ceevent.NOTIFICATION,
-			ValueType: ceevent.ENUMERATION,
-			Value:     state,
-		}, {
-			Resource:  string(p.publisherTypes[eventType].Resource),
-			DataType:  ceevent.METRIC,
-			ValueType: ceevent.DECIMAL,
-			Value:     float64(ptpOffset),
-		},
-		},
-	}
-
-	if pubs, ok := p.publisherTypes[eventType]; ok {
-		e, err := common.CreateEvent(pubs.PubID, string(eventType), source, data)
-		if err != nil {
-			log.Errorf("failed to create ptp event, %s", err)
-			return nil, err
-		}
-		if !p.mock {
-			return common.GetPublishingCloudEvent(p.scConfig, e)
-		}
-	}
-	log.Errorf("failed to get  ptp event due to missing publisher for type %s", string(eventType))
-	return nil, fmt.Errorf("failed to get ptp event due to missing publisher for type %s", string(eventType))
 }

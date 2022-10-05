@@ -169,63 +169,80 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 // getCurrentStatOverrideFn is called when current state is received by rest api
 func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 	return func(e v2.Event, d *channel.DataChan) error {
-		log.Infof("got status check call,fire events for subscriber %s => %s", d.ClientID.String(), e.Source())
+		log.Infof("got status check call,send events for subscriber %s => %s", d.ClientID.String(), e.Source())
+		var eventType ptp.EventType
+		if strings.Contains(e.Source(), string(ptp.PtpLockState)) {
+			eventType = ptp.PtpStateChange
+		} else if strings.Contains(e.Source(), string(ptp.OsClockSyncState)) {
+			eventType = ptp.OsClockSyncStateChange
+		} else if strings.Contains(e.Source(), string(ptp.PtpClockClass)) {
+			eventType = ptp.PtpClockClassChange
+		} else {
+			log.Warnf("could not find any events for requested resource type %s", e.Source())
+			return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
+		}
 		if len(eventManager.Stats) == 0 {
 			if config.TransportHost.Type == common.AMQ {
-				eventManager.PublishEvent(ptp.FREERUN, 0, "ptp-not-set", ptp.PtpStateChange)
+				eventManager.PublishEvent(ptp.FREERUN, 0, "ptp-not-set", eventType)
 			} else {
-				data := eventManager.GetPTPEventsData(ptp.FREERUN, 0, "ptp-not-set", ptp.PtpStateChange)
-				d.Data = eventManager.GetPTPCloudEvents(*data, ptp.PtpStateChange)
+				data := eventManager.GetPTPEventsData(ptp.FREERUN, 0, "ptp-not-set", eventType)
+				d.Data = eventManager.GetPTPCloudEvents(*data, eventType)
 			}
 			return nil
-		} else if strings.Contains(e.Source(), string(ptp.OsClockSyncState)) ||
-			strings.Contains(e.Source(), string(ptp.PtpLockState)) { //TODO: persists clock class so we can generate event for it
-			var data *event.Data
-			for _, ptpInterfaces := range eventManager.Stats {
-				for ptpInterface, s := range ptpInterfaces {
-					if ptpInterface == ptpMetrics.MasterClockType || ptpInterface == ptpMetrics.ClockRealTime {
-						if ptpInterface == ptpMetrics.MasterClockType && strings.Contains(e.Source(), string(ptp.PtpLockState)) {
-							// if its master stats then replace with slave interface(masked) +X
-							if s.Alias() != "" {
-								ptpInterface = ptpTypes.IFace(fmt.Sprintf("%s/%s", s.Alias(), ptpMetrics.MasterClockType))
-							}
-							if config.TransportHost.Type == common.AMQ {
-								eventManager.PublishEvent(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.PtpStateChange)
-							} else {
-								eventData := eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.PtpStateChange)
-								if data == nil {
-									data = eventData
-								} else {
-									data.Values = append(data.Values, eventData.Values...)
-								}
-							}
-						} else if ptpInterface == ptpMetrics.ClockRealTime && strings.Contains(e.Source(), string(ptp.OsClockSyncState)) {
-							if config.TransportHost.Type == common.AMQ {
-								eventManager.PublishEvent(ptp.FREERUN, 0, "ptp-not-set", ptp.PtpStateChange)
-							} else {
-								eventData := eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), ptp.OsClockSyncStateChange)
-								if data == nil {
-									data = eventData
-								} else {
-									data.Values = append(data.Values, eventData.Values...)
-								}
-							}
+		}
+		// process events
+		var data *event.Data
+		processDataFn := func(data, d *event.Data) *event.Data {
+			if data == nil {
+				data = d
+			} else {
+				data.Values = append(data.Values, d.Values...)
+			}
+			return data
+		}
+		for _, ptpInterfaces := range eventManager.Stats {
+			for ptpInterface, s := range ptpInterfaces {
+				switch ptpInterface {
+				case ptpMetrics.MasterClockType:
+					if s.Alias() != "" {
+						ptpInterface = ptpTypes.IFace(fmt.Sprintf("%s/%s", s.Alias(), ptpMetrics.MasterClockType))
+					}
+					switch eventType {
+					case ptp.PtpStateChange:
+						// if its master stats then replace with slave interface(masked) +X
+						if config.TransportHost.Type == common.AMQ {
+							eventManager.PublishEvent(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType)
+							continue
+						} else {
+							data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType))
+						}
+					case ptp.PtpClockClassChange:
+						clockClass := fmt.Sprintf("%s/%s", string(ptpInterface), ptpMetrics.ClockClass)
+						if config.TransportHost.Type == common.AMQ {
+							eventManager.PublishEvent(s.SyncState(), s.ClockClass(), clockClass, eventType)
+							continue
+						} else {
+							data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.ClockClass(), clockClass, eventType))
+						}
+					}
+				case ptpMetrics.ClockRealTime:
+					if eventType == ptp.OsClockSyncStateChange {
+						if config.TransportHost.Type == common.AMQ {
+							eventManager.PublishEvent(ptp.FREERUN, s.LastOffset(), string(ptpInterface), eventType)
+							continue
+						} else {
+							data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType))
 						}
 					}
 				}
 			}
-			if config.TransportHost.Type != common.AMQ {
-				if data != nil {
-					d.Data = eventManager.GetPTPCloudEvents(*data, ptp.PtpStateChange)
-				} else {
-					return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
-				}
+		}
+		if config.TransportHost.Type != common.AMQ { //TODO: AMQ get status is not implemented as per O-RAN spec
+			if data != nil {
+				d.Data = eventManager.GetPTPCloudEvents(*data, eventType)
+			} else {
+				return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
 			}
-		} else if strings.Contains(e.Source(), string(ptp.PtpClockClass)) {
-			return fmt.Errorf("not implmented  %s", e.Source())
-		} else {
-			log.Warnf("could not find any events for requested resource type %s", e.Source())
-			return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
 		}
 		return nil
 	}

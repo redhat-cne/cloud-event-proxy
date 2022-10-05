@@ -11,7 +11,7 @@ replicas:
   name: cloud-consumer-deployment
 images:
 - name: cloud-event-consumer
-  newName: quay.io/aneeshkp/cloud-event-consumer
+  newName: quay.io/redhat-cne/cloud-event-consumer
   newTag: latest
 - name: cloud-event-sidecar
   newName: quay.io/redhat-cne/cloud-event-proxy

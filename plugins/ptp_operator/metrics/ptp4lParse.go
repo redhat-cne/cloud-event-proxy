@@ -26,6 +26,10 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			log.Errorf("clock class not in right format %s", output)
 			return
 		}
+		if _, found := ptpStats[master]; !found {
+			ptpStats[master] = stats.NewStats(configName)
+			ptpStats[master].SetProcessName(ptp4lProcessName)
+		}
 		// ptp4l 1646672953  ptp4l.0.config  CLOCK_CLASS_CHANGE 165.000000
 		clockClass, err := strconv.ParseFloat(fields[4], 64)
 		if err != nil {
@@ -39,7 +43,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 				alias, _ = ptp4lCfg.GetUnknownAlias()
 			}
 			masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
-
+			ptpStats[master].SetClockClass(int64(clockClass))
 			ClockClassMetrics.With(prometheus.Labels{
 				"process": processName, "node": ptpNodeName}).Set(clockClass)
 
