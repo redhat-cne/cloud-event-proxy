@@ -54,9 +54,9 @@ func main() {
 	wg.Add(1)
 	go server()
 
-	pubs := []*pubsub.PubSub{&pubsub.PubSub{
+	pubs := []*pubsub.PubSub{{
 		Resource: resourceAddressSports,
-	}, &pubsub.PubSub{
+	}, {
 		Resource: resourceAddressFinance,
 	}}
 	healthURL := &types.URI{URL: url.URL{Scheme: "http",

@@ -2,8 +2,6 @@ package ptp4lconf_test
 
 import (
 	"fmt"
-
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -67,7 +65,7 @@ func Test_Config(t *testing.T) {
 	// Update config
 	newText := fmt.Sprintf("%d", time.Now().UnixNano())
 	log.Infof("writing to %s", filepath.Join(dirToWatch, ptp4l0Conf))
-	err = ioutil.WriteFile(filepath.Join(dirToWatch, ptp4l0Conf), []byte(newText), os.FileMode(0o600))
+	err = os.WriteFile(filepath.Join(dirToWatch, ptp4l0Conf), []byte(newText), os.FileMode(0o600))
 	assert.Nil(t, err)
 	log.Info("waiting...")
 	// WriteFile creates two events it might be an issue with test only
