@@ -84,7 +84,7 @@ func cleanUP() {
 	_ = scConfig.PubSubAPI.DeleteAllSubscriptions()
 }
 
-//Test_StartWithAMQP this is integration test skips if QDR is not connected
+// Test_StartWithAMQP this is integration test skips if QDR is not connected
 func Test_StartWithAMQP(t *testing.T) {
 	os.Setenv("NODE_NAME", "test_node")
 	defer cleanUP()
@@ -190,7 +190,7 @@ func Test_StartWithOutAMQP(t *testing.T) {
 
 }
 
-//Test_StartWithAMQP this is integration test skips if QDR is not connected
+// Test_StartWithAMQP this is integration test skips if QDR is not connected
 func Test_StartWithHTTP(t *testing.T) {
 	os.Setenv("NODE_NAME", "test_node")
 	scConfig.TransportHost = &common.TransportHost{

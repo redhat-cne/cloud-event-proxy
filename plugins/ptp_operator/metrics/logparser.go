@@ -164,6 +164,7 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 }
 
 // ExtractPTP4lEvent ... extract event form ptp4l logs
+//
 //	    "INITIALIZING to LISTENING on INIT_COMPLETE"
 //		"LISTENING to UNCALIBRATED on RS_SLAVE"
 //		"UNCALIBRATED to SLAVE on MASTER_CLOCK_SELECTED"

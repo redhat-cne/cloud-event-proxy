@@ -2,7 +2,7 @@ package ptp4lconf
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -212,7 +212,7 @@ func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpd
 
 func readAllConfig(dir string) []*PtpConfigUpdate {
 	var ptpConfigs []*PtpConfigUpdate
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		log.Errorf("error reading all config fils %s", err)
 	}
@@ -227,7 +227,7 @@ func readAllConfig(dir string) []*PtpConfigUpdate {
 }
 func readConfig(path string) (*PtpConfigUpdate, error) {
 	fName := filename(path)
-	b, err := ioutil.ReadFile(path)
+	b, err := os.ReadFile(path)
 	if err != nil {
 		log.Errorf("error reading ptpconfig %s error %s", path, err)
 		return nil, err
