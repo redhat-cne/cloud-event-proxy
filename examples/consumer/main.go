@@ -135,12 +135,7 @@ RETRY:
 			defer wg.Done()
 			for range time.Tick(StatusCheckInterval * time.Second) {
 				for _, s := range subs {
-					if tType == "AMQ" {
-						go pingForStatus(s.Resource, s.ID)
-					} else {
-						go getCurrentState(s.Resource)
-					}
-
+					go getCurrentState(s.Resource)
 				}
 			}
 		}()

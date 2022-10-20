@@ -22,6 +22,8 @@ import (
 	"strings"
 	"sync"
 
+	"k8s.io/utils/pointer"
+
 	"github.com/redhat-cne/sdk-go/pkg/event"
 
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
@@ -121,6 +123,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 				log.Infof("updating ptp profile changes %d", len(eventManager.PtpConfigMapUpdates.NodeProfiles))
 				// clean up
 				if len(eventManager.PtpConfigMapUpdates.NodeProfiles) == 0 {
+					log.Infof("Zero Profile to update: cleaning up threshold")
 					eventManager.PtpConfigMapUpdates.DeleteAllPTPThreshold()
 					for _, pConfig := range eventManager.Ptp4lConfigInterfaces {
 						ptpMetrics.DeleteThresholdMetrics(pConfig.Profile)
@@ -169,6 +172,11 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 // getCurrentStatOverrideFn is called when current state is received by rest api
 func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 	return func(e v2.Event, d *channel.DataChan) error {
+		log.Infof("setting retrun address to %s", e.Source())
+		if e.Source() != "" {
+			log.Infof("setting retrun address to %s", e.Source())
+			d.ReturnAddress = pointer.StringPtr(e.Source())
+		}
 		log.Infof("got status check call,send events for subscriber %s => %s", d.ClientID.String(), e.Source())
 		var eventType ptp.EventType
 		if strings.Contains(e.Source(), string(ptp.PtpLockState)) {
@@ -182,12 +190,8 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 			return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
 		}
 		if len(eventManager.Stats) == 0 {
-			if config.TransportHost.Type == common.AMQ {
-				eventManager.PublishEvent(ptp.FREERUN, 0, "ptp-not-set", eventType)
-			} else {
-				data := eventManager.GetPTPEventsData(ptp.FREERUN, 0, "ptp-not-set", eventType)
-				d.Data = eventManager.GetPTPCloudEvents(*data, eventType)
-			}
+			data := eventManager.GetPTPEventsData(ptp.FREERUN, 0, "ptp-not-set", eventType)
+			d.Data = eventManager.GetPTPCloudEvents(*data, eventType)
 			return nil
 		}
 		// process events
@@ -210,12 +214,7 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 					switch eventType {
 					case ptp.PtpStateChange:
 						// if its master stats then replace with slave interface(masked) +X
-						if config.TransportHost.Type == common.AMQ {
-							eventManager.PublishEvent(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType)
-							continue
-						} else {
-							data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType))
-						}
+						data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType))
 					case ptp.PtpClockClassChange:
 						clockClass := fmt.Sprintf("%s/%s", string(ptpInterface), ptpMetrics.ClockClass)
 						if config.TransportHost.Type == common.AMQ {
@@ -227,22 +226,15 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 					}
 				case ptpMetrics.ClockRealTime:
 					if eventType == ptp.OsClockSyncStateChange {
-						if config.TransportHost.Type == common.AMQ {
-							eventManager.PublishEvent(ptp.FREERUN, s.LastOffset(), string(ptpInterface), eventType)
-							continue
-						} else {
-							data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType))
-						}
+						data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType))
 					}
 				}
 			}
 		}
-		if config.TransportHost.Type != common.AMQ { //TODO: AMQ get status is not implemented as per O-RAN spec
-			if data != nil {
-				d.Data = eventManager.GetPTPCloudEvents(*data, eventType)
-			} else {
-				return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
-			}
+		if data != nil {
+			d.Data = eventManager.GetPTPCloudEvents(*data, eventType)
+		} else {
+			return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
 		}
 		return nil
 	}
