@@ -4,17 +4,16 @@
 //
 // Terms Of Service:
 //
-//     Schemes: http, https
-//     Host: localhost:8080
-//     Version: 1.0.0
-//     Contact: Aneesh Puttur<aputtur@redhat.com>
+//	Schemes: http, https
+//	Host: localhost:8080
+//	Version: 1.0.0
+//	Contact: Aneesh Puttur<aputtur@redhat.com>
 //
-//     Consumes:
-//     - application/json
+//	Consumes:
+//	- application/json
 //
-//     Produces:
-//     - application/json
-//
+//	Produces:
+//	- application/json
 //
 // swagger:meta
 package restapi
@@ -63,14 +62,12 @@ type Server struct {
 	port    int
 	apiPath string
 	//data out is amqp in channel
-	dataOut          chan<- *channel.DataChan
-	closeCh          <-chan struct{}
-	HTTPClient       *http.Client
-	httpServer       *http.Server
-	pubSubAPI        *pubsubv1.API
-	status           serverStatus
-	transportType    string // AMQ or HTTP
-	transportAddress string // for AMQ this is base address to return events
+	dataOut    chan<- *channel.DataChan
+	closeCh    <-chan struct{}
+	HTTPClient *http.Client
+	httpServer *http.Server
+	pubSubAPI  *pubsubv1.API
+	status     serverStatus
 }
 
 // publisher/subscription data model
@@ -118,16 +115,14 @@ type swaggReqAccepted struct { //nolint:deadcode,unused
 }
 
 // InitServer is used to supply configurations for rest routes server
-func InitServer(port int, apiPath, storePath string, transportType string, transportAddress string, dataOut chan<- *channel.DataChan, closeCh <-chan struct{}) *Server {
+func InitServer(port int, apiPath, storePath string, dataOut chan<- *channel.DataChan, closeCh <-chan struct{}) *Server {
 	once.Do(func() {
 		ServerInstance = &Server{
-			port:             port,
-			apiPath:          apiPath,
-			dataOut:          dataOut,
-			closeCh:          closeCh,
-			status:           notReady,
-			transportType:    transportType,
-			transportAddress: transportAddress,
+			port:    port,
+			apiPath: apiPath,
+			dataOut: dataOut,
+			closeCh: closeCh,
+			status:  notReady,
 			HTTPClient: &http.Client{
 				Transport: &http.Transport{
 					MaxIdleConnsPerHost: 20,
@@ -179,7 +174,7 @@ func (s *Server) Port() int {
 	return s.port
 }
 
-//Ready gives the status of the server
+// Ready gives the status of the server
 func (s *Server) Ready() bool {
 	return s.status == started
 }

@@ -18,9 +18,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cloudevents/sdk-go/v2/binding"
 
 	"github.com/redhat-cne/sdk-go/pkg/localmetrics"
 	log "github.com/sirupsen/logrus"
@@ -33,9 +36,13 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/protocol"
 )
 
-/*var (
+/*
+var (
+
 	_ protocol.Protocol = (*Router)(nil)
-)*/
+
+)
+*/
 var (
 	amqpLinkCredit uint32 = 50
 	cancelTimeout         = 100 * time.Millisecond
@@ -43,7 +50,7 @@ var (
 	channelBuffer  int    = 10
 )
 
-//Protocol ...
+// Protocol ...
 type Protocol struct {
 	protocol.Binder
 	Protocol *amqp1.Protocol
@@ -56,7 +63,7 @@ const (
 	closed
 )
 
-//Router defines QDR router object
+// Router defines QDR router object
 type Router struct {
 	sync.RWMutex
 	Listeners           map[string]*Protocol
@@ -73,7 +80,23 @@ type Router struct {
 	CloseCh <-chan struct{}
 }
 
-//InitServer initialize QDR configurations
+// String
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
+}
+
+// RandStringRunes ... for status bus address
+func RandStringRunes(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))] //nolint:gosec
+	}
+	return string(b)
+}
+
+// InitServer initialize QDR configurations
 func InitServer(amqpHost string, dataIn <-chan *channel.DataChan, dataOut chan<- *channel.DataChan, closeCh <-chan struct{}) (*Router, error) {
 	server := Router{
 		Listeners:     map[string]*Protocol{},
@@ -250,16 +273,48 @@ func (q *Router) QDRRouter(wg *sync.WaitGroup) {
 						localmetrics.UpdateEventCreatedCount(d.Address, localmetrics.FAILED, 1)
 					}
 				} else if d.Type == channel.STATUS && d.Status == channel.NEW {
+					statusAddress := fmt.Sprintf("%s/%s", d.Address, "status")
 					if q.state != connected {
 						log.Errorf("amqp connection is not in `connected` state; ignoring event posted for %s", d.Address)
 						d.Status = channel.FAILED
 						q.DataOut <- d
-						localmetrics.UpdateStatusCheckCount(d.Address, localmetrics.CONNECTION_RESET, 1)
-					} else if _, ok := q.Senders[d.Address]; ok {
-						q.SendTo(wg, d.Address, d.Data, d.Type)
+						localmetrics.UpdateStatusCheckCount(statusAddress, localmetrics.CONNECTION_RESET, 1)
 					} else {
-						log.Warnf("received new status check, but did not find sender for address %s, will not try to create.", d.Address)
-						localmetrics.UpdateStatusCheckCount(d.Address, localmetrics.FAILED, 1)
+						if _, ok := q.Senders[statusAddress]; !ok {
+							if e := q.NewSender(statusAddress); e != nil {
+								log.Warnf("received new status check, but failed to create sender for address %s, will not try to create.", statusAddress)
+								localmetrics.UpdateStatusCheckCount(statusAddress, localmetrics.FAILED, 1)
+							}
+						}
+
+						sendToStatusChannel := func(d *channel.DataChan, e *cloudevents.Event) {
+							if d.StatusChan == nil || e == nil {
+								return
+							}
+							defer func() {
+								if r := recover(); r != nil {
+									log.Infof("close channel: recovered in f %s", r)
+								}
+							}()
+							select {
+							case d.StatusChan <- &channel.StatusChan{
+								ClientID: d.ClientID,
+								Data:     e,
+							}:
+							case <-time.After(5 * time.Second):
+								log.Info("timed out sending current state back to calling channel")
+							}
+						}
+						// create receiver
+						d.ReturnAddress = func() *string {
+							s := fmt.Sprintf("%s/%s", d.Address, RandStringRunes(5))
+							return &s
+						}()
+						go q.ReceiveMsg(d, sendToStatusChannel)
+						//send  to get event status
+						log.Infof("sending status requerst to status address %s with return %s", statusAddress, *d.ReturnAddress)
+						d.Data.SetSource(*d.ReturnAddress)
+						q.SendTo(wg, statusAddress, d.Data, d.Type)
 					}
 				}
 			case <-q.CloseCh:
@@ -356,6 +411,70 @@ func (q *Router) NewSender(address string) error {
 	return nil
 }
 
+// NewSenderObject creates new QDR ptp
+func (q *Router) NewSenderObject(address string) (*Protocol, error) {
+	var opts []amqp1.Option
+	session, err := q.NewSession([]amqp.SessionOption{})
+	if err != nil {
+		log.Errorf("failed to create an amqp session for a sender : %v", err)
+		return nil, err
+	}
+	p, err := amqp1.NewSenderProtocolFromClient(q.Client, session, address, opts...)
+	if err != nil {
+		log.Errorf("failed to create an amqp sender protocol: %v", err)
+		return nil, errorhandler.SenderError{
+			Name: address,
+			Desc: err.Error(),
+		}
+	}
+	c, err := cloudevents.NewClient(p)
+	if err != nil {
+		log.Errorf("failed to create an amqp sender client: %v", err)
+		return nil, errorhandler.CloudEventsClientError{
+			Desc: err.Error(),
+		}
+	}
+	log.Infof("created new sender for %s", address)
+	l := Protocol{Protocol: p}
+	l.Client = c
+	return &l, nil
+}
+
+func (q *Router) ReceiveMsg(d *channel.DataChan, f func(d *channel.DataChan, e *cloudevents.Event)) {
+	var opts []amqp1.Option
+	log.Infof("waiting to receive message at %s", *d.ReturnAddress)
+	defer func() {
+		if r := recover(); r != nil {
+			log.Infof(": recovered in  receiverMsg %s", r)
+		}
+	}()
+	opts = append(opts, amqp1.WithReceiverLinkOption(amqp.LinkCredit(amqpLinkCredit)))
+	session, err := q.NewSession([]amqp.SessionOption{})
+	if err != nil {
+		log.Errorf("failed to create an amqp session for a receiver : %v", err)
+		return
+	}
+	p, err := amqp1.NewReceiverProtocolFromClient(q.Client, session, *d.ReturnAddress, opts...)
+	if err != nil {
+		log.Errorf("failed to create an amqp protocol for a receiver: %v", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	msg, errRec := p.Receive(ctx)
+	if errRec != nil {
+		log.Errorf("error waitin gto status return %s = %s", errRec, *d.ReturnAddress)
+	} else {
+		var e *cloudevents.Event
+		if e, err = binding.ToEvent(context.TODO(), msg); err == nil {
+			log.Infof("got the status msg %v", e.String())
+			f(d, e)
+		} else {
+			log.Errorf("error reading message in receive function %s", err)
+		}
+	}
+}
+
 // NewReceiver creates new QDR receiver
 func (q *Router) NewReceiver(address string) error {
 	var opts []amqp1.Option
@@ -444,65 +563,7 @@ func (q *Router) SendTo(wg *sync.WaitGroup, address string, e *cloudevents.Event
 			return
 		}
 		wg.Add(1)
-		go func(q *Router, sender *Protocol, eventType channel.Type, address string, e *cloudevents.Event, wg *sync.WaitGroup) {
-			defer wg.Done()
-			ctx, cancel := context.WithTimeout(context.Background(), q.cancelTimeout)
-			defer cancel()
-			//sendTimes := 3
-			//sendCount := 0
-			//RetrySend:
-			if sender.Client == nil {
-				log.Errorf("sender object is nil for %s", sender.Address)
-			}
-			if result := sender.Client.Send(ctx, *e); cloudevents.IsUndelivered(result) {
-				log.Errorf("failed to send(TO): %s result %v ", address, result)
-				if result == io.EOF {
-					q.SetSender(address, nil)
-					log.Errorf("%s failed to send: %v", eventType, result)
-					if eventType == channel.EVENT {
-						localmetrics.UpdateEventCreatedCount(address, localmetrics.CONNECTION_RESET, 1)
-					} else if eventType == channel.STATUS {
-						localmetrics.UpdateStatusCheckCount(address, localmetrics.CONNECTION_RESET, 1)
-					}
-					q.DataOut <- &channel.DataChan{
-						Address: address,
-						Data:    e,
-						Status:  channel.FAILED,
-						Type:    eventType,
-					}
-					q.reConnect(wg)
-					//connection lost or connection must have cleaned
-				} else {
-					// try 3 times
-					/*for sendCount < sendTimes {
-						log.Warnf("retry for %d times and then declare connection error\n", sendTimes)
-						time.Sleep(q.retryTimeout)
-						sendCount++
-						goto RetrySend
-					}*/
-					//log.Errorf("%s failed to send after %d : %v", eventType, sendTimes, result)
-					if eventType == channel.EVENT {
-						localmetrics.UpdateEventCreatedCount(address, localmetrics.FAILED, 1)
-					} else if eventType == channel.STATUS {
-						localmetrics.UpdateEventCreatedCount(address, localmetrics.FAILED, 1)
-					}
-					q.DataOut <- &channel.DataChan{
-						Address: address,
-						Data:    e,
-						Status:  channel.FAILED,
-						Type:    eventType,
-					}
-				}
-			} else if cloudevents.IsACK(result) {
-				localmetrics.UpdateEventCreatedCount(address, localmetrics.SUCCESS, 1)
-				q.DataOut <- &channel.DataChan{
-					Address: address,
-					Data:    e,
-					Status:  channel.SUCCESS,
-					Type:    eventType,
-				}
-			}
-		}(q, sender, eventType, address, e, wg)
+		go SendEvents(q, sender, eventType, address, e, wg)
 	}
 }
 
@@ -522,22 +583,38 @@ func (q *Router) setReceiver(wg *sync.WaitGroup, d *channel.DataChan) error {
 				ProcessEventFn: d.ProcessEventFn,
 			}
 			if d.OnReceiveOverrideFn != nil {
-				if err := d.OnReceiveOverrideFn(e, &out); err != nil {
+				if err = d.OnReceiveOverrideFn(e, &out); err != nil {
 					out.Status = channel.FAILED
-					localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED, 1)
 				} else {
-					localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS, 1)
-					out.Status = channel.SUCCESS
+					if out.ReturnAddress != nil {
+						var senderErr error
+						var sender *Protocol
+						if sender, senderErr = q.NewSenderObject(*out.ReturnAddress); senderErr == nil {
+							ctx, cancel := context.WithTimeout(context.Background(), q.cancelTimeout)
+							defer cancel()
+							if result := sender.Client.Send(ctx, *out.Data); cloudevents.IsUndelivered(result) {
+								log.Errorf("failed to send(TO): %s result %v ", *out.ReturnAddress, result)
+								out.Status = channel.FAILED
+							} else if cloudevents.IsACK(result) {
+								log.Errorf("success status to send(TO): %s result %v ", *out.ReturnAddress, result)
+								out.Status = channel.SUCCESS
+							}
+						} else {
+							log.Infof("Failed  to send status event %s", senderErr)
+							out.Status = channel.FAILED
+						}
+					} else {
+						out.Status = channel.SUCCESS
+					}
 				}
 			} else {
-				localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS, 1)
+				out.Status = channel.SUCCESS
 			}
 			q.DataOut <- &out
 		}
 	}
 	wg.Add(1)
 	go q.Receive(wg, d.Address, d.OnReceiveFn)
-	log.Infof("done setting up receiver for consumer")
 	return nil
 }
 
@@ -550,7 +627,7 @@ func NewSenderReceiver(hostName string, port int, senderAddress, receiverAddress
 	return
 }
 
-//NewReceiver creates new receiver object
+// NewReceiver creates new receiver object
 func NewReceiver(hostName string, port int, receiverAddress string) (*Protocol, error) {
 	receiver := &Protocol{}
 	var opts []amqp1.Option
@@ -576,7 +653,7 @@ func NewReceiver(hostName string, port int, receiverAddress string) (*Protocol, 
 	return receiver, nil
 }
 
-//NewSender creates new QDR ptp
+// NewSender creates new QDR ptp
 func NewSender(hostName string, port int, address string) (*Protocol, error) {
 	sender := &Protocol{}
 	var opts []amqp1.Option
@@ -598,4 +675,47 @@ func NewSender(hostName string, port int, address string) (*Protocol, error) {
 	sender.Protocol = p
 	sender.Client = c
 	return sender, nil
+}
+func SendEvents(q *Router, sender *Protocol, eventType channel.Type, address string, e *cloudevents.Event, wg *sync.WaitGroup) {
+	defer wg.Done()
+	ctx, cancel := context.WithTimeout(context.Background(), q.cancelTimeout)
+	defer cancel()
+	//sendTimes := 3
+	//sendCount := 0
+	//RetrySend:
+	if sender.Client == nil {
+		log.Errorf("sender object is nil for %s", sender.Address)
+	}
+	if result := sender.Client.Send(ctx, *e); cloudevents.IsUndelivered(result) {
+		log.Errorf("failed to send(TO): %s result %v ", address, result)
+		if result == io.EOF {
+			q.SetSender(address, nil)
+			log.Errorf("%s failed to send: %v", eventType, result)
+			localmetrics.UpdateEventCreatedCount(address, localmetrics.CONNECTION_RESET, 1)
+			q.DataOut <- &channel.DataChan{
+				Address: address,
+				Data:    e,
+				Status:  channel.FAILED,
+				Type:    eventType,
+			}
+			q.reConnect(wg)
+			//connection lost or connection must have cleaned
+		} else {
+			localmetrics.UpdateEventCreatedCount(address, localmetrics.FAILED, 1)
+			q.DataOut <- &channel.DataChan{
+				Address: address,
+				Data:    e,
+				Status:  channel.FAILED,
+				Type:    eventType,
+			}
+		}
+	} else if cloudevents.IsACK(result) {
+		localmetrics.UpdateEventCreatedCount(address, localmetrics.SUCCESS, 1)
+		q.DataOut <- &channel.DataChan{
+			Address: address,
+			Data:    e,
+			Status:  channel.SUCCESS,
+			Type:    eventType,
+		}
+	}
 }

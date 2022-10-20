@@ -184,11 +184,11 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/redhat-cne/rest-api v0.1.1-0.20220930211744-0c9d56053f5f
+# github.com/redhat-cne/rest-api v0.1.1-0.20221020142156-dbddffd9d79d
 ## explicit; go 1.17
 github.com/redhat-cne/rest-api
 github.com/redhat-cne/rest-api/pkg/localmetrics
-# github.com/redhat-cne/sdk-go v0.1.1-0.20220930204039-4f4a81946028
+# github.com/redhat-cne/sdk-go v0.1.1-0.20221019185339-844f1f1ce6eb
 ## explicit; go 1.17
 github.com/redhat-cne/sdk-go/pkg/channel
 github.com/redhat-cne/sdk-go/pkg/errorhandler
