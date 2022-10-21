@@ -17,7 +17,7 @@ linters-settings:
     # minimal code complexity to report, 30 by default (but we recommend 10-20)
     min-complexity: 30
   govet:
-    check-shadowing: false
+    check-shadowing: true
   goconst:
     min-len: 3
     min-occurrences: 4
@@ -39,7 +39,8 @@ linters:
     - ineffassign
     - megacheck
     - misspell
-    - structcheck
+    #- structcheck
+    - stylecheck
     - typecheck
     - unconvert
     - unparam

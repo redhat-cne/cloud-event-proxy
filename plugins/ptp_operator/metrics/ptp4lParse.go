@@ -31,7 +31,8 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			ptpStats[master].SetProcessName(ptp4lProcessName)
 		}
 		// ptp4l 1646672953  ptp4l.0.config  CLOCK_CLASS_CHANGE 165.000000
-		clockClass, err := strconv.ParseFloat(fields[4], 64)
+		var clockClass float64
+		clockClass, err = strconv.ParseFloat(fields[4], 64)
 		if err != nil {
 			log.Error("error parsing clock class change")
 		} else {

@@ -21,7 +21,7 @@ func Listen(addr string) (l net.Listener, e error) {
 	// socket and remove it if it is. Then we try to listen one more time.
 	l, err = net.ListenUnix("unix", uAddr)
 	if err != nil {
-		if err := removeIfStaleUnixSocket(addr); err != nil {
+		if err = removeIfStaleUnixSocket(addr); err != nil {
 			return nil, err
 		}
 		if l, err = net.ListenUnix("unix", uAddr); err != nil {

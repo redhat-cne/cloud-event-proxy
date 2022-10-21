@@ -67,7 +67,7 @@ func New(kubeConfig string) *Set {
 		panic(err)
 	}
 
-	if err := apiext.AddToScheme(myScheme); err != nil {
+	if err = apiext.AddToScheme(myScheme); err != nil {
 		panic(err)
 	}
 
