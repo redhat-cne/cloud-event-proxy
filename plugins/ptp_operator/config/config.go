@@ -332,7 +332,7 @@ func (l *LinuxPTPConfigMapUpdate) updatePtpConfig(nodeName string) {
 	nodeProfile := filepath.Join(l.profilePath, nodeName)
 	if _, err := os.Stat(nodeProfile); err != nil {
 		if os.IsNotExist(err) {
-			log.Infof("ptp profile doesn't exist for node: %v", nodeName)
+			log.Infof("ptp profile %s doesn't exist for node: %v , error %s", nodeProfile, nodeName, err.Error())
 			l.UpdateCh <- true // if profile doesn't exist let the caller know
 			return
 		}

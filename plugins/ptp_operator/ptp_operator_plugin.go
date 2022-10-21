@@ -172,7 +172,6 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 // getCurrentStatOverrideFn is called when current state is received by rest api
 func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 	return func(e v2.Event, d *channel.DataChan) error {
-		log.Infof("setting retrun address to %s", e.Source())
 		if e.Source() != "" {
 			log.Infof("setting retrun address to %s", e.Source())
 			d.ReturnAddress = pointer.StringPtr(e.Source())

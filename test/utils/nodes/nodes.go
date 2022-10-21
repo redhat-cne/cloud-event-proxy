@@ -47,10 +47,10 @@ func FilterNodes(nodesSelector string, toFilter []NodeTopology) ([]NodeTopology,
 		LabelSelector: nodesSelector,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("Error in getting nodes matching the %s label selector, %v", nodesSelector, err)
+		return nil, fmt.Errorf("error in getting nodes matching the %s label selector, %v", nodesSelector, err)
 	}
 	if len(toMatch.Items) == 0 {
-		return nil, fmt.Errorf("Failed to get nodes matching %s label selector", nodesSelector)
+		return nil, fmt.Errorf("failed to get nodes matching %s label selector", nodesSelector)
 	}
 
 	res := make([]NodeTopology, 0)
@@ -63,7 +63,7 @@ func FilterNodes(nodesSelector string, toFilter []NodeTopology) ([]NodeTopology,
 		}
 	}
 	if len(res) == 0 {
-		return nil, fmt.Errorf("Failed to find matching nodes with %s label selector", nodesSelector)
+		return nil, fmt.Errorf("failed to find matching nodes with %s label selector", nodesSelector)
 	}
 	return res, nil
 }
@@ -72,7 +72,7 @@ func FilterNodes(nodesSelector string, toFilter []NodeTopology) ([]NodeTopology,
 func GetNodes() ([]NodeTopology, error) {
 	nodes, err := testclient.Client.Nodes().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("Error in getting nodes  %v", err)
+		return nil, fmt.Errorf("error in getting nodes  %v", err)
 	}
 	res := make([]NodeTopology, 0)
 	for _, node := range nodes.Items {
@@ -83,7 +83,7 @@ func GetNodes() ([]NodeTopology, error) {
 		res = append(res, n)
 	}
 	if len(res) == 0 {
-		return nil, fmt.Errorf("Failed to find nodes")
+		return nil, fmt.Errorf("failed to find nodes")
 	}
 	return res, nil
 }

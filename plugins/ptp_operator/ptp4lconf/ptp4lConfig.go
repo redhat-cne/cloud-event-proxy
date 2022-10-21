@@ -180,7 +180,7 @@ func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpd
 				}
 				if event.Op&fsnotify.Write == fsnotify.Write {
 					if checkIfPtP4lConf(event.Name) {
-						if ptpConfig, err := readConfig(event.Name); err == nil {
+						if ptpConfig, configErr := readConfig(event.Name); configErr == nil {
 							log.Infof("sending ptpconfig changes for %s", *ptpConfig.Name)
 							updatedConfig <- ptpConfig
 						}
@@ -197,12 +197,12 @@ func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpd
 						updatedConfig <- ptpConfig
 					}
 				}
-			case err, ok := <-w.fsWatcher.Errors:
+			case fileErr, ok := <-w.fsWatcher.Errors:
 				if !ok {
-					log.Errorf("cannot read watcher error %s", err)
+					log.Errorf("cannot read watcher error %s", fileErr)
 					continue
 				}
-				log.Errorf("error while watching for file changes %s", err)
+				log.Errorf("error while watching for file changes %s", fileErr)
 			}
 		}
 	}()
