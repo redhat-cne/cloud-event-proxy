@@ -198,8 +198,7 @@ func StartPubSubService(scConfig *SCConfiguration) (*restapi.Server, error) {
 		scConfig.TransportHost.Type = UNKNOWN
 	}
 	server := restapi.InitServer(scConfig.APIPort, scConfig.APIPath,
-		scConfig.StorePath, scConfig.TransportHost.Type.ToString(),
-		scConfig.TransportHost.URL, scConfig.EventInCh, scConfig.CloseCh)
+		scConfig.StorePath, scConfig.EventInCh, scConfig.CloseCh)
 	server.Start()
 	err := server.EndPointHealthChk()
 	if err == nil {

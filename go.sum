@@ -441,10 +441,10 @@ github.com/prometheus/procfs v0.7.3/go.mod h1:cz+aTbrPOrUb4q7XlbU9ygM+/jj0fzG6c1
 github.com/prometheus/procfs v0.8.0 h1:ODq8ZFEaYeCaZOJlZZdJA2AbQR98dSHSM1KW/You5mo=
 github.com/prometheus/procfs v0.8.0/go.mod h1:z7EfXMXOkbkqb9IINtpCn86r/to3BnA0uaxHdg830/4=
 github.com/prometheus/tsdb v0.7.1/go.mod h1:qhTCs0VvXwvX/y3TZrWD7rabWM+ijKTux40TwIPHuXU=
-github.com/redhat-cne/rest-api v0.1.1-0.20220930211744-0c9d56053f5f h1:8/3+uRUV+F7AcNNgIp9uK+HFUrBziyOnLiMFzijPqZQ=
-github.com/redhat-cne/rest-api v0.1.1-0.20220930211744-0c9d56053f5f/go.mod h1:i47ICePrSiBveRS8pS94lJ4tEdk7E6Wa2aT3Snl6/3w=
-github.com/redhat-cne/sdk-go v0.1.1-0.20220930204039-4f4a81946028 h1:VsY/6A7fMi5AfvluWmzHsUVDjgDZf1JTAlvUKITnNmU=
-github.com/redhat-cne/sdk-go v0.1.1-0.20220930204039-4f4a81946028/go.mod h1:oiSLb2ub22f7hLZshVwzER4VgY8Q0gkdtD6j5bAbWVc=
+github.com/redhat-cne/rest-api v0.1.1-0.20221020142156-dbddffd9d79d h1:2kATItfoTlM2u4G45z+qt1g/VQrQOLEepR2aENLb9/g=
+github.com/redhat-cne/rest-api v0.1.1-0.20221020142156-dbddffd9d79d/go.mod h1:aK2gv9h3WYIqL4wpbudQjRAVZH67I+D+5D+BX+yz3EM=
+github.com/redhat-cne/sdk-go v0.1.1-0.20221019185339-844f1f1ce6eb h1:a7IInLU7AjmhPt/cqbQtlE02B6GbBCrrSmgohp9+bqQ=
+github.com/redhat-cne/sdk-go v0.1.1-0.20221019185339-844f1f1ce6eb/go.mod h1:kKOXU8uyHbpwXCKrjzH4WVLq2/RZ5pchiI2LLvmFi5E=
 github.com/rogpeppe/fastuuid v0.0.0-20150106093220-6724a57986af/go.mod h1:XWv6SoW27p1b0cqNHllgS5HIMJraePCO15w5zCzIWYg=
 github.com/rogpeppe/fastuuid v1.2.0/go.mod h1:jVj6XXZzXRy/MSR5jhDC/2q6DgLz+nrA6LYCDYWNEvQ=
 github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=

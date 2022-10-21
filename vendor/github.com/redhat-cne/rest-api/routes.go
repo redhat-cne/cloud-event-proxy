@@ -17,6 +17,7 @@ package restapi
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -37,27 +38,22 @@ import (
 
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 
-	"io/ioutil"
 	"log"
 	"net/http"
-)
-
-const (
-	AMQ  = "AMQ"
-	HTTP = "HTTP"
 )
 
 // createSubscription create subscription and send it to a channel that is shared by middleware to process
 // Creates a new subscription .
 // If subscription exists with same resource then existing subscription is returned .
 // responses:
-//  201: repoResp
-//  400: badReq
-//  204: noContent
+//
+//	201: repoResp
+//	400: badReq
+//	204: noContent
 func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var response *http.Response
-	bodyBytes, err := ioutil.ReadAll(r.Body)
+	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -106,13 +102,14 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 // Creates a new publisher .
 // If publisher exists with same resource then existing publisher is returned .
 // responses:
-//  201: repoResp
-//  400: badReq
-//  204: noContent
+//
+//	201: repoResp
+//	400: badReq
+//	204: noContent
 func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var response *http.Response
-	bodyBytes, err := ioutil.ReadAll(r.Body)
+	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -281,7 +278,7 @@ func (s *Server) deleteAllPublishers(w http.ResponseWriter, r *http.Request) {
 // it to the consumer
 func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	bodyBytes, err := ioutil.ReadAll(r.Body)
+	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		respondWithError(w, err.Error())
 		return
@@ -361,26 +358,22 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 	} else {
 		// for http you send to the protocol address
 		statusChannel := make(chan *channel.StatusChan, 1)
-		if s.transportType == HTTP {
-			s.dataOut <- &channel.DataChan{
-				Type:       channel.STATUS,
-				Data:       ceEvent,
-				Address:    sub.GetResource(),
-				StatusChan: statusChannel,
+		s.dataOut <- &channel.DataChan{
+			Type:       channel.STATUS,
+			Data:       ceEvent,
+			Address:    sub.GetResource(),
+			StatusChan: statusChannel,
+		}
+		select {
+		case d := <-statusChannel:
+			if d.Data == nil {
+				respondWithError(w, "event not found")
+			} else {
+				respondWithJSON(w, http.StatusOK, *d.Data)
 			}
-			select {
-			case d := <-statusChannel:
-				if d.Data == nil {
-					respondWithError(w, "event not found")
-				} else {
-					respondWithJSON(w, http.StatusOK, *d.Data)
-				}
-			case <-time.After(5 * time.Second):
-				close(statusChannel)
-				respondWithError(w, "time Out waiting for status")
-			}
-		} else {
-			respondWithError(w, "Non HTTP protocol not supported")
+		case <-time.After(5 * time.Second):
+			close(statusChannel)
+			respondWithError(w, "time Out waiting for status")
 		}
 	}
 }
@@ -404,6 +397,7 @@ func (s *Server) pingForSubscribedEventStatus(w http.ResponseWriter, r *http.Req
 	cneEvent.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
 	cneEvent.SetDataContentType(cloudevents.ApplicationJSON)
 	cneEvent.SetData(cne.Data{
+
 		Version: "v1",
 	})
 	ceEvent, err := cneEvent.NewCloudEvent(&sub)
@@ -424,7 +418,7 @@ func (s *Server) pingForSubscribedEventStatus(w http.ResponseWriter, r *http.Req
 // logEvent gets cloud native events and converts it to cloud native event and writes to log
 func (s *Server) logEvent(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	bodyBytes, err := ioutil.ReadAll(r.Body)
+	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		respondWithError(w, err.Error())
 		return
