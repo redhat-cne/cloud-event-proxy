@@ -267,7 +267,6 @@ func (p *API) GetClientIDAddressByResource(resource string) map[uuid.UUID]*types
 
 // DeleteSubscription delete a subscriptionOne by id
 func (p *API) DeleteSubscription(clientID uuid.UUID, subscriptionID string) error {
-	log.Info("deleting subscriptionOne")
 	if subStore, ok := p.subscriberStore.Store[clientID]; ok { // client found
 		if sub, ok2 := subStore.SubStore.Store[subscriptionID]; ok2 {
 			err := deleteFromFile(*sub, fmt.Sprintf("%s/%s", p.storeFilePath, fmt.Sprintf("%s.json", clientID)))
@@ -280,7 +279,6 @@ func (p *API) DeleteSubscription(clientID uuid.UUID, subscriptionID string) erro
 
 // DeleteAllSubscriptions  delete all subscriptionOne information
 func (p *API) DeleteAllSubscriptions(clientID uuid.UUID) error {
-	log.Info("deleting all subscriptionOne")
 	if subStore, ok := p.subscriberStore.Store[clientID]; ok { // client found
 		if err := deleteAllFromFile(fmt.Sprintf("%s/%s", p.storeFilePath, fmt.Sprintf("%s.json", clientID))); err != nil {
 			return err

@@ -463,7 +463,7 @@ func (q *Router) ReceiveMsg(d *channel.DataChan, f func(d *channel.DataChan, e *
 	defer cancel()
 	msg, errRec := p.Receive(ctx)
 	if errRec != nil {
-		log.Errorf("error waitin gto status return %s = %s", errRec, *d.ReturnAddress)
+		log.Errorf("error in waiting for current state %s = %s", errRec, *d.ReturnAddress)
 	} else {
 		var e *cloudevents.Event
 		if e, err = binding.ToEvent(context.TODO(), msg); err == nil {
