@@ -54,7 +54,7 @@ func Test_WriteMetricsToSocket(t *testing.T) {
 		return
 	}
 
-	defer c.Close()
+	defer func() { _ = c.Close() }()
 
 	for i := 0; i < logLength; i++ {
 		_, err = c.Write([]byte(logsData[i]))
@@ -68,9 +68,9 @@ func Test_WriteMetricsToSocket(t *testing.T) {
 }
 
 func listenToTestMetrics() {
-	l, err := ptp_socket.Listen("/tmp/go.sock")
-	if err != nil {
-		log.Printf("error setting up socket %s", err)
+	l, sErr := ptp_socket.Listen("/tmp/go.sock")
+	if sErr != nil {
+		log.Printf("error setting up socket %s", sErr)
 		return
 	}
 	log.Printf("connection established successfully")

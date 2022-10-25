@@ -114,10 +114,11 @@ func (p *PTPEventManager) GetPTPConfig(configName types.ConfigName) *ptp4lconf.P
 
 // GetStatsForInterface ... get stats for interface
 func (p *PTPEventManager) GetStatsForInterface(name types.ConfigName, iface types.IFace) map[types.IFace]*stats.Stats {
-	if _, found := p.Stats[name]; !found {
+	var found bool
+	if _, found = p.Stats[name]; !found {
 		p.Stats[name] = make(map[types.IFace]*stats.Stats)
 		p.Stats[name][iface] = stats.NewStats(string(name))
-	} else if _, found := p.Stats[name][iface]; !found {
+	} else if _, found = p.Stats[name][iface]; found {
 		p.Stats[name][iface] = stats.NewStats(string(name))
 	}
 	return p.Stats[name]
@@ -145,6 +146,7 @@ func (p *PTPEventManager) PublishClockClassEvent(clockClass float64, source stri
 	p.publish(*data, resourceAddress, eventType)
 }
 
+// GetPTPEventsData ... get PTP event data object
 func (p *PTPEventManager) GetPTPEventsData(state ptp.SyncState, ptpOffset int64, source string, eventType ptp.EventType) *ceevent.Data {
 	// create an event
 	if state == "" {
@@ -178,9 +180,9 @@ func (p *PTPEventManager) GetPTPEventsData(state ptp.SyncState, ptpOffset int64,
 func (p *PTPEventManager) GetPTPCloudEvents(data ceevent.Data, eventType ptp.EventType) *cloudevents.Event {
 	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
 	if pubs, ok := p.publisherTypes[eventType]; ok {
-		cneEvent, err := common.CreateEvent(pubs.PubID, string(eventType), resourceAddress, data)
-		if err != nil {
-			log.Errorf("failed to create ptp event, %s", err)
+		cneEvent, cneErr := common.CreateEvent(pubs.PubID, string(eventType), resourceAddress, data)
+		if cneErr != nil {
+			log.Errorf("failed to create ptp event, %s", cneErr)
 			return nil
 		}
 		if ceEvent, err := common.GetPublishingCloudEvent(p.scConfig, cneEvent); err == nil {

@@ -108,7 +108,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 					p.GenPTPEvent(profileName, m, masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
 				}
 				if s, ok := ptpStats[ClockRealTime]; ok {
-					if t, ok := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && t.Phc2SysEnabled() {
+					if t, ok2 := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok2 && t.Phc2SysEnabled() {
 						p.GenPTPEvent(profileName, s, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
 					}
 				}

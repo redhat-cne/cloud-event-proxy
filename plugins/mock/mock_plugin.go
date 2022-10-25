@@ -62,8 +62,8 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	// method to execute when ping is received
 	onStatusRequestFn := func(e v2.Event, d *channel.DataChan) error {
 		log.Infof("got status check call,fire events for publisher %s", pub.Resource)
-		re, err := createMockEvent(pub) // create a mock event
-		if err != nil {
+		re, mErr := createMockEvent(pub) // create a mock event
+		if mErr != nil {
 			log.Errorf("failed sending mock event on status pings %s", err)
 		} else {
 			_ = common.PublishEventViaAPI(config, re)
@@ -82,11 +82,11 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		defer wg.Done()
 		for range time.Tick(5 * time.Second) {
 			// create an event
-			if mEvent, err := createMockEvent(pub); err == nil {
+			if mEvent, mockEventErr := createMockEvent(pub); mockEventErr == nil {
 				mEvent.Type = mockEventType
 				mEvent.Data.Values[0].Value = mockEventStateLocked
 				mEvent.Data.Values[1].Value = mockEventValue
-				if err = common.PublishEventViaAPI(config, mEvent); err != nil {
+				if mockEventErr = common.PublishEventViaAPI(config, mEvent); mockEventErr != nil {
 					log.Errorf("error publishing events %s", err)
 				}
 			} else {

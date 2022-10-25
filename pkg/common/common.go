@@ -328,7 +328,7 @@ func APIHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
 			continue
 		}
 		if response != nil && response.StatusCode == http.StatusOK {
-			response.Body.Close()
+			_ = response.Body.Close()
 			log.Info("rest service returned healthy status")
 			time.Sleep(delay)
 			err = nil

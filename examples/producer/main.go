@@ -18,7 +18,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"sync"
@@ -114,12 +114,13 @@ func createPublisher(resourceAddress string) []byte {
 		Path: fmt.Sprintf("%s%s", apiPath, "publishers")}}
 	endpointURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: localAPIAddr,
-		Path: fmt.Sprintf("%s", "ack/event")}}
+		Path: "ack/event"}}
 	log.Infof("publisher endpoint %s", endpointURL.String())
 	pub := v1pubsub.NewPubSub(endpointURL, resourceAddress)
 	if b, err := json.Marshal(&pub); err == nil {
+		var status int
 		rc := restclient.New()
-		if status, b := rc.PostWithReturn(publisherURL, b); status == http.StatusCreated {
+		if status, b = rc.PostWithReturn(publisherURL, b); status == http.StatusCreated {
 			log.Infof("create publisher status %s", string(b))
 			return b
 		}
@@ -151,7 +152,7 @@ func server() {
 
 func ackEvent(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
-	bodyBytes, err := ioutil.ReadAll(req.Body)
+	bodyBytes, err := io.ReadAll(req.Body)
 	if err != nil {
 		log.Errorf("error reading acknowledgment  %v", err)
 	}

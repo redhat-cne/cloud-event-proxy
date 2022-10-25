@@ -151,15 +151,13 @@ func main() {
 	loadFromPubSubStore()
 	// assume this depends on rest plugin, or you can use api to create subscriptions
 	if common.GetBoolEnv("PTP_PLUGIN") {
-		err := pluginHandler.LoadPTPPlugin(&wg, scConfig, nil)
-		if err != nil {
+		if ptpPluginError := pluginHandler.LoadPTPPlugin(&wg, scConfig, nil); ptpPluginError != nil {
 			log.Fatalf("error loading ptp plugin %v", err)
 		}
 	}
 
 	if common.GetBoolEnv("MOCK_PLUGIN") {
-		err := pluginHandler.LoadMockPlugin(&wg, scConfig, nil)
-		if err != nil {
+		if mPluginError := pluginHandler.LoadMockPlugin(&wg, scConfig, nil); mPluginError != nil {
 			log.Fatalf("error loading mock plugin %v", err)
 		}
 	}
@@ -181,7 +179,7 @@ func metricServer(address string) {
 }
 
 // ProcessOutChannel this process the out channel;data put out by amqp
-func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) { // nolint:unused
+func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 	// Send back the acknowledgement to publisher
 	defer wg.Done()
 	postProcessFn := func(address string, status channel.Status) {
