@@ -317,7 +317,7 @@ func processPtp4lConfigFileUpdates() {
 					for _, ptpInterface := range ptpConfig.Interfaces {
 						ptpMetrics.DeleteInterfaceRoleMetrics(ptp4lProcessName, ptpInterface.Name)
 					}
-					if t, ok := eventManager.PtpConfigMapUpdates.EventThreshold[ptpConfig.Profile]; ok {
+					if t, ok2 := eventManager.PtpConfigMapUpdates.EventThreshold[ptpConfig.Profile]; ok2 {
 						// Make sure that the function does close the channel
 						t.SafeClose()
 					}
@@ -359,9 +359,9 @@ func createPublisher(address string) (pub pubsub.PubSub, err error) {
 func listenToSocket(wg *sync.WaitGroup) {
 	log.Info("establishing socket connection for metrics and events")
 	defer wg.Done()
-	l, err := ptpSocket.Listen(eventSocket)
-	if err != nil {
-		log.Errorf("error setting up socket %s", err)
+	l, sErr := ptpSocket.Listen(eventSocket)
+	if sErr != nil {
+		log.Errorf("error setting up socket %s", sErr)
 		return
 	}
 	log.Info("connection established successfully")
@@ -403,18 +403,18 @@ func HasEqualInterface(a []*string, b []*ptp4lconf.PTPInterface) bool {
 
 // InitPubSubTypes ... initialize types of publishers for ptp operator
 func InitPubSubTypes() map[ptp.EventType]*ptpTypes.EventPublisherType {
-	publishers := make(map[ptp.EventType]*ptpTypes.EventPublisherType)
-	publishers[ptp.OsClockSyncStateChange] = &ptpTypes.EventPublisherType{
+	InitPubs := make(map[ptp.EventType]*ptpTypes.EventPublisherType)
+	InitPubs[ptp.OsClockSyncStateChange] = &ptpTypes.EventPublisherType{
 		EventType: ptp.OsClockSyncStateChange,
 		Resource:  ptp.OsClockSyncState,
 	}
-	publishers[ptp.PtpClockClassChange] = &ptpTypes.EventPublisherType{
+	InitPubs[ptp.PtpClockClassChange] = &ptpTypes.EventPublisherType{
 		EventType: ptp.PtpClockClassChange,
 		Resource:  ptp.PtpClockClass,
 	}
-	publishers[ptp.PtpStateChange] = &ptpTypes.EventPublisherType{
+	InitPubs[ptp.PtpStateChange] = &ptpTypes.EventPublisherType{
 		EventType: ptp.PtpStateChange,
 		Resource:  ptp.PtpLockState,
 	}
-	return publishers
+	return InitPubs
 }

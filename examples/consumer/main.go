@@ -18,7 +18,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -143,7 +143,6 @@ RETRY:
 
 	log.Info("waiting for events")
 	wg.Wait()
-
 }
 
 func createSubscription(resourceAddress string) (sub pubsub.PubSub, err error) {
@@ -153,7 +152,7 @@ func createSubscription(resourceAddress string) (sub pubsub.PubSub, err error) {
 		Path: fmt.Sprintf("%s%s", apiPath, "subscriptions")}}
 	endpointURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: localAPIAddr,
-		Path: fmt.Sprintf("%s", "event")}}
+		Path: "event"}}
 
 	sub = v1pubsub.NewPubSub(endpointURL, resourceAddress)
 	var subB []byte
@@ -179,12 +178,13 @@ func createPublisherForStatusPing(resourceAddress string) []byte {
 		Path: fmt.Sprintf("%s%s", apiPath, "publishers")}}
 	endpointURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: localAPIAddr,
-		Path: fmt.Sprintf("%s", "ack/event")}}
+		Path: "ack/event"}}
 	log.Infof("publisher endpoint %s", endpointURL.String())
 	pub := v1pubsub.NewPubSub(endpointURL, fmt.Sprintf("%s/%s", resourceAddress, "status"))
 	if b, err := json.Marshal(&pub); err == nil {
 		rc := restclient.New()
-		if status, b := rc.PostWithReturn(publisherURL, b); status == http.StatusCreated {
+		var status int
+		if status, b = rc.PostWithReturn(publisherURL, b); status == http.StatusCreated {
 			log.Infof("create status ping publisher %s", string(b))
 			return b
 		}
@@ -195,22 +195,7 @@ func createPublisherForStatusPing(resourceAddress string) []byte {
 	return nil
 }
 
-// pingForStatus sends pings to fetch events status
-func pingForStatus(resource string, resourceID string) {
-	//create publisher
-	url := &types.URI{URL: url.URL{Scheme: "http",
-		Host: apiAddr,
-		Path: fmt.Sprintf("%s%s", apiPath, fmt.Sprintf("subscriptions/status/%s", resourceID))}}
-	rc := restclient.New()
-	status := rc.Put(url)
-	if status != http.StatusAccepted {
-		log.Errorf("error pinging for status check %d to url %s", status, url.String())
-	} else {
-		log.Debugf("ping check submitted for resource %s (%d)", resource, status)
-	}
-}
-
-// pingForStatus sends pings to fetch events status
+// getCurrentState get event state for the resource
 func getCurrentState(resource string) {
 	//create publisher
 	url := &types.URI{URL: url.URL{Scheme: "http",
@@ -234,7 +219,7 @@ func server() {
 
 func getEvent(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
-	bodyBytes, err := ioutil.ReadAll(req.Body)
+	bodyBytes, err := io.ReadAll(req.Body)
 	if err != nil {
 		log.Errorf("error reading event %v", err)
 	}
@@ -249,7 +234,7 @@ func getEvent(w http.ResponseWriter, req *http.Request) {
 
 func ackEvent(w http.ResponseWriter, req *http.Request) {
 	defer req.Body.Close()
-	bodyBytes, err := ioutil.ReadAll(req.Body)
+	bodyBytes, err := io.ReadAll(req.Body)
 	if err != nil {
 		log.Errorf("error reading acknowledgment  %v", err)
 	}

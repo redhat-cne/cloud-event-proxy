@@ -36,7 +36,7 @@ var (
 	RequestReadHeaderTimeout = 2 * time.Second
 )
 
-//Protocol ...
+// Protocol ...
 type Protocol struct {
 	protocol.Binder
 	Protocol *httpP.Protocol
@@ -71,7 +71,7 @@ type Server struct {
 	processEventFn          func(e interface{}) error
 }
 
-//InitServer initialize http configurations
+// InitServer initialize http configurations
 func InitServer(serviceName string, port int, storePath string, dataIn <-chan *channel.DataChan,
 	dataOut chan<- *channel.DataChan, closeCh <-chan struct{},
 	onStatusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error,
@@ -118,7 +118,7 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 			ProcessEventFn: h.processEventFn,
 		}
 		var obj subscriber.Subscriber
-		if err := json.Unmarshal(e.Data(), &obj); err != nil {
+		if err = json.Unmarshal(e.Data(), &obj); err != nil {
 			out.Status = channel.FAILED
 			localmetrics.UpdateSenderCreatedCount(out.Address, localmetrics.FAILED, 1)
 			log.Errorf("failied to parse subscription %s", err)
@@ -127,12 +127,12 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 			if obj.Action == channel.NEW {
 				if _, ok := h.Sender[obj.ClientID]; !ok { // we have a sender object
 					log.Infof("(1)subscriber not found for the following address %s by %s, will attempt to create", e.Source(), obj.GetEndPointURI())
-					if err := h.NewSender(obj.ClientID, obj.GetEndPointURI()); err != nil {
+					if err = h.NewSender(obj.ClientID, obj.GetEndPointURI()); err != nil {
 						log.Errorf("(1)error creating subscriber %v for address %s", err, obj.GetEndPointURI())
 						localmetrics.UpdateSenderCreatedCount(obj.GetEndPointURI(), localmetrics.FAILED, 1)
 						out.Status = channel.FAILED
 					} else {
-						if _, err := h.subscriberAPI.CreateSubscription(obj.ClientID, obj); err != nil {
+						if _, err = h.subscriberAPI.CreateSubscription(obj.ClientID, obj); err != nil {
 							localmetrics.UpdateSenderCreatedCount(obj.GetEndPointURI(), localmetrics.ACTIVE, 1)
 							out.Status = channel.SUCCESS
 						} else {
@@ -143,7 +143,7 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 				} else {
 					log.Infof("sender already present,updating %s", obj.ClientID.String())
 					out.Status = channel.SUCCESS
-					if _, err := h.subscriberAPI.CreateSubscription(obj.ClientID, obj); err != nil {
+					if _, err = h.subscriberAPI.CreateSubscription(obj.ClientID, obj); err != nil {
 						log.Errorf("failed creating subscriber %s", err)
 						out.Status = channel.FAILED
 					}
@@ -227,23 +227,25 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 	r.Handle("/subscription", subscriptionHandler)
 
 	err = r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
-		pathTemplate, err := route.GetPathTemplate()
+		var pathTemplate, pathRegexp string
+		var queriesTemplates, queriesRegexps, methods []string
+		pathTemplate, err = route.GetPathTemplate()
 		if err == nil {
 			log.Println("ROUTE:", pathTemplate)
 		}
-		pathRegexp, err := route.GetPathRegexp()
+		pathRegexp, err = route.GetPathRegexp()
 		if err == nil {
 			log.Println("Path regexp:", pathRegexp)
 		}
-		queriesTemplates, err := route.GetQueriesTemplates()
+		queriesTemplates, err = route.GetQueriesTemplates()
 		if err == nil {
 			log.Println("Queries templates:", strings.Join(queriesTemplates, ","))
 		}
-		queriesRegexps, err := route.GetQueriesRegexp()
+		queriesRegexps, err = route.GetQueriesRegexp()
 		if err == nil {
 			log.Println("Queries regexps:", strings.Join(queriesRegexps, ","))
 		}
-		methods, err := route.GetMethods()
+		methods, err = route.GetMethods()
 		if err == nil {
 			log.Println("Methods:", strings.Join(methods, ","))
 		}

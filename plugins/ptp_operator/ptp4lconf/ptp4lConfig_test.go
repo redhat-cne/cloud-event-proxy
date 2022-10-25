@@ -30,7 +30,11 @@ func SetUp() error {
 		log.Errorf("create file error %s", err)
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		if fErr := f.Close(); fErr != nil {
+			log.Printf("Error closing file: %s\n", err)
+		}
+	}()
 	_, err = f.Write([]byte(initialText))
 	if err != nil {
 		return err
