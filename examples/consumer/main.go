@@ -49,7 +49,7 @@ const (
 	// MOCK consumer
 	MOCK ConsumerTypeEnum = "MOCK"
 	// StatusCheckInterval for consumer to pull for status
-	StatusCheckInterval = 30
+	StatusCheckInterval = 60
 )
 
 var (
@@ -59,7 +59,6 @@ var (
 	resourcePrefix  string = "/cluster/node/%s%s"
 	mockResource    string = "/mock"
 	mockResourceKey string = "mock"
-	tType           string = "HTTP"
 )
 
 func main() {
@@ -67,7 +66,6 @@ func main() {
 	flag.StringVar(&localAPIAddr, "local-api-addr", "localhost:8989", "The address the local api binds to .")
 	flag.StringVar(&apiPath, "api-path", "/api/cloudNotifications/v1/", "The rest api path.")
 	flag.StringVar(&apiAddr, "api-addr", "localhost:8089", "The address the framework api endpoint binds to.")
-	flag.StringVar(&tType, "transport-type", "HTTP", "Transport Type used by the side car.")
 	flag.Parse()
 
 	nodeName := os.Getenv("NODE_NAME")
@@ -105,13 +103,6 @@ RETRY:
 			Resource: fmt.Sprintf(resourcePrefix, nodeName, resource),
 		})
 	}
-
-	// uncomment this if using AMQ only
-	if enableStatusCheck && tType == "AMQ" {
-		for _, s := range subs {
-			createPublisherForStatusPing(s.Resource) // ptp // disable this for testing else you will see context deadline error
-		}
-	}
 	// if AMQ enabled the subscription will create an AMQ listener client
 	// IF HTTP enabled, the subscription will post a subscription  requested to all
 	// publishers that are defined in http-event-publisher variable
@@ -133,6 +124,9 @@ RETRY:
 		go func() {
 			time.Sleep(5 * time.Second)
 			defer wg.Done()
+			for _, s := range subs {
+				go getCurrentState(s.Resource)
+			}
 			for range time.Tick(StatusCheckInterval * time.Second) {
 				for _, s := range subs {
 					go getCurrentState(s.Resource)
@@ -170,43 +164,18 @@ func createSubscription(resourceAddress string) (sub pubsub.PubSub, err error) {
 	return
 }
 
-func createPublisherForStatusPing(resourceAddress string) []byte {
-	//create publisher
-	log.Infof("creating sender for Status %s", fmt.Sprintf("%s/%s", resourceAddress, "status"))
-	publisherURL := &types.URI{URL: url.URL{Scheme: "http",
-		Host: apiAddr,
-		Path: fmt.Sprintf("%s%s", apiPath, "publishers")}}
-	endpointURL := &types.URI{URL: url.URL{Scheme: "http",
-		Host: localAPIAddr,
-		Path: "ack/event"}}
-	log.Infof("publisher endpoint %s", endpointURL.String())
-	pub := v1pubsub.NewPubSub(endpointURL, fmt.Sprintf("%s/%s", resourceAddress, "status"))
-	if b, err := json.Marshal(&pub); err == nil {
-		rc := restclient.New()
-		var status int
-		if status, b = rc.PostWithReturn(publisherURL, b); status == http.StatusCreated {
-			log.Infof("create status ping publisher %s", string(b))
-			return b
-		}
-		log.Errorf("status ping publisher create returned error %s", string(b))
-	} else {
-		log.Errorf("failed to create publisher for status ping ")
-	}
-	return nil
-}
-
 // getCurrentState get event state for the resource
 func getCurrentState(resource string) {
 	//create publisher
 	url := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
-		Path: fmt.Sprintf("%s%s", apiPath, fmt.Sprintf("%s/CurrentState", resource))}}
+		Path: fmt.Sprintf("%s%s", apiPath, fmt.Sprintf("%s/CurrentState", resource[1:]))}}
 	rc := restclient.New()
 	status, event := rc.Get(url)
 	if status != http.StatusOK {
 		log.Errorf("CurrentState:error %d from url %s, %s", status, url.String(), event)
 	} else {
-		log.Debugf("CurrentState: %s ", event)
+		log.Debugf("Got CurrentState: %s ", event)
 	}
 }
 
@@ -226,7 +195,7 @@ func getEvent(w http.ResponseWriter, req *http.Request) {
 	e := string(bodyBytes)
 	if e != "" {
 		processEvent(bodyBytes)
-		log.Debugf("received event %s", string(bodyBytes))
+		log.Infof("received event %s", string(bodyBytes))
 	} else {
 		w.WriteHeader(http.StatusNoContent)
 	}
@@ -240,7 +209,7 @@ func ackEvent(w http.ResponseWriter, req *http.Request) {
 	}
 	e := string(bodyBytes)
 	if e != "" {
-		log.Debugf("received ack %s", string(bodyBytes))
+		log.Infof("received ack %s", string(bodyBytes))
 	} else {
 		w.WriteHeader(http.StatusNoContent)
 	}

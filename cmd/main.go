@@ -195,6 +195,8 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 				_ = restClient.Post(pub.EndPointURI,
 					[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, status)))
 			}
+		} else {
+			log.Errorf("postprocessfn:not finding publisher for address %s", address)
 		}
 	}
 	postHandler := func(err error, endPointURI *types.URI, address string) {
@@ -218,6 +220,7 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 				if err != nil {
 					log.Errorf("error marshalling event data when reading from transport %v\n %#v", err, d)
 					log.Infof("data %#v", d.Data)
+					continue
 				} else if d.Status == channel.NEW {
 					if d.ProcessEventFn != nil { // always leave event to handle by default method for events
 						if err = d.ProcessEventFn(event); err != nil {
