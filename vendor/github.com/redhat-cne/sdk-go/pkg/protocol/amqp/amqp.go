@@ -607,8 +607,6 @@ func (q *Router) setReceiver(wg *sync.WaitGroup, d *channel.DataChan) error {
 						out.Status = channel.SUCCESS
 					}
 				}
-			} else {
-				out.Status = channel.SUCCESS
 			}
 			q.DataOut <- &out
 		}
