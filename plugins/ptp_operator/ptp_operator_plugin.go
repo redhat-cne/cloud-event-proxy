@@ -173,7 +173,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 	return func(e v2.Event, d *channel.DataChan) error {
 		if e.Source() != "" {
-			log.Infof("setting retrun address to %s", e.Source())
+			log.Infof("setting return address to %s", e.Source())
 			d.ReturnAddress = pointer.StringPtr(e.Source())
 		}
 		log.Infof("got status check call,send events for subscriber %s => %s", d.ClientID.String(), e.Source())

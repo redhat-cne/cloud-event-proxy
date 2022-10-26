@@ -5,17 +5,20 @@ set -e
 deploy_consumer() {
   action=$1
   consumer_namespace=$2
-  amq_namespace=$3
+  transport_host=$3
+  http_event_publishers=$4
   consumer_service_account $action $consumer_namespace || true
   consumer_role $action $consumer_namespace || true
-  deploy_event_consumer $action $consumer_namespace $amq_namespace || true
+  deploy_event_consumer $action $consumer_namespace $transport_host $http_event_publishers || true
+  consumer_http_service $action $consumer_namespace || true
 
 }
 
 deploy_event_consumer() {
   action=$1
   consumer_namespace=$2
-  amq_namespace=$3
+  transport_host=$3
+  http_event_publishers=$4
   cat <<EOF | oc $action -n $consumer_namespace -f -
 apiVersion: apps/v1
 kind: Deployment
@@ -51,7 +54,6 @@ spec:
             - "--local-api-addr=127.0.0.1:9089"
             - "--api-path=/api/cloudNotifications/v1/"
             - "--api-addr=127.0.0.1:9095"
-            - "--transport-type=AMQ"
           env:
             - name: NODE_NAME
               valueFrom:
@@ -59,12 +61,15 @@ spec:
                   fieldPath: spec.nodeName
             - name: CONSUMER_TYPE
               value: "$CONSUMER_TYPE"
+            - name: ENABLE_STATUS_CHECK
+              value: "true"
         - name: cloud-event-proxy
-          image: "$IMG"
+          image: "$CNE_IMG"
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
-            - "--transport-host=amqp://amq-router.$amq_namespace.svc.cluster.local"
+            - "--transport-host=$transport_host"
+            - "--http-event-publishers=$http_event_publishers"
             - "--api-port=9095"
           env:
             - name: NODE_NAME
@@ -134,4 +139,27 @@ subjects:
     namespace: $consumer_namespace
 EOF
 
+}
+
+consumer_http_service(){
+  action=$1
+  consumer_namespace=$2
+  cat <<EOF | oc $action -n $consumer_namespace -f -
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: consumer-events-subscription-service
+    namespace: $consumer_namespace
+    labels:
+      app: consumer-service
+  spec:
+    ports:
+      - name: sub-port
+        port: 9043
+    selector:
+      app: consumer
+    clusterIP: None
+    sessionAffinity: None
+    type: ClusterIP
+EOF
 }

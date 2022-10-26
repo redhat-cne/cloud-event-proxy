@@ -8,7 +8,6 @@ VERSION ?=latest
 IMG ?= quay.io/openshift/origin-cloud-event-proxy:$(VERSION)
 CONSUMER_IMG ?= quay.io/redhat-cne/cloud-event-consumer:$(VERSION)
 
-
 # Export GO111MODULE=on to enable project to be built from within GOPATH/src
 export GO111MODULE=on
 export CGO_ENABLED=1

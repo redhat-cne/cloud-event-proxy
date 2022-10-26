@@ -5,15 +5,17 @@ set -e
 deploy_producer() {
   action=$1
   cne_namespace=$2
-  amq_namespace=$3
-  deploy_cne $action $cne_namespace $amq_namespace || true
+  transport_host=$3
+  deploy_cne $action $cne_namespace $transport_host || true
   producer_service_account $action $cne_namespace || true
   producer_role $action $cne_namespace || true
+  producer_http_service $action $cne_namespace || true
+
 }
 deploy_cne() {
   action=$1
   cne_namespace=$2
-  amq_namespace=$3
+  transport_host=$3
   cat <<EOF | oc $action -n $cne_namespace  -f -
 apiVersion: apps/v1
 kind: Deployment
@@ -44,11 +46,11 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: cloud-event-proxy
-          image: "$IMG"
+          image: "$CNE_IMG"
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
-            - "--transport-host=amqp://amq-router.$amq_namespace.svc.cluster.local"
+            - "--transport-host=$transport_host"
             - "--api-port=9095"
           env:
             - name: NODE_NAME
@@ -121,3 +123,25 @@ EOF
 
 }
 
+producer_http_service(){
+  action=$1
+  producer_namespace=$2
+  cat <<EOF | oc $action -n $producer_namespace -f -
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: mock-event-publisher-service
+    namespace: $producer_namespace
+    labels:
+      app: producer-service
+  spec:
+    ports:
+      - name: sub-port
+        port: 9043
+    selector:
+      app: producer
+    clusterIP: None
+    sessionAffinity: None
+    type: ClusterIP
+EOF
+}

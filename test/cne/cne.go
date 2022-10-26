@@ -146,12 +146,9 @@ var _ = ginkgo.Describe("validation", func() {
 					fmt.Sprintf("Event publisher was not created in pod %s", producerPod.Name))
 				gomega.Expect(podLogs).Should(gomega.ContainSubstring("event sent"),
 					fmt.Sprintf("Event was not generated in the pod %s", producerPod.Name))
-				gomega.Expect(podLogs).ShouldNot(gomega.ContainSubstring("context deadline exceeded"),
-					fmt.Sprintf("AMQ failed to post due to context deadline exceeded %s", producerPod.Name))
 				gomega.Expect(podLogs).Should(gomega.ContainSubstring("SUCCESS to publisher"),
 					fmt.Sprintf("Event posting did not succeed  %s", producerPod.Name))
 			})
-
 		})
 
 		ginkgo.Context("cloud event consumer validation", func() {
@@ -194,6 +191,8 @@ var _ = ginkgo.Describe("validation", func() {
 					fmt.Sprintf("Event was not generated in the pod %s", producerPod.Name))
 				gomega.Expect(podLogs).ShouldNot(gomega.ContainSubstring("context deadline exceeded"),
 					fmt.Sprintf("AMQ failed to post due to context deadline exceeded %s", producerPod.Name))
+				gomega.Expect(podLogs).Should(gomega.ContainSubstring("Got CurrentState"),
+					fmt.Sprintf("Event was not return by Got CurrentState call %s", producerPod.Name))
 			})
 
 		})
