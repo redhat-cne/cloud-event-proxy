@@ -77,7 +77,7 @@ func DeleteSender(inChan chan<- *channel.DataChan, address string) {
 	// go ahead and create QDR to this address
 	inChan <- &channel.DataChan{
 		Address: address,
-		Type:    channel.SENDER,
+		Type:    channel.PUBLISHER,
 		Status:  channel.DELETE,
 	}
 }
@@ -87,7 +87,7 @@ func CreateSender(inChan chan<- *channel.DataChan, address string) {
 	// go ahead and create QDR to this address
 	inChan <- &channel.DataChan{
 		Address: address,
-		Type:    channel.SENDER,
+		Type:    channel.PUBLISHER,
 		Status:  channel.NEW,
 	}
 }
@@ -97,7 +97,7 @@ func DeleteListener(inChan chan<- *channel.DataChan, address string) {
 	// go ahead and create QDR listener to this address
 	inChan <- &channel.DataChan{
 		Address: address,
-		Type:    channel.LISTENER,
+		Type:    channel.SUBSCRIBER,
 		Status:  channel.DELETE,
 	}
 }
@@ -107,7 +107,7 @@ func CreateListener(inChan chan<- *channel.DataChan, address string) {
 	// go ahead and create QDR listener to this address
 	inChan <- &channel.DataChan{
 		Address: address,
-		Type:    channel.LISTENER,
+		Type:    channel.SUBSCRIBER,
 		Status:  channel.NEW,
 	}
 }
@@ -121,7 +121,7 @@ func CreateNewStatusListener(inChan chan<- *channel.DataChan, address string,
 		Address:             address,
 		Data:                nil,
 		Status:              channel.NEW,
-		Type:                channel.LISTENER,
+		Type:                channel.SUBSCRIBER,
 		OnReceiveOverrideFn: onReceiveOverrideFn,
 		ProcessEventFn:      processEventFn,
 	}

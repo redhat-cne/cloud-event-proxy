@@ -4,17 +4,16 @@
 //
 // Terms Of Service:
 //
-//     Schemes: http, https
-//     Host: localhost:8080
-//     Version: 1.0.0
-//     Contact: Aneesh Puttur<aputtur@redhat.com>
+//	Schemes: http, https
+//	Host: localhost:8080
+//	Version: 1.0.0
+//	Contact: Aneesh Puttur<aputtur@redhat.com>
 //
-//     Consumes:
-//     - application/json
+//	Consumes:
+//	- application/json
 //
-//     Produces:
-//     - application/json
-//
+//	Produces:
+//	- application/json
 //
 // swagger:meta
 package restapi
@@ -48,6 +47,9 @@ var ServerInstance *Server
 var healthCheckPause time.Duration = 2 * time.Second
 
 type serverStatus int
+
+// HTTPReadHeaderTimeout timeout for heder
+const HTTPReadHeaderTimeout = 2 * time.Second
 
 const (
 	starting = iota
@@ -173,7 +175,7 @@ func (s *Server) Port() int {
 	return s.port
 }
 
-//Ready gives the status of the server
+// Ready gives the status of the server
 func (s *Server) Ready() bool {
 	return s.status == started
 }
@@ -260,7 +262,20 @@ func (s *Server) Start() {
 	//   "400":
 	//     "$ref": "#/responses/badReq"
 	api.HandleFunc("/subscriptions/status/{subscriptionid}", s.pingForSubscribedEventStatus).Methods(http.MethodPut)
-
+	// getCurrentState return event status for the resourceAddress
+	// swagger:operation GET /{resourceAddress:.*}/CurrentState currentState getCurrentState
+	// ---
+	// summary: Get status of event for give resourceAddress.
+	// description: If event state is present for given resource, call will be returned with status OK.
+	// parameters:
+	// - name: resourceAddress
+	//   description: resourceAddress for the event type
+	// responses:
+	//   "202":
+	//     "$ref": "#/responses/eventResp"
+	//   "400":
+	//     "$ref": "#/responses/badReq"
+	api.HandleFunc("/{resourceAddress:.*}/CurrentState", s.getCurrentState).Methods(http.MethodGet)
 	api.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, "OK") //nolint:errcheck
 	}).Methods(http.MethodGet)
@@ -268,7 +283,7 @@ func (s *Server) Start() {
 	api.HandleFunc("/dummy", dummy).Methods(http.MethodPost)
 	api.HandleFunc("/log", s.logEvent).Methods(http.MethodPost)
 
-	//publishEvent create event and send it to a channel that is shared by middleware to process
+	// publishEvent create event and send it to a channel that is shared by middleware to process
 	// swagger:operation POST /create/event/ event publishEvent
 	// ---
 	// summary: Creates a new event.
@@ -323,8 +338,9 @@ func (s *Server) Start() {
 	go wait.Until(func() {
 		s.status = started
 		s.httpServer = &http.Server{
-			Addr:    fmt.Sprintf(":%d", s.port),
-			Handler: api,
+			ReadHeaderTimeout: HTTPReadHeaderTimeout,
+			Addr:              fmt.Sprintf(":%d", s.port),
+			Handler:           api,
 		}
 		err := s.httpServer.ListenAndServe()
 		if err != nil {
