@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cloudevents/sdk-go/v2/event"
+
 	"github.com/redhat-cne/rest-api/pkg/localmetrics"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
@@ -132,29 +134,29 @@ func CreateSubscription(config *SCConfiguration, subscription pubsub.PubSub) (su
 }
 
 // CreateEvent create an event
-func CreateEvent(pubSubID, eventType, source string, data ceevent.Data) (ceevent.Event, error) {
-	// create an event
+func CreateEvent(pubSubID, eventType, resourceAddress string, data ceevent.Data) (ceevent.Event, error) {
+	// create an eventObj
 	if pubSubID == "" {
 		return ceevent.Event{}, fmt.Errorf("id is a required field")
 	}
 	if eventType == "" {
 		return ceevent.Event{}, fmt.Errorf("eventType  is a required field")
 	}
-	event := v1event.CloudNativeEvent()
-	event.ID = pubSubID
-	event.Type = eventType
-	event.SetSource(source)
-	event.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
-	event.SetDataContentType(ceevent.ApplicationJSON)
-	event.SetData(data)
-	return event, nil
+	eventObj := v1event.CloudNativeEvent()
+	eventObj.ID = pubSubID
+	eventObj.Type = eventType
+	eventObj.SetSource(resourceAddress)
+	eventObj.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
+	eventObj.SetDataContentType(ceevent.ApplicationJSON)
+	eventObj.SetData(data)
+	return eventObj, nil
 }
 
 // PublishEvent publishes event
 func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
-	url := fmt.Sprintf("%s%s", scConfig.BaseURL.String(), "create/event")
+	publishToURL := fmt.Sprintf("%s%s", scConfig.BaseURL.String(), "create/event")
 	rc := restclient.New()
-	err := rc.PostEvent(types.ParseURI(url), e)
+	err := rc.PostEvent(types.ParseURI(publishToURL), e)
 	if err != nil {
 		log.Errorf("error posting cloud native events %v", err)
 		return err
@@ -164,27 +166,37 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 	return nil
 }
 
-// PublishEventViaAPI ... publish events by not using http request  but direct api
+// PublishEventViaAPI ... publish events by not using http request but direct api
 func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error {
+	if ceEvent, err := GetPublishingCloudEvent(scConfig, cneEvent); err == nil {
+		scConfig.EventInCh <- &channel.DataChan{
+			Type:    channel.EVENT,
+			Status:  channel.NEW,
+			Data:    ceEvent,
+			Address: ceEvent.Source(), // this is te publishing address
+		}
+
+		log.Debugf("event source %s sent to queue to process", ceEvent.Source())
+		log.Debugf("event sent %s", cneEvent.JSONString())
+
+		localmetrics.UpdateEventPublishedCount(ceEvent.Source(), localmetrics.SUCCESS, 1)
+	}
+	return nil
+}
+
+// GetPublishingCloudEvent ... Get Publishing cloud event
+func GetPublishingCloudEvent(scConfig *SCConfiguration, cneEvent ceevent.Event) (*event.Event, error) {
 	pub, err := scConfig.PubSubAPI.GetPublisher(cneEvent.ID)
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(cneEvent.ID, localmetrics.FAIL, 1)
-		return fmt.Errorf("no publisher data for id %s found to publish event for", cneEvent.ID)
+		return nil, fmt.Errorf("no publisher data for id %s found to publish event for", cneEvent.ID)
 	}
 	ceEvent, err := cneEvent.NewCloudEvent(&pub)
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
-		return fmt.Errorf("error converting to CloudEvents %s", err)
+		return nil, fmt.Errorf("error converting to CloudEvents %s", err)
 	}
-	scConfig.EventInCh <- &channel.DataChan{
-		Type:    channel.EVENT,
-		Data:    ceEvent,
-		Address: pub.GetResource(),
-	}
-	log.Debugf("event sent %s", cneEvent.JSONString())
-	localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.SUCCESS, 1)
-	return nil
-
+	return ceEvent, nil
 }
 
 // APIHealthCheck .. rest api should be ready before starting to consume api

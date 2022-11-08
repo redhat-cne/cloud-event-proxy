@@ -23,13 +23,12 @@ type Stats struct {
 	lastOffset          int64
 	lastSyncState       ptp.SyncState
 	aliasName           string
+	clackClass          int64
 }
 
 // AddValue ...add value
 func (s *Stats) AddValue(val int64) {
-
 	oldMean := s.mean
-
 	if s.max < val {
 		s.max = val
 	}
@@ -40,7 +39,6 @@ func (s *Stats) AddValue(val int64) {
 	s.mean = oldMean + (val-oldMean)/s.num
 	s.sumSqr += val * val
 	s.sumDiffSqr += (val - oldMean) * (val - s.mean)
-
 }
 
 // StDev ... set dev
@@ -57,13 +55,11 @@ func (s *Stats) MaxAbs() int64 {
 		return s.max
 	}
 	return s.min
-
 }
 
 // OffsetSource ... get offset source
 func (s *Stats) OffsetSource() string {
 	return s.offsetSource
-
 }
 
 // SetOffsetSource ... set offset source ptp4/phc2sys/master
@@ -84,6 +80,11 @@ func (s *Stats) SetProcessName(processName string) {
 // Offset return last known offset
 func (s *Stats) Offset() int64 {
 	return s.lastOffset
+}
+
+// ClockClass return last known ClockClass
+func (s *Stats) ClockClass() int64 {
+	return s.clackClass
 }
 
 // Alias return alias name
@@ -135,6 +136,11 @@ func (s *Stats) SetDelay(val int64) {
 // SetLastOffset ... set last offset value
 func (s *Stats) SetLastOffset(val int64) {
 	s.lastOffset = val
+}
+
+// SetClockClass ... set last clock class value
+func (s *Stats) SetClockClass(val int64) {
+	s.clackClass = val
 }
 
 // SetLastSyncState ... set last sync state

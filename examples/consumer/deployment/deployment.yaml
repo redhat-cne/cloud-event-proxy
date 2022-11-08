@@ -20,7 +20,7 @@ spec:
       dnsPolicy: ClusterFirstWithHostNet
       containers:
         - name: cloud-event-consumer
-          image: quay.io/redhat-cne/cloud-event-consumer
+          image: quay.io/redhat-cne/origin-cloud-event-consumer
           args:
             - "--local-api-addr=127.0.0.1:9089"
             - "--api-path=/api/cloudNotifications/v1/"
@@ -34,12 +34,12 @@ spec:
               value: "PTP"
             - name: ENABLE_STATUS_CHECK
               value: "true"
-        - name: cloud-event-sidecar
-          image: quay.io/redhat-cne/cloud-event-proxy
+        - name: cloud-event-proxy
+          image: quay.io/redhat-cne/origin-cloud-event-proxy
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
-            - "--transport-host=amqp://router.router.svc.cluster.local"
+            - "--transport-host=amqp://amq-router.amq-router.svc.cluster.local"
             - "--api-port=8089"
           env:
             - name: NODE_NAME

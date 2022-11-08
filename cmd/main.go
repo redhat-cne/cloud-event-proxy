@@ -167,14 +167,13 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) { /
 				localmetrics.UpdateEventAckCount(address, localmetrics.FAILED)
 			}
 			if pub.EndPointURI != nil {
-				log.Debugf("posting event status %s to publisher %s", status, pub.Resource)
+				log.Debugf("posting acknowledgment with status: %s to publisher: %s", status, pub.EndPointURI)
 				restClient := restclient.New()
 				_ = restClient.Post(pub.EndPointURI,
 					[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, status)))
 			}
 		} else {
-			log.Warnf("could not send ack to publisher ,`publisher` for address %s not found", address)
-			localmetrics.UpdateEventAckCount(address, localmetrics.FAILED)
+			log.Errorf("postprocessfn:not finding publisher for address %s", address)
 		}
 	}
 	postHandler := func(err error, endPointURI *types.URI, address string) {
@@ -188,15 +187,20 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) { /
 
 	for { //nolint:gosimple
 		select { //nolint:gosimple
-		case d := <-scConfig.EventOutCh: // do something that is put out by QDR
-			event, err := v1event.GetCloudNativeEvents(*d.Data)
-			if err != nil {
-				log.Errorf("error marshalling event data when reading from amqp %v\n %#v", err, d)
-				log.Infof("data %#v", d.Data)
-			} else if d.Type == channel.EVENT {
-				if d.Status == channel.NEW {
+		case d := <-scConfig.EventOutCh: // do something that is put out by transporter
+			if d.Type == channel.EVENT {
+				if d.Data == nil {
+					log.Errorf("nil event data was sent via event channel,ignoring")
+					continue
+				}
+				event, err := v1event.GetCloudNativeEvents(*d.Data)
+				if err != nil {
+					log.Errorf("error marshalling event data when reading from transport %v\n %#v", err, d)
+					log.Infof("data %#v", d.Data)
+					continue
+				} else if d.Status == channel.NEW {
 					if d.ProcessEventFn != nil { // always leave event to handle by default method for events
-						if err := d.ProcessEventFn(event); err != nil {
+						if err = d.ProcessEventFn(event); err != nil {
 							log.Errorf("error processing data %v", err)
 							localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
 						}
@@ -204,7 +208,7 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) { /
 						if sub.EndPointURI != nil {
 							restClient := restclient.New()
 							event.ID = sub.ID // set ID to the subscriptionID
-							err := restClient.PostEvent(sub.EndPointURI, event)
+							err = restClient.PostEvent(sub.EndPointURI, event)
 							postHandler(err, sub.EndPointURI, d.Address)
 						} else {
 							log.Warnf("endpoint uri not given, posting event to log %#v for address %s\n", event, d.Address)
@@ -224,6 +228,8 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) { /
 					log.Errorf("failed to receive status request to address %s", d.Address)
 					localmetrics.UpdateStatusAckCount(d.Address, localmetrics.FAILED)
 				}
+			} else if d.Type == channel.SUBSCRIBER {
+				log.Infof("subscriber processed for %s", d.Address)
 			}
 		case <-scConfig.CloseCh:
 			return
@@ -237,9 +243,9 @@ func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 	for { //nolint:gosimple
 		select {
 		case d := <-scConfig.EventInCh:
-			if d.Type == channel.LISTENER {
+			if d.Type == channel.SUBSCRIBER {
 				log.Warnf("amqp disabled,no action taken: request to create listener address %s was called,but transport is not enabled", d.Address)
-			} else if d.Type == channel.SENDER {
+			} else if d.Type == channel.PUBLISHER {
 				log.Warnf("no action taken: request to create sender for address %s was called,but transport is not enabled", d.Address)
 			} else if d.Type == channel.EVENT && d.Status == channel.NEW {
 				if e, err := v1event.GetCloudNativeEvents(*d.Data); err != nil {
@@ -286,7 +292,6 @@ func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 		}
 	}
 }
-
 func loadFromPubSubStore() {
 	pubs := scConfig.PubSubAPI.GetPublishers()
 	for _, pub := range pubs {

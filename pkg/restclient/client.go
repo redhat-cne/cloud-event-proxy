@@ -18,7 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"time"
 
@@ -61,7 +61,7 @@ func (r *Rest) PostEvent(url *types.URI, e event.Event) error {
 	return nil
 }
 
-// Post post with data
+// Post with data
 func (r *Rest) Post(url *types.URI, data []byte) int {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
@@ -80,7 +80,7 @@ func (r *Rest) Post(url *types.URI, data []byte) int {
 	if response.Body != nil {
 		defer response.Body.Close()
 		// read any content and print
-		body, readErr := ioutil.ReadAll(response.Body)
+		body, readErr := io.ReadAll(response.Body)
 		if readErr == nil && len(body) > 0 {
 			log.Debugf("%s return response %s\n", url.String(), string(body))
 		}
@@ -108,7 +108,7 @@ func (r *Rest) PostWithReturn(url *types.URI, data []byte) (int, []byte) {
 		defer res.Body.Close()
 	}
 
-	body, readErr := ioutil.ReadAll(res.Body)
+	body, readErr := io.ReadAll(res.Body)
 	if readErr != nil {
 		return http.StatusBadRequest, nil
 	}
@@ -131,5 +131,29 @@ func (r *Rest) Put(url *types.URI) int {
 		log.Errorf("error in post response %v to %s ", err, url)
 		return http.StatusBadRequest
 	}
+	defer res.Body.Close()
 	return res.StatusCode
+}
+
+// Get  http request
+func (r *Rest) Get(url *types.URI) (int, string) {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, "GET", url.String(), nil)
+	if err != nil {
+		log.Errorf("error creating post request %v", err)
+		return http.StatusBadRequest, fmt.Sprintf("error creating post request %v", err)
+	}
+	request.Header.Set("content-type", "application/json")
+	res, err := r.client.Do(request)
+	if err != nil {
+		log.Errorf("error in post response %v to %s ", err, url)
+		return http.StatusBadRequest, fmt.Sprintf("error in post response %v to %s ", err, url)
+	}
+	defer res.Body.Close()
+	if body, readErr := io.ReadAll(res.Body); readErr == nil {
+		return res.StatusCode, string(body)
+	}
+	return http.StatusBadRequest, fmt.Sprintf("error in post response %v to %s ", err, url)
 }

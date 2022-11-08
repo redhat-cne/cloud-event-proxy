@@ -78,7 +78,7 @@ func cleanUP() {
 	_ = scConfig.PubSubAPI.DeleteAllSubscriptions()
 }
 
-//Test_StartWithAMQP this is integration test skips if QDR is not connected
+// Test_StartWithAMQP this is integration test skips if QDR is not connected
 func Test_StartWithAMQP(t *testing.T) {
 	os.Setenv("NODE_NAME", "test_node")
 	defer cleanUP()
@@ -180,9 +180,9 @@ func ProcessInChannel() {
 	for { //nolint:gosimple
 		select {
 		case d := <-scConfig.EventInCh:
-			if d.Type == channel.LISTENER {
+			if d.Type == channel.SUBSCRIBER {
 				log.Printf("amqp disabled,no action taken: request to create listener address %s was called,but transport is not enabled", d.Address)
-			} else if d.Type == channel.SENDER {
+			} else if d.Type == channel.PUBLISHER {
 				log.Printf("no action taken: request to create sender for address %s was called,but transport is not enabled", d.Address)
 			} else if d.Type == channel.EVENT && d.Status == channel.NEW {
 				out := channel.DataChan{
