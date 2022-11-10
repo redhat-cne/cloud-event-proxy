@@ -20,12 +20,15 @@ var classChangeIdentifier = "CLOCK_CLASS_CHANGE"
 // ParsePTP4l ... parse ptp4l for various events
 func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, output string, fields []string,
 	ptpInterface ptp4lconf.PTPInterface, ptp4lCfg *ptp4lconf.PTP4lConfig, ptpStats map[types.IFace]*stats.Stats) {
-
 	var err error
 	if strings.Contains(output, classChangeIdentifier) {
 		if len(fields) < 5 {
 			log.Errorf("clock class not in right format %s", output)
 			return
+		}
+		if _, found := ptpStats[master]; !found {
+			ptpStats[master] = stats.NewStats(configName)
+			ptpStats[master].SetProcessName(ptp4lProcessName)
 		}
 		// ptp4l 1646672953  ptp4l.0.config  CLOCK_CLASS_CHANGE 165.000000
 		clockClass, err := strconv.ParseFloat(fields[4], 64)
@@ -40,7 +43,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 				alias, _ = ptp4lCfg.GetUnknownAlias()
 			}
 			masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
-
+			ptpStats[master].SetClockClass(int64(clockClass))
 			ClockClassMetrics.With(prometheus.Labels{
 				"process": processName, "node": ptpNodeName}).Set(clockClass)
 
@@ -56,9 +59,10 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			log.Errorf("possible error due to file watcher not updated")
 			return
 		}
-		log.Infof("found interface %s for port id %d last role %s has currrent role %s",
-			ptpInterface.Name, portID, ptpInterface.Role, role)
-
+		if ptpInterface.Role != role {
+			log.Infof("found interface %s for port id %d last role %s has currrent role %s",
+				ptpInterface.Name, portID, ptpInterface.Role, role)
+		}
 		lastRole := ptpInterface.Role
 		ptpIFace := ptpInterface.Name
 
@@ -136,7 +140,6 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			go handleHoldOverState(p, ptpOpts, configName, profileName, threshold.HoldOverTimeout, MasterClockType, threshold.Close)
 		}
 	}
-
 }
 
 func handleHoldOverState(ptpManager *PTPEventManager,

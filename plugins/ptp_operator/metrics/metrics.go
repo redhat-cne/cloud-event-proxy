@@ -36,6 +36,8 @@ const (
 	ClockRealTime = "CLOCK_REALTIME"
 	// MasterClockType is the slave sync slave clock to master
 	MasterClockType = "master"
+	// ClockClass is clock class event
+	ClockClass = "CLOCK_CLASS"
 
 	// from the logs
 	processNameIndex = 0

@@ -59,7 +59,7 @@ spec:
             - name: CONSUMER_TYPE
               value: "$CONSUMER_TYPE"
         - name: cloud-event-proxy
-          image: "$IMG"
+          image: "$CNE_IMG"
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"

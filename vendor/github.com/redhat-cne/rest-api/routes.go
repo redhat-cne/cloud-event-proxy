@@ -17,6 +17,9 @@ package restapi
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+
+	"strings"
 	"time"
 
 	"github.com/redhat-cne/sdk-go/pkg/types"
@@ -36,7 +39,6 @@ import (
 
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 
-	"io/ioutil"
 	"log"
 	"net/http"
 )
@@ -45,13 +47,14 @@ import (
 // Creates a new subscription .
 // If subscription exists with same resource then existing subscription is returned .
 // responses:
-//  201: repoResp
-//  400: badReq
-//  204: noContent
+//
+//	201: repoResp
+//	400: badReq
+//	204: noContent
 func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var response *http.Response
-	bodyBytes, err := ioutil.ReadAll(r.Body)
+	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -91,7 +94,7 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("subscription created successfully.")
 	// go ahead and create QDR to this address
-	s.sendOut(channel.LISTENER, &newSub)
+	s.sendOut(channel.SUBSCRIBER, &newSub)
 	localmetrics.UpdateSubscriptionCount(localmetrics.ACTIVE, 1)
 	respondWithJSON(w, http.StatusCreated, newSub)
 }
@@ -100,13 +103,14 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 // Creates a new publisher .
 // If publisher exists with same resource then existing publisher is returned .
 // responses:
-//  201: repoResp
-//  400: badReq
-//  204: noContent
+//
+//	201: repoResp
+//	400: badReq
+//	204: noContent
 func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var response *http.Response
-	bodyBytes, err := ioutil.ReadAll(r.Body)
+	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -146,7 +150,7 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("publisher created successfully.")
 	// go ahead and create QDR to this address
-	s.sendOut(channel.SENDER, &newPub)
+	s.sendOut(channel.PUBLISHER, &newPub)
 	localmetrics.UpdatePublisherCount(localmetrics.ACTIVE, 1)
 	respondWithJSON(w, http.StatusCreated, newPub)
 }
@@ -276,7 +280,7 @@ func (s *Server) deleteAllPublishers(w http.ResponseWriter, r *http.Request) {
 // it to the consumer
 func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	bodyBytes, err := ioutil.ReadAll(r.Body)
+	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		respondWithError(w, err.Error())
 		return
@@ -307,7 +311,77 @@ func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// pingForSubscribedEventStatus sends ping to the a listening address in the producer to fire all status as events
+// getCurrentState get current status of the  events that are subscribed to
+// return event data with status 202 or BadRequest with 400
+func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
+	queries := mux.Vars(r)
+	resourceAddress, ok := queries["resourceAddress"]
+	if !ok {
+		respondWithError(w, "resourceAddress parameter not found")
+		return
+	}
+
+	//identify publisher or subscriber is asking for status
+	var sub *pubsub.PubSub
+	if len(s.pubSubAPI.GetSubscriptions()) > 0 {
+		for _, subscriptions := range s.pubSubAPI.GetSubscriptions() {
+			if strings.Contains(subscriptions.GetResource(), resourceAddress) {
+				sub = subscriptions
+				break
+			}
+		}
+	} else if len(s.pubSubAPI.GetPublishers()) > 0 {
+		for _, publishers := range s.pubSubAPI.GetPublishers() {
+			if strings.Contains(publishers.GetResource(), resourceAddress) {
+				sub = publishers
+				break
+			}
+		}
+	} else {
+		respondWithError(w, "subscription not found")
+		return
+	}
+
+	if sub == nil {
+		respondWithError(w, "subscription not found")
+		return
+	}
+	cneEvent := event.CloudNativeEvent()
+	cneEvent.SetID(sub.ID)
+	cneEvent.Type = channel.STATUS.String()
+	cneEvent.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
+	cneEvent.SetDataContentType(cloudevents.ApplicationJSON)
+	cneEvent.SetData(cne.Data{
+		Version: "v1",
+	})
+	ceEvent, err := cneEvent.NewCloudEvent(sub)
+
+	if err != nil {
+		respondWithError(w, err.Error())
+	} else {
+		// for http you send to the protocol address
+		statusChannel := make(chan *channel.StatusChan, 1)
+		s.dataOut <- &channel.DataChan{
+			Type:       channel.STATUS,
+			Data:       ceEvent,
+			Address:    sub.GetResource(),
+			StatusChan: statusChannel,
+		}
+		select {
+		case d := <-statusChannel:
+			if d.Data == nil {
+				respondWithError(w, "event not found")
+			} else {
+				respondWithJSON(w, http.StatusOK, *d.Data)
+			}
+		case <-time.After(5 * time.Second):
+			close(statusChannel)
+			respondWithError(w, "time Out waiting for status")
+		}
+	}
+}
+
+// pingForSubscribedEventStatus sends ping to the  listening address in the producer to fire all status as events
 func (s *Server) pingForSubscribedEventStatus(w http.ResponseWriter, r *http.Request) {
 	queries := mux.Vars(r)
 	subscriptionID, ok := queries["subscriptionid"]
@@ -345,7 +419,7 @@ func (s *Server) pingForSubscribedEventStatus(w http.ResponseWriter, r *http.Req
 // logEvent gets cloud native events and converts it to cloud native event and writes to log
 func (s *Server) logEvent(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
-	bodyBytes, err := ioutil.ReadAll(r.Body)
+	bodyBytes, err := io.ReadAll(r.Body)
 	if err != nil {
 		respondWithError(w, err.Error())
 		return
