@@ -216,12 +216,7 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 						data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType))
 					case ptp.PtpClockClassChange:
 						clockClass := fmt.Sprintf("%s/%s", string(ptpInterface), ptpMetrics.ClockClass)
-						if config.TransportHost.Type == common.AMQ {
-							eventManager.PublishEvent(s.SyncState(), s.ClockClass(), clockClass, eventType)
-							continue
-						} else {
-							data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.ClockClass(), clockClass, eventType))
-						}
+						data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.ClockClass(), clockClass, eventType))
 					}
 				case ptpMetrics.ClockRealTime:
 					if eventType == ptp.OsClockSyncStateChange {
