@@ -32,7 +32,7 @@ import (
 var (
 	sectionHead        = regexp.MustCompile(`\[([^\[\]]*)\]`)
 	ptpConfigFileRegEx = regexp.MustCompile(`ptp4l.[0-9]*.config`)
-	profileRegEx       = regexp.MustCompile(`profile: \s*([a-zA-Z0-9]+)`)
+	profileRegEx       = regexp.MustCompile(`profile: \s*([\w-_]+)`)
 )
 
 const (
