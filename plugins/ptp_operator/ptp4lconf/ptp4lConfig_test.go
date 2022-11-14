@@ -101,3 +101,34 @@ func Test_Config(t *testing.T) {
 	}
 	w.Close()
 }
+
+func Test_ProfileName(t *testing.T) {
+	var testResult string
+
+	testCases := []struct {
+		configString   string
+		expectedString string
+	}{
+		{
+			configString:   "  recommend:\n  - profile: ordinary\n    priority: 0\n",
+			expectedString: "ordinary",
+		},
+		{
+			configString:   "  recommend:\n  - profile: ordinary-clock\n    priority: 0\n",
+			expectedString: "ordinary-clock",
+		},
+		{
+			configString:   "  recommend:\n  - profile: ordinary_clock\n    priority: 0\n",
+			expectedString: "ordinary_clock",
+		},
+		{
+			configString:   "  recommend:\n    priority: 0\n",
+			expectedString: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		testResult = ptp4lconf.GetPTPProfileName(tc.configString)
+		assert.Equal(t, tc.expectedString, testResult)
+	}
+}

@@ -29,7 +29,7 @@ import (
 var (
 	ptpConfigFileRegEx = regexp.MustCompile(`ptp4l.[0-9]*.config`)
 	sectionHead        = regexp.MustCompile(`\[([^\[\]]*)\]`)
-	profileRegEx       = regexp.MustCompile(`profile: \s*([a-zA-Z0-9]+)`)
+	profileRegEx       = regexp.MustCompile(`profile: \s*([\w-_]+)`)
 	fileNameRegEx      = regexp.MustCompile("([^/]+$)")
 )
 
