@@ -175,7 +175,11 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		switch interfaceName {
 		case ClockRealTime: // CLOCK_REALTIME is active slave interface
 			// copy  ClockRealTime value to current slave interface
-			p.GenPTPEvent(profileName, ptpStats[interfaceType], interfaceName, int64(ptpOffset), syncState, eventType)
+			if r, ok := ptpStats[master]; ok && r.Role() == types.SLAVE { // publish event only if the master role is active
+				// when related slave is faulty the holdover will make clock clear time as FREERUN
+				p.GenPTPEvent(profileName, ptpStats[interfaceType], interfaceName, int64(ptpOffset), syncState, eventType)
+			}
+			// continue to update metrics regardless
 			UpdateSyncStateMetrics(processName, interfaceName, ptpStats[interfaceType].LastSyncState())
 			UpdatePTPMetrics(offsetSource, processName, interfaceName, ptpOffset, float64(ptpStats[interfaceType].MaxAbs()), frequencyAdjustment, delay)
 		case MasterClockType: // this ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay

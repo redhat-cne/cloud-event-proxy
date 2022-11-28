@@ -195,8 +195,6 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 				_ = restClient.Post(pub.EndPointURI,
 					[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, status)))
 			}
-		} else {
-			log.Errorf("postprocessfn:not finding publisher for address %s", address)
 		}
 	}
 	postHandler := func(err error, endPointURI *types.URI, address string) {
