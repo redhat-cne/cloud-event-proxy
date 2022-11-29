@@ -4,6 +4,8 @@ import (
 	"math"
 	"strings"
 
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
+
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 )
 
@@ -24,6 +26,7 @@ type Stats struct {
 	lastSyncState       ptp.SyncState
 	aliasName           string
 	clackClass          int64
+	role                types.PtpPortRole
 }
 
 // AddValue ...add value
@@ -116,6 +119,7 @@ func (s *Stats) reset() { //nolint:unused
 	s.sumDiffSqr = 0
 	s.sumSqr = 0
 	s.aliasName = ""
+	s.role = types.UNKNOWN
 }
 
 // NewStats ... create new stats
@@ -166,6 +170,16 @@ func (s *Stats) LastOffset() int64 {
 // LastSyncState ... last sync state
 func (s *Stats) LastSyncState() ptp.SyncState {
 	return s.lastSyncState
+}
+
+// SetRole ... set role name
+func (s *Stats) SetRole(role types.PtpPortRole) {
+	s.role = role
+}
+
+// Role ... get role name
+func (s *Stats) Role() types.PtpPortRole {
+	return s.role
 }
 
 func (s *Stats) String() string {

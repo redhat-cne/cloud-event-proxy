@@ -77,6 +77,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 				ptpStats[master] = stats.NewStats(configName)
 				ptpStats[master].SetProcessName(ptp4lProcessName)
 			}
+			ptpStats[master].SetRole(role)
 		}
 
 		if lastRole != role {
@@ -104,10 +105,12 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 					} else {
 						log.Infof("phc2sys is not enabled for profile %s, skiping os clock syn state ", profileName)
 					}
+					ptpStats[master].SetRole(role)
 				}
 			}
 			log.Infof("update interface %s with portid %d from role %s to  role %s", ptpIFace, portID, lastRole, role)
 			ptp4lCfg.Interfaces[portID-1].UpdateRole(role)
+
 			// update role metrics
 			UpdateInterfaceRoleMetrics(processName, ptpIFace, role)
 		}
