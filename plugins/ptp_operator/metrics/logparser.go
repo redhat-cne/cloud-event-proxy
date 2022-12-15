@@ -37,7 +37,6 @@ func extractSummaryMetrics(processName, output string) (iface string, ptpOffset,
 
 	// ptp4l.0.config CLOCK_REALTIME rms   31 max   31 freq -77331 +/-   0 delay  1233 +/-   0
 	if len(fields) < 8 {
-		log.Infof("%s failed to parse output %s: unexpected number of fields", processName, output)
 		return
 	}
 
@@ -110,7 +109,6 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 	//       0         1      2          3    4   5    6          7     8
 	// ptp4l.0.config master offset   -2162130 s2 freq +22451884  delay 374976
 	if len(fields) < 7 {
-		log.Errorf("%s failed to parse output %s: unexpected number of fields", processName, output)
 		return
 	}
 
@@ -190,7 +188,6 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 	fields := strings.Fields(output)
 	// port 1: delay timeout
 	if len(fields) < 2 {
-		log.Infof("failed to parse output %s: unexpected number of fields", output)
 		return
 	}
 
