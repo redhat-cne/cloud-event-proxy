@@ -137,7 +137,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			if ptpOpts, ok = p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && ptpOpts != nil && ptpOpts.Phc2SysEnabled() {
 				p.PublishEvent(ptp.FREERUN, ptpStats[ClockRealTime].LastOffset(), ClockRealTime, ptp.OsClockSyncStateChange)
 				ptpStats[ClockRealTime].SetLastSyncState(ptp.FREERUN)
-				UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ClockRealTime, syncState)
+				UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ClockRealTime, ptp.FREERUN)
 			}
 
 			threshold := p.PtpThreshold(profileName)
