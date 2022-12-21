@@ -115,7 +115,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			UpdateInterfaceRoleMetrics(processName, ptpIFace, role)
 		}
 		if lastRole != types.SLAVE {
-			return // no need to go to holdover state if the Fault was in master(slave) port
+			return // no need to go to holdover state if the Fault was not in master(slave) port
 		}
 		if _, ok := ptpStats[master]; !ok { //
 			log.Errorf("no offset stats found for master for  portid %d with role %s (the port started in fault state)", portID, role)
@@ -126,6 +126,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 		// make any slave interface master offset to FREERUN
 		if syncState != "" && syncState != ptpStats[master].LastSyncState() && syncState == ptp.HOLDOVER {
 			// Put master in HOLDOVER state
+			ptpStats[master].SetRole(role) // update slave port as faulty
 			alias := ptpStats[master].Alias()
 			masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
 			p.PublishEvent(syncState, ptpStats[master].LastOffset(), masterResource, ptp.PtpStateChange)
