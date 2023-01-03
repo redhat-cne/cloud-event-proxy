@@ -36,7 +36,7 @@ const (
 	ClockRealTime = "CLOCK_REALTIME"
 	// MasterClockType is the slave sync slave clock to master
 	MasterClockType = "master"
-	// ClockClass is clock class event
+	// ClockClass number
 	ClockClass = "CLOCK_CLASS"
 
 	// from the logs
@@ -108,7 +108,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 					p.GenPTPEvent(profileName, m, masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
 				}
 				if s, ok := ptpStats[ClockRealTime]; ok {
-					if t, ok := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && t.Phc2SysEnabled() {
+					if t, ok2 := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok2 && t.Phc2SysEnabled() {
 						p.GenPTPEvent(profileName, s, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
 					}
 				}
@@ -175,7 +175,11 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		switch interfaceName {
 		case ClockRealTime: // CLOCK_REALTIME is active slave interface
 			// copy  ClockRealTime value to current slave interface
-			p.GenPTPEvent(profileName, ptpStats[interfaceType], interfaceName, int64(ptpOffset), syncState, eventType)
+			if r, ok := ptpStats[master]; ok && r.Role() == types.SLAVE { // publish event only if the master role is active
+				// when related slave is faulty the holdover will make clock clear time as FREERUN
+				p.GenPTPEvent(profileName, ptpStats[interfaceType], interfaceName, int64(ptpOffset), syncState, eventType)
+			}
+			// continue to update metrics regardless
 			UpdateSyncStateMetrics(processName, interfaceName, ptpStats[interfaceType].LastSyncState())
 			UpdatePTPMetrics(offsetSource, processName, interfaceName, ptpOffset, float64(ptpStats[interfaceType].MaxAbs()), frequencyAdjustment, delay)
 		case MasterClockType: // this ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay
@@ -200,5 +204,4 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		p.ParsePTP4l(processName, configName, profileName, output, fields,
 			ptpInterface, ptp4lCfg, ptpStats)
 	}
-
 }

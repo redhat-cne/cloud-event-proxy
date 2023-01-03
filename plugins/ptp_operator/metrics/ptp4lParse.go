@@ -31,7 +31,8 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			ptpStats[master].SetProcessName(ptp4lProcessName)
 		}
 		// ptp4l 1646672953  ptp4l.0.config  CLOCK_CLASS_CHANGE 165.000000
-		clockClass, err := strconv.ParseFloat(fields[4], 64)
+		var clockClass float64
+		clockClass, err = strconv.ParseFloat(fields[4], 64)
 		if err != nil {
 			log.Error("error parsing clock class change")
 		} else {
@@ -76,6 +77,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 				ptpStats[master] = stats.NewStats(configName)
 				ptpStats[master].SetProcessName(ptp4lProcessName)
 			}
+			ptpStats[master].SetRole(role)
 		}
 
 		if lastRole != role {
@@ -103,15 +105,17 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 					} else {
 						log.Infof("phc2sys is not enabled for profile %s, skiping os clock syn state ", profileName)
 					}
+					ptpStats[master].SetRole(role)
 				}
 			}
 			log.Infof("update interface %s with portid %d from role %s to  role %s", ptpIFace, portID, lastRole, role)
 			ptp4lCfg.Interfaces[portID-1].UpdateRole(role)
+
 			// update role metrics
 			UpdateInterfaceRoleMetrics(processName, ptpIFace, role)
 		}
 		if lastRole != types.SLAVE {
-			return // no need to go to holdover state if the Fault was in master(slave) port
+			return // no need to go to holdover state if the Fault was not in master(slave) port
 		}
 		if _, ok := ptpStats[master]; !ok { //
 			log.Errorf("no offset stats found for master for  portid %d with role %s (the port started in fault state)", portID, role)
@@ -122,6 +126,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 		// make any slave interface master offset to FREERUN
 		if syncState != "" && syncState != ptpStats[master].LastSyncState() && syncState == ptp.HOLDOVER {
 			// Put master in HOLDOVER state
+			ptpStats[master].SetRole(role) // update slave port as faulty
 			alias := ptpStats[master].Alias()
 			masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
 			p.PublishEvent(syncState, ptpStats[master].LastOffset(), masterResource, ptp.PtpStateChange)
@@ -133,7 +138,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			if ptpOpts, ok = p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && ptpOpts != nil && ptpOpts.Phc2SysEnabled() {
 				p.PublishEvent(ptp.FREERUN, ptpStats[ClockRealTime].LastOffset(), ClockRealTime, ptp.OsClockSyncStateChange)
 				ptpStats[ClockRealTime].SetLastSyncState(ptp.FREERUN)
-				UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ClockRealTime, syncState)
+				UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ClockRealTime, ptp.FREERUN)
 			}
 
 			threshold := p.PtpThreshold(profileName)
