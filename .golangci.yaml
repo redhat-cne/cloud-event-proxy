@@ -1,6 +1,6 @@
 ---
 run:
-  concurrency: 6
+  concurrency: 8
   deadline: 10m
 linters:
   disable-all: true
@@ -30,6 +30,9 @@ linters:
 linters-settings:
   gofmt:
     simplify: false # do not require the -s flag
+  gocyclo:
+    # minimal code complexity to report, 30 by default (but we recommend 10-20)
+    min-complexity: 45
   gocritic:
     enabled-checks:
       # Diagnostic

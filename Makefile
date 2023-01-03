@@ -110,3 +110,13 @@ docker-build-consumer: #test ## Build docker image with the manager.
 
 docker-push-consumer: ## Push docker image with the manager.
 	docker push ${CONSUMER_IMG}
+
+fmt: ## Go fmt your code
+	hack/gofmt.sh
+
+fmt-code: ## Run go fmt against code.
+	go fmt ./...
+
+vet: ## Run go vet against code.
+	go vet ./...
+
