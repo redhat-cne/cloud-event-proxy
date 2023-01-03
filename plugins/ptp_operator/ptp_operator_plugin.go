@@ -198,11 +198,12 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 		processDataFn := func(data, d *event.Data) *event.Data {
 			if data == nil {
 				data = d
-			} else {
+			} else if d != nil {
 				data.Values = append(data.Values, d.Values...)
 			}
 			return data
 		}
+
 		for _, ptpInterfaces := range eventManager.Stats {
 			for ptpInterface, s := range ptpInterfaces {
 				switch ptpInterface {
@@ -228,6 +229,8 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 		if data != nil {
 			d.Data = eventManager.GetPTPCloudEvents(*data, eventType)
 		} else {
+			data = eventManager.GetPTPEventsData(ptp.FREERUN, 0, "event-not-found", eventType)
+			d.Data = eventManager.GetPTPCloudEvents(*data, eventType)
 			return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
 		}
 		return nil
