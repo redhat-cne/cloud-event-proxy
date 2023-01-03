@@ -30,7 +30,7 @@ import (
 var (
 	instance      *AMQP
 	retryTimeout  = 500 * time.Millisecond
-	cancelTimeout = 30 * time.Second
+	cancelTimeout = 300 * time.Second
 )
 
 // AMQP exposes amqp api methods
