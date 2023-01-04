@@ -56,7 +56,7 @@ func (p *PTPEventManager) PtpThreshold(profileName string) ptpConfig.PtpClockThr
 			HoldOverTimeout:    t.HoldOverTimeout,
 			MaxOffsetThreshold: t.MaxOffsetThreshold,
 			MinOffsetThreshold: t.MinOffsetThreshold,
-			Close:              t.Close,
+			Close:              make(chan struct{}),
 		}
 	} else if len(p.PtpConfigMapUpdates.EventThreshold) > 0 { // if not found get the first item since one per config)
 		for _, t := range p.PtpConfigMapUpdates.EventThreshold {
@@ -64,7 +64,7 @@ func (p *PTPEventManager) PtpThreshold(profileName string) ptpConfig.PtpClockThr
 				HoldOverTimeout:    t.HoldOverTimeout,
 				MaxOffsetThreshold: t.MaxOffsetThreshold,
 				MinOffsetThreshold: t.MinOffsetThreshold,
-				Close:              t.Close,
+				Close:              make(chan struct{}),
 			}
 		}
 	}
