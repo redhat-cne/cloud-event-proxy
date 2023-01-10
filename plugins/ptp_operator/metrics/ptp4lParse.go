@@ -141,7 +141,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 				UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ClockRealTime, ptp.FREERUN)
 			}
 
-			threshold := p.PtpThreshold(profileName)
+			threshold := p.PtpThreshold(profileName, true)
 			go handleHoldOverState(p, ptpOpts, configName, profileName, threshold.HoldOverTimeout, MasterClockType, threshold.Close)
 		}
 	}
