@@ -60,10 +60,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			log.Errorf("possible error due to file watcher not updated")
 			return
 		}
-		if ptpInterface.Role != role {
-			log.Infof("found interface %s for port id %d last role %s has currrent role %s",
-				ptpInterface.Name, portID, ptpInterface.Role, role)
-		}
+
 		lastRole := ptpInterface.Role
 		ptpIFace := ptpInterface.Name
 
@@ -108,7 +105,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 					ptpStats[master].SetRole(role)
 				}
 			}
-			log.Infof("update interface %s with portid %d from role %s to  role %s", ptpIFace, portID, lastRole, role)
+			log.Infof("update interface %s with portid %d from role %s to role %s", ptpIFace, portID, lastRole, role)
 			ptp4lCfg.Interfaces[portID-1].UpdateRole(role)
 
 			// update role metrics
