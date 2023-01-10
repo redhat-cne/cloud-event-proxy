@@ -50,21 +50,28 @@ func NewPTPEventManager(resourcePrefix string, publisherTypes map[ptp.EventType]
 }
 
 // PtpThreshold ... return ptp threshold
-func (p *PTPEventManager) PtpThreshold(profileName string) ptpConfig.PtpClockThreshold {
+// resetCh will reset any closed channel
+func (p *PTPEventManager) PtpThreshold(profileName string, resetCh bool) ptpConfig.PtpClockThreshold {
 	if t, found := p.PtpConfigMapUpdates.EventThreshold[profileName]; found {
+		if resetCh {
+			t.Close = make(chan struct{}) // reset channel to new
+		}
 		return ptpConfig.PtpClockThreshold{
 			HoldOverTimeout:    t.HoldOverTimeout,
 			MaxOffsetThreshold: t.MaxOffsetThreshold,
 			MinOffsetThreshold: t.MinOffsetThreshold,
-			Close:              make(chan struct{}),
+			Close:              t.Close,
 		}
 	} else if len(p.PtpConfigMapUpdates.EventThreshold) > 0 { // if not found get the first item since one per config)
 		for _, t := range p.PtpConfigMapUpdates.EventThreshold {
+			if resetCh {
+				t.Close = make(chan struct{})
+			}
 			return ptpConfig.PtpClockThreshold{
 				HoldOverTimeout:    t.HoldOverTimeout,
 				MaxOffsetThreshold: t.MaxOffsetThreshold,
 				MinOffsetThreshold: t.MinOffsetThreshold,
-				Close:              make(chan struct{}),
+				Close:              t.Close,
 			}
 		}
 	}
@@ -235,7 +242,7 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 	}
 
 	lastClockState := oStats.LastSyncState()
-	threshold := p.PtpThreshold(ptpProfileName)
+	threshold := p.PtpThreshold(ptpProfileName, false)
 	switch clockState {
 	case ptp.LOCKED:
 		switch lastClockState {
