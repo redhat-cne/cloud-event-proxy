@@ -82,25 +82,30 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			   If role changes from FAULTY to SLAVE/PASSIVE/MASTER , then cancel HOLDOVER timer
 			    and publish metrics
 			*/
+			/* with ts2phc enabled , when ptp4l reports port goes to faulty
+			there is no HOLDOVER State
+			*/
 			if lastRole == types.FAULTY { // recovery
 				if role == types.SLAVE { // cancel any HOLDOVER timeout for master, if new role is slave
-					if t, ok := p.PtpConfigMapUpdates.EventThreshold[profileName]; ok {
-						log.Infof("interface %s is not anymore faulty, cancel holdover", ptpIFace)
-						t.SafeClose() // close any holdover go routines
-					}
-					alias := ptpStats[master].Alias()
-					if alias == "" {
-						alias = ptp4lCfg.GetAliasByInterface(ptpInterface) // this is default to any interface
-					}
-					masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
-					p.GenPTPEvent(profileName, ptpStats[master], masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
-					UpdateSyncStateMetrics(ptpStats[master].ProcessName(), alias, ptp.FREERUN)
-					// Send os clock sync state only if os clock is synced via phc
-					if t, ok := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && t.Phc2SysEnabled() {
-						p.GenPTPEvent(profileName, ptpStats[ClockRealTime], ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
-						UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ClockRealTime, ptp.FREERUN)
-					} else {
-						log.Infof("phc2sys is not enabled for profile %s, skiping os clock syn state ", profileName)
+					if ptpStats[master].ProcessName() == ptp4lProcessName {
+						if t, ok := p.PtpConfigMapUpdates.EventThreshold[profileName]; ok { // only if offset was reported by ptp4l process
+							log.Infof("interface %s is not anymore faulty, cancel holdover", ptpIFace)
+							t.SafeClose() // close any holdover go routines
+						}
+						alias := ptpStats[master].Alias()
+						if alias == "" {
+							alias = ptp4lCfg.GetAliasByInterface(ptpInterface) // this is default to any interface
+						}
+						masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
+						p.GenPTPEvent(profileName, ptpStats[master], masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
+						UpdateSyncStateMetrics(ptpStats[master].ProcessName(), alias, ptp.FREERUN)
+						// Send os clock sync state only if os clock is synced via phc
+						if t, ok := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && t.Phc2SysEnabled() {
+							p.GenPTPEvent(profileName, ptpStats[ClockRealTime], ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
+							UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ClockRealTime, ptp.FREERUN)
+						} else {
+							log.Infof("phc2sys is not enabled for profile %s, skiping os clock syn state ", profileName)
+						}
 					}
 					ptpStats[master].SetRole(role)
 				}
@@ -121,25 +126,27 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 		// Enter the HOLDOVER state: If current sycState is HOLDOVER(Role is at FAULTY) ,then spawn a go routine to hold the state until
 		// holdover timeout, always put only master offset from ptp4l to HOLDOVER,when this goes to FREERUN
 		// make any slave interface master offset to FREERUN
+		// Only if master (slave port ) offset was reported by ptp4l
 		if syncState != "" && syncState != ptpStats[master].LastSyncState() && syncState == ptp.HOLDOVER {
 			// Put master in HOLDOVER state
 			ptpStats[master].SetRole(role) // update slave port as faulty
-			alias := ptpStats[master].Alias()
-			masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
-			p.PublishEvent(syncState, ptpStats[master].LastOffset(), masterResource, ptp.PtpStateChange)
-			ptpStats[master].SetLastSyncState(syncState)
-			UpdateSyncStateMetrics(ptpStats[master].ProcessName(), alias, syncState)
-			// Put CLOCK_REALTIME in FREERUN state
-			var ptpOpts *ptpConfig.PtpProcessOpts
-			var ok bool
-			if ptpOpts, ok = p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && ptpOpts != nil && ptpOpts.Phc2SysEnabled() {
-				p.PublishEvent(ptp.FREERUN, ptpStats[ClockRealTime].LastOffset(), ClockRealTime, ptp.OsClockSyncStateChange)
-				ptpStats[ClockRealTime].SetLastSyncState(ptp.FREERUN)
-				UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ClockRealTime, ptp.FREERUN)
+			if ptpStats[master].ProcessName() == ptp4lProcessName {
+				alias := ptpStats[master].Alias()
+				masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
+				p.PublishEvent(syncState, ptpStats[master].LastOffset(), masterResource, ptp.PtpStateChange)
+				ptpStats[master].SetLastSyncState(syncState)
+				UpdateSyncStateMetrics(ptpStats[master].ProcessName(), alias, syncState)
+				// Put CLOCK_REALTIME in FREERUN state
+				var ptpOpts *ptpConfig.PtpProcessOpts
+				var ok bool
+				if ptpOpts, ok = p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && ptpOpts != nil && ptpOpts.Phc2SysEnabled() {
+					p.PublishEvent(ptp.FREERUN, ptpStats[ClockRealTime].LastOffset(), ClockRealTime, ptp.OsClockSyncStateChange)
+					ptpStats[ClockRealTime].SetLastSyncState(ptp.FREERUN)
+					UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ClockRealTime, ptp.FREERUN)
+				}
+				threshold := p.PtpThreshold(profileName, true)
+				go handleHoldOverState(p, ptpOpts, configName, profileName, threshold.HoldOverTimeout, MasterClockType, threshold.Close)
 			}
-
-			threshold := p.PtpThreshold(profileName, true)
-			go handleHoldOverState(p, ptpOpts, configName, profileName, threshold.HoldOverTimeout, MasterClockType, threshold.Close)
 		}
 	}
 }
