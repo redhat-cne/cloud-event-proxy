@@ -19,7 +19,11 @@ func extractSummaryMetrics(processName, output string) (iface string, ptpOffset,
 	// phc2sys 5196755.139 ptp4l.0.config ens7f1 rms 3151717 max 3151717 freq -6085106 +/-   0 delay  2746 +/-   0
 	// phc2sys 5196804.326 ptp4l.0.config CLOCK_REALTIME rms 9452637 max 9452637 freq +1196097 +/-   0 delay  1000
 	// ptp4l[74737.942]: [ptp4l.0.config] rms   53 max   74 freq -16642 +/-  40 delay  1089 +/-  20
-
+	// ptp4l[365195.391]: [ptp4l.0.config] master offset         -1 s2 freq   -3972 path delay        89
+	// ts2phc[82674.465]: [ts2phc.0.cfg] nmea delay: 88403525 ns
+	// ts2phc[82674.465]: [ts2phc.0.cfg] ens2f1 extts index 0 at 1673031129.000000000 corr 0 src 1673031129.911642976 diff 0
+	// ts2phc[82674.465]: [ts2phc.0.cfg] ens2f1 master offset          0 s2 freq      -0
+	// log without rms won't be processed here ts2phc doesn't have rms
 	indx := strings.Index(output, "rms")
 	if indx < 0 {
 		return
@@ -90,6 +94,9 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 	// phc2sys[4268818.286]: [] CLOCK_REALTIME phc offset       -62 s0 freq  -78368 delay   1100
 	// phc2sys[4268818.287]: [] ens5f1 phc offset       -92 s0 freq    -890 delay   2464   ( this is down)
 	// phc2sys[4268818.287]: [] ens5f0 phc offset       -47 s2 freq   -2047 delay   2438
+	// ts2phc[82674.465]: [ts2phc.0.cfg] nmea delay: 88403525 ns
+	// ts2phc[82674.465]: [ts2phc.0.cfg] ens2f1 extts index 0 at 1673031129.000000000 corr 0 src 1673031129.911642976 diff 0
+	// ts2phc[82674.465]: [ts2phc.0.cfg] ens2f1 master offset          0 s2 freq      -0
 
 	// 0     1            2              3       4         5    6   7     8         9   10       11
 	//                                  1       2           3   4   5     6        7    8         9
@@ -106,14 +113,21 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 	output = output[index:]
 	fields := strings.Fields(output)
 
-	//       0         1      2          3    4   5    6          7     8
+	//       0         1      2          3     4   5    6          7     8
 	// ptp4l.0.config master offset   -2162130 s2 freq +22451884  delay 374976
+	// ts2phc.0.cfg  ens2f1  master    offset          0 s2 freq      -0
+	// (ts2phc.0.cfg  master  offset      0    s2 freq     -0)
 	if len(fields) < 7 {
 		return
 	}
-
+	if fields[2] != offset && processName == ts2phcProcessName {
+		// Remove the element at index 1 from fields.
+		copy(fields[1:], fields[2:])
+		// ts2phc.0.cfg  master    offset          0 s2 freq      -0
+		fields = fields[:len(fields)-1] // Truncate slice.
+	}
 	if fields[2] != offset {
-		log.Errorf("%s failed to parse offset from master output %s error %s", processName, fields[1], "offset is not in right order")
+		log.Errorf("%s failed to parse offset from master output %s error %s", processName, fields[2], "offset is not in right order")
 		return
 	}
 
@@ -152,7 +166,7 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 		if err != nil {
 			log.Errorf("%s failed to parse delay from master output %s error %v", processName, fields[8], err)
 		}
-	} else {
+	} else if processName != ts2phcProcessName { // there is delay  printed with ts2phc
 		// If there is no delay from master this mean we are out of sync
 		clockState = ptp.HOLDOVER
 		log.Warningf("no delay from master process %s out of sync", processName)

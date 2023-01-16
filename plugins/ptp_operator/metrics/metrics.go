@@ -25,6 +25,7 @@ const (
 
 	phc2sysProcessName = "phc2sys"
 	ptp4lProcessName   = "ptp4l"
+	ts2phcProcessName  = "ts2phc"
 
 	unLocked  = "s0"
 	clockStep = "s1"
@@ -103,7 +104,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	if strings.Contains(output, ptpProcessStatusIdentifier) {
 		if status, e := parsePTPStatus(output, fields); e == nil {
 			if status == PtpProcessDown {
-				if m, ok := ptpStats[master]; ok && processName == ptp4lProcessName {
+				if m, ok := ptpStats[master]; ok && (processName == ptp4lProcessName || processName == ts2phcProcessName) {
 					masterResource := fmt.Sprintf("%s/%s", m.Alias(), MasterClockType)
 					p.GenPTPEvent(profileName, m, masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
 				}
