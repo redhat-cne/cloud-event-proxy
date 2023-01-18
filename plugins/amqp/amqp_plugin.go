@@ -24,8 +24,8 @@ import (
 )
 
 // Start amqp  services to process events,metrics and status
-func Start(wg *sync.WaitGroup, config *common.SCConfiguration) (amqpInstance *v1amqp.AMQP, err error) { //nolint:deadcode,unused
-	if amqpInstance, err = v1amqp.GetAMQPInstance(config.TransportHost.URL, config.EventInCh, config.EventOutCh, config.CloseCh); err != nil {
+func Start(wg *sync.WaitGroup, config *common.SCConfiguration, amqInitTimeout time.Duration) (amqpInstance *v1amqp.AMQP, err error) { //nolint:deadcode,unused
+	if amqpInstance, err = v1amqp.GetAMQPInstance(config.TransportHost.URL, config.EventInCh, config.EventOutCh, config.CloseCh, amqInitTimeout); err != nil {
 		return
 	}
 	amqpInstance.Router.CancelTimeOut(2 * time.Second)
