@@ -80,8 +80,10 @@ func Test_StartWithAMQP(t *testing.T) {
 	defer cleanUP()
 	scConfig.CloseCh = make(chan struct{})
 	scConfig.PubSubAPI.EnableTransport()
-	log.Printf("loading amqp with host %s", scConfig.AMQPHost)
-	amqpInstance, err := v1amqp.GetAMQPInstance(scConfig.AMQPHost, scConfig.EventInCh, scConfig.EventOutCh, scConfig.CloseCh)
+	amqInitTimeout := 1 * time.Second
+	log.Printf("loading amqp with host %s, amqInitTimeout set to %v", scConfig.AMQPHost, amqInitTimeout)
+	amqpInstance, err := v1amqp.GetAMQPInstance(scConfig.AMQPHost, scConfig.EventInCh, scConfig.EventOutCh, scConfig.CloseCh, amqInitTimeout)
+
 	if err != nil {
 		t.Skipf("ampq.Dial(%#v): %v", amqpInstance, err)
 	}
