@@ -56,6 +56,7 @@ var (
 	scConfig          *common.SCConfiguration
 	metricsAddr       string
 	apiPath           = "/api/cloudNotifications/v1/"
+	amqInitTimeout    = 3 * time.Minute
 )
 
 func main() {
@@ -114,12 +115,17 @@ func main() {
 
 	pl := plugins.Handler{Path: "./plugins"}
 	// load amqp
-	_, err = pl.LoadAMQPPlugin(&wg, scConfig)
-	if err != nil {
-		log.Warnf("requires QPID router installed to function fully %s", err.Error())
+	if scConfig.AMQPHost == "amqp://nohup" {
+		log.Infof("AMQPHost is set to amqp://nohup, events are logged locally")
 		scConfig.PubSubAPI.DisableTransport()
-		wg.Add(1)
-		go ProcessInChannel(&wg, scConfig)
+	} else {
+		_, err = pl.LoadAMQPPlugin(&wg, scConfig, amqInitTimeout)
+		if err != nil {
+			log.Warnf("requires QPID router installed to function fully %s", err.Error())
+			scConfig.PubSubAPI.DisableTransport()
+			wg.Add(1)
+			go ProcessInChannel(&wg, scConfig)
+		}
 	}
 
 	// load all senders and listeners from the existing store files.
