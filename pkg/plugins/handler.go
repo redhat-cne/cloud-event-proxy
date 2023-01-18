@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"plugin"
 	"sync"
+	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
@@ -36,8 +37,8 @@ type Handler struct {
 }
 
 // LoadAMQPPlugin loads amqp plugin
-func (pl Handler) LoadAMQPPlugin(wg *sync.WaitGroup, scConfig *common.SCConfiguration) (*v1amqp.AMQP, error) {
-	log.Infof("Starting AMQP server")
+func (pl Handler) LoadAMQPPlugin(wg *sync.WaitGroup, scConfig *common.SCConfiguration, amqInitTimeout time.Duration) (*v1amqp.AMQP, error) {
+	log.Infof("Starting AMQP server with amqInitTimeout set to %v", amqInitTimeout)
 	amqpPlugin, err := filepath.Glob(fmt.Sprintf("%s/amqp_plugin.so", pl.Path))
 	if err != nil {
 		log.Errorf("cannot load amqp plugin %v\n", err)
@@ -57,12 +58,12 @@ func (pl Handler) LoadAMQPPlugin(wg *sync.WaitGroup, scConfig *common.SCConfigur
 		return nil, err
 	}
 
-	startFunc, ok := symbol.(func(wg *sync.WaitGroup, scConfig *common.SCConfiguration) (*v1amqp.AMQP, error))
+	startFunc, ok := symbol.(func(wg *sync.WaitGroup, scConfig *common.SCConfiguration, amqInitTimeout time.Duration) (*v1amqp.AMQP, error))
 	if !ok {
 		log.Errorf("AMQ Plugin has no 'Start(*sync.WaitGroup,*common.SCConfiguration) (*v1_amqp.AMQP,error)' function")
 		return nil, fmt.Errorf("AMQ plugin has no 'start(amqpHost string, dataIn <-chan channel.DataChan, dataOut chan<- channel.DataChan, close <-chan bool) (*v1_amqp.AMQP,error)' function")
 	}
-	amqpInstance, err := startFunc(wg, scConfig)
+	amqpInstance, err := startFunc(wg, scConfig, amqInitTimeout)
 	if err != nil {
 		log.Errorf("error starting amqp at %s error: %v", scConfig.TransportHost.URL, err)
 		return amqpInstance, err

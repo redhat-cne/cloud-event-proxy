@@ -61,6 +61,7 @@ var (
 	apiPath                 = "/api/cloudNotifications/v1/"
 	httpEventPublisher      string
 	pluginHandler           plugins.Handler
+	amqInitTimeout          = 3 * time.Minute
 )
 
 func main() {
@@ -125,14 +126,22 @@ func main() {
 	// load amqp
 	if scConfig.TransportHost.Type == common.AMQ {
 		log.Infof("AMQ enabled as event transport %s", scConfig.TransportHost.String())
-		_, pluginErr := pluginHandler.LoadAMQPPlugin(&wg, scConfig)
-		if pluginErr != nil {
-			log.Warnf("requires QPID router installed to function fully %s", pluginErr.Error())
+		if scConfig.TransportHost.URL == "amqp://nohup" {
+			log.Infof("transportHost is set to amqp://nohup, events are logged locally")
 			scConfig.PubSubAPI.DisableTransport()
 			transportEnabled = false
+		} else {
+			_, pluginErr := pluginHandler.LoadAMQPPlugin(&wg, scConfig, amqInitTimeout)
+			if pluginErr != nil {
+				log.Warnf("requires QPID router installed to function fully %s", pluginErr.Error())
+				scConfig.PubSubAPI.DisableTransport()
+				transportEnabled = false
+			}
 		}
 	} else if scConfig.TransportHost.Type == common.HTTP {
 		transportEnabled = enableHTTPTransport(&wg)
+	} else {
+		transportEnabled = false
 	}
 	// if all transport types failed then process internally
 	if !transportEnabled {
@@ -337,7 +346,7 @@ func enableHTTPTransport(wg *sync.WaitGroup) bool {
 	var httpServer *v1http.HTTP
 	httpServer, err := pluginHandler.LoadHTTPPlugin(wg, scConfig, nil, nil)
 	if err != nil {
-		log.Warnf(" failied to  load http plugin for tansport %s", err.Error())
+		log.Warnf(" failied to load http plugin for tansport %s", err.Error())
 		scConfig.PubSubAPI.DisableTransport()
 		return false
 	}

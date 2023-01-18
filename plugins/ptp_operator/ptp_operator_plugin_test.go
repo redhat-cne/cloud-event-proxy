@@ -91,7 +91,7 @@ func Test_StartWithAMQP(t *testing.T) {
 	scConfig.CloseCh = make(chan struct{})
 	scConfig.PubSubAPI.EnableTransport()
 	scConfig.TransportHost = &common.TransportHost{
-		Type:   0,
+		Type:   common.AMQ,
 		URL:    "amqp:localhost:5672",
 		Host:   "",
 		Port:   0,
@@ -99,8 +99,9 @@ func Test_StartWithAMQP(t *testing.T) {
 		Err:    nil,
 	}
 	scConfig.TransportHost.ParseTransportHost()
-	log.Printf("loading amqp with host %s", scConfig.TransportHost.URL)
-	amqpInstance, err := v1amqp.GetAMQPInstance(scConfig.TransportHost.URL, scConfig.EventInCh, scConfig.EventOutCh, scConfig.CloseCh)
+	amqInitTimeout := 1 * time.Second
+	log.Printf("loading amqp with host %s, amqInitTimeout set to %v", scConfig.TransportHost.URL, amqInitTimeout)
+	amqpInstance, err := v1amqp.GetAMQPInstance(scConfig.TransportHost.URL, scConfig.EventInCh, scConfig.EventOutCh, scConfig.CloseCh, amqInitTimeout)
 	if err != nil {
 		t.Skipf("ampq.Dial(%#v): %v", amqpInstance, err)
 	}
@@ -146,6 +147,15 @@ func Test_StartWithOutAMQP(t *testing.T) {
 	defer cleanUP()
 	scConfig.CloseCh = make(chan struct{})
 	scConfig.PubSubAPI.DisableTransport()
+	scConfig.TransportHost = &common.TransportHost{
+		Type:   common.AMQ,
+		URL:    "amqp://nohup",
+		Host:   "",
+		Port:   0,
+		Scheme: "",
+		Err:    nil,
+	}
+	scConfig.TransportHost.ParseTransportHost()
 	log.Printf("loading amqp with host %s", scConfig.TransportHost.Host)
 	go ProcessInChannel()
 
