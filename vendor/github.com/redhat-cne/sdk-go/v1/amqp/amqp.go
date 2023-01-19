@@ -29,9 +29,8 @@ import (
 )
 
 var (
-	instance      *AMQP
-	retryTimeout  = 500 * time.Millisecond
-	cancelTimeout = 300 * time.Second
+	instance     *AMQP
+	retryTimeout = 500 * time.Millisecond
 )
 
 // AMQP exposes amqp api methods
@@ -40,11 +39,12 @@ type AMQP struct {
 }
 
 // GetAMQPInstance get event instance
-func GetAMQPInstance(amqpHost string, dataIn <-chan *channel.DataChan, dataOut chan<- *channel.DataChan, closeCh <-chan struct{}) (*AMQP, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), cancelTimeout)
+func GetAMQPInstance(amqpHost string, dataIn <-chan *channel.DataChan, dataOut chan<- *channel.DataChan, closeCh <-chan struct{}, amqInitTimeout time.Duration) (*AMQP, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), amqInitTimeout)
 	defer cancel()
 	var router *amqp1.Router
 	var err error
+	isFirstFail := true
 	for {
 		select {
 		case <-ctx.Done():
@@ -53,7 +53,10 @@ func GetAMQPInstance(amqpHost string, dataIn <-chan *channel.DataChan, dataOut c
 		}
 		router, err = amqp1.InitServer(amqpHost, dataIn, dataOut, closeCh)
 		if err != nil {
-			log.Info("retrying connecting to amqp.")
+			if isFirstFail {
+				log.Infof("retrying connecting to amqp every %s for %s", retryTimeout, amqInitTimeout)
+				isFirstFail = false
+			}
 			time.Sleep(retryTimeout)
 			continue
 		}
