@@ -12,6 +12,7 @@ import (
 
 	"sync"
 	"testing"
+	"time"
 
 	main "github.com/redhat-cne/cloud-event-proxy/cmd"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/plugins"
@@ -71,8 +72,9 @@ func TestSidecar_MainWithAMQP(t *testing.T) {
 	go main.ProcessOutChannel(wg, scConfig)
 
 	if scConfig.TransportHost.Type == common.AMQ {
-		log.Infof("loading amqp with host %s", scConfig.TransportHost.Host)
-		_, err = pl.LoadAMQPPlugin(wg, scConfig)
+		amqInitTimeout := 1 * time.Second
+		log.Infof("loading amqp with host %s, amqInitTimeout set to %v", scConfig.TransportHost.Host, amqInitTimeout)
+		_, err = pl.LoadAMQPPlugin(wg, scConfig, amqInitTimeout)
 		if err != nil {
 			t.Skipf("skipping amqp usage, test will be reading dirctly from in channel. reason: %v", err)
 		}
@@ -114,14 +116,20 @@ func TestSidecar_MainWithOutAMQP(t *testing.T) {
 		storePath = sPath
 	}
 	scConfig = &common.SCConfiguration{
-		EventInCh:     make(chan *channel.DataChan, channelBufferSize),
-		EventOutCh:    make(chan *channel.DataChan, channelBufferSize),
-		CloseCh:       make(chan struct{}),
-		APIPort:       apiPort,
-		APIPath:       "/api/cloudNotifications/v1/",
-		PubSubAPI:     v1pubsub.GetAPIInstance(storePath),
-		StorePath:     storePath,
-		TransportHost: &common.TransportHost{},
+		EventInCh:  make(chan *channel.DataChan, channelBufferSize),
+		EventOutCh: make(chan *channel.DataChan, channelBufferSize),
+		CloseCh:    make(chan struct{}),
+		APIPort:    apiPort,
+		APIPath:    "/api/cloudNotifications/v1/",
+		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
+		StorePath:  storePath,
+		TransportHost: &common.TransportHost{
+			Type: common.AMQ,
+			URL:  "amqp://nohup",
+			Host: "",
+			Port: 0,
+			Err:  nil,
+		},
 	}
 	log.Infof("Configuration set to %#v", scConfig)
 

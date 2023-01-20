@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
@@ -79,7 +80,8 @@ func TestLoadAMQPPlugin(t *testing.T) {
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 			pLoader = Handler{Path: tc.pgPath}
-			_, err := pLoader.LoadAMQPPlugin(wg, scConfig)
+			amqInitTimeout := 1 * time.Second
+			_, err := pLoader.LoadAMQPPlugin(wg, scConfig, amqInitTimeout)
 			if err != nil {
 				switch e := err.(type) {
 				case errorhandler.AMQPConnectionError:
