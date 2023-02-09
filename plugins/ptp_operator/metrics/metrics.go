@@ -14,9 +14,11 @@ import (
 )
 
 var (
-	ptpConfigFileRegEx = regexp.MustCompile(`ptp4l.[0-9]*.config`)
+	ptpConfigFileRegEx    = regexp.MustCompile(`ptp4l.[0-9]*.config`)
+	ts2phcConfigFileRegEx = regexp.MustCompile(`ts2phc.[0-9]*.config`)
 	// NodeName from the env
-	ptpNodeName = ""
+	ptpNodeName        = ""
+	masterOffsetSource = ptp4lProcessName
 )
 
 const (
@@ -66,6 +68,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			log.Errorf("failed to extract %s", msg)
 		}
 	}()
+
 	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
 	output := replacer.Replace(msg)
 	fields := strings.Fields(output)
@@ -84,12 +87,17 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 
 	processName := fields[processNameIndex]
 	configName := fields[configNameIndex]
+	// if  is has ts2phc then it will replace it with ptp4l
+	configName = strings.Replace(configName, ts2phcProcessName, ptp4lProcessName, 1)
 	ptp4lCfg := p.GetPTPConfig(types.ConfigName(configName))
+	// ptp stats goes by config either ptp4l ot pch2sys
+	// master (slave) interface can be configured in ptp4l but  offset provided by ts2phc
+
 	ptpStats := p.GetStats(types.ConfigName(configName))
 	profileName := ptp4lCfg.Profile
 
 	if len(ptp4lCfg.Interfaces) == 0 { //TODO: Use PMC to update port and roles
-		log.Errorf("file watcher have not picked the files yet")
+		log.Errorf("file watcher have not picked the files yet or ptp4l doesn't have config")
 		return
 	}
 	if profileName == "" {
@@ -104,9 +112,13 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	if strings.Contains(output, ptpProcessStatusIdentifier) {
 		if status, e := parsePTPStatus(output, fields); e == nil {
 			if status == PtpProcessDown {
-				if m, ok := ptpStats[master]; ok && (processName == ptp4lProcessName || processName == ts2phcProcessName) {
-					masterResource := fmt.Sprintf("%s/%s", m.Alias(), MasterClockType)
-					p.GenPTPEvent(profileName, m, masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
+				if masterOffsetSource == processName { // if the process is responsible to set master offset
+					if m, ok := ptpStats[master]; ok {
+						if m.Alias() != "" {
+							masterResource := fmt.Sprintf("%s/%s", m.Alias(), MasterClockType)
+							p.GenPTPEvent(profileName, m, masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
+						}
+					}
 				}
 				if s, ok := ptpStats[ClockRealTime]; ok {
 					if t, ok2 := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok2 && t.Phc2SysEnabled() {
@@ -121,6 +133,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	}
 
 	if strings.Contains(output, " max ") { // this get generated in case -u is passed as an option to phy2sys opts
+		//TODO: ts2phc rms is validated
 		interfaceName, ptpOffset, maxPtpOffset, frequencyAdjustment, delay := extractSummaryMetrics(processName, output)
 		switch interfaceName {
 		case ClockRealTime:
@@ -137,21 +150,36 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				// this should not happen
 				log.Errorf("metrics found for empty interface %s", output)
 			}
+		default:
+			if processName == ts2phcProcessName {
+				var alias string
+				r := []rune(interfaceName)
+				alias = string(r[:len(r)-1]) + "x"
+				ptpStats[master].SetAlias(alias)
+				UpdatePTPMetrics(master, processName, alias, ptpOffset, maxPtpOffset, frequencyAdjustment, delay)
+			}
 		}
 	} else if strings.Contains(output, " offset ") {
 		// ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay    374976
 		// phc2sys[4268818.286]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -62 s0 freq  -78368 delay   1100
 		// phc2sys[4268818.287]: [ptp4l.0.config] ens5f1 phc offset       -92 s0 freq    -890 delay   2464   ( this is down)
 		// phc2sys[4268818.287]: [ptp4l.0.config] ens5f0 phc offset       -47 s2 freq   -2047 delay   2438
+		// ts2phc[82674.465]: [ts2phc.0.cfg] nmea delay: 88403525 ns
+		// ts2phc[82674.465]: [ts2phc.0.cfg] ens2f1 extts index 0 at 1673031129.000000000 corr 0 src 1673031129.911642976 diff 0
+		// ts2phc[82674.465]: [ts2phc.0.cfg] ens2f1 master offset          0 s2 freq      -0
 		// Use threshold to CLOCK_REALTIME==SLAVE, rest send clock state to metrics no events
+
 		interfaceName, ptpOffset, _, frequencyAdjustment, delay, syncState := extractRegularMetrics(processName, output)
 		eventType := ptp.PtpStateChange
 		if interfaceName == "" {
 			return // don't do if iface not known
 		}
-		if !(interfaceName == master || interfaceName == ClockRealTime) {
+		if processName != ts2phcProcessName && !(interfaceName == master || interfaceName == ClockRealTime) {
 			return // only master and clock_realtime are supported
 		}
+		// set who is producing  master offset
+		masterOffsetSource = processName
+
 		offsetSource := master
 		if strings.Contains(output, "sys offset") {
 			offsetSource = sys
@@ -159,8 +187,15 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			offsetSource = phc
 			eventType = ptp.OsClockSyncStateChange
 		}
-
-		interfaceType := types.IFace(interfaceName)
+		// if it was ts2phc then it was considered as master offset
+		interfaceType := types.IFace(master)
+		if masterOffsetSource == ts2phcProcessName {
+			ptpInterface = ptp4lconf.PTPInterface{Name: interfaceName}
+		} else {
+			// for ts2phc there is no slave interface configuration
+			interfaceType = types.IFace(interfaceName)
+			ptpInterface, _ = ptp4lCfg.ByRole(types.SLAVE)
+		}
 
 		if _, found := ptpStats[interfaceType]; !found {
 			ptpStats[interfaceType] = stats.NewStats(configName)
@@ -170,8 +205,6 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		ptpStats[interfaceType].SetProcessName(processName)
 		ptpStats[interfaceType].SetFrequencyAdjustment(int64(frequencyAdjustment))
 		ptpStats[interfaceType].SetDelay(int64(delay))
-
-		ptpInterface, _ = ptp4lCfg.ByRole(types.SLAVE)
 
 		switch interfaceName {
 		case ClockRealTime: // CLOCK_REALTIME is active slave interface
@@ -192,6 +225,19 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 					alias = string(r[:len(r)-1]) + "x"
 					ptpStats[interfaceType].SetAlias(alias)
 				}
+				masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
+				p.GenPTPEvent(profileName, ptpStats[interfaceType], masterResource, int64(ptpOffset), syncState, eventType)
+				UpdateSyncStateMetrics(processName, alias, ptpStats[interfaceType].LastSyncState())
+				UpdatePTPMetrics(offsetSource, processName, alias, ptpOffset, float64(ptpStats[interfaceType].MaxAbs()),
+					frequencyAdjustment, delay)
+				ptpStats[interfaceType].AddValue(int64(ptpOffset))
+			}
+		default:
+			if masterOffsetSource == ts2phcProcessName {
+				var alias string
+				r := []rune(interfaceName)
+				alias = string(r[:len(r)-1]) + "x"
+				ptpStats[master].SetAlias(alias)
 				masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
 				p.GenPTPEvent(profileName, ptpStats[interfaceType], masterResource, int64(ptpOffset), syncState, eventType)
 				UpdateSyncStateMetrics(processName, alias, ptpStats[interfaceType].LastSyncState())

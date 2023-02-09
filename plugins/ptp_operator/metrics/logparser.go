@@ -101,15 +101,16 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 	// 0     1            2              3       4         5    6   7     8         9   10       11
 	//                                  1       2           3   4   5     6        7    8         9
 	// ptp4l 5196819.100 ptp4l.0.config master offset   -2162130 s2 freq +22451884 path delay    374976
-	output = strings.Replace(output, "path", "", 1)
-	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ", "phc", "", "sys", "")
-	output = replacer.Replace(output)
-
 	index := FindInLogForCfgFileIndex(output)
 	if index == -1 {
 		log.Errorf("config name is not found in log outpt")
 		return
 	}
+
+	output = strings.Replace(output, "path", "", 1)
+	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ", "phc", "", "sys", "")
+	output = replacer.Replace(output)
+
 	output = output[index:]
 	fields := strings.Fields(output)
 
@@ -120,6 +121,8 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 	if len(fields) < 7 {
 		return
 	}
+	// either master or clock_realtime
+	interfaceName = fields[1]
 	if fields[2] != offset && processName == ts2phcProcessName {
 		// Remove the element at index 1 from fields.
 		copy(fields[1:], fields[2:])
@@ -130,8 +133,6 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 		log.Errorf("%s failed to parse offset from master output %s error %s", processName, fields[2], "offset is not in right order")
 		return
 	}
-
-	interfaceName = fields[1]
 
 	ptpOffset, err := strconv.ParseFloat(fields[3], 64)
 	if err != nil {
@@ -233,9 +234,13 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 
 // FindInLogForCfgFileIndex ... find config name from the log
 func FindInLogForCfgFileIndex(out string) int {
-	match := ptpConfigFileRegEx.FindStringIndex(out)
-	if len(match) == 2 {
-		return match[0]
+	matchPtp4l := ptpConfigFileRegEx.FindStringIndex(out)
+	if len(matchPtp4l) == 2 {
+		return matchPtp4l[0]
+	}
+	matchTS2Phc := ts2phcConfigFileRegEx.FindStringIndex(out)
+	if len(matchTS2Phc) == 2 {
+		return matchTS2Phc[0]
 	}
 	return -1
 }

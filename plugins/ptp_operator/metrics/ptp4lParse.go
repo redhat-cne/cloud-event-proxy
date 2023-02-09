@@ -87,7 +87,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			*/
 			if lastRole == types.FAULTY { // recovery
 				if role == types.SLAVE { // cancel any HOLDOVER timeout for master, if new role is slave
-					if ptpStats[master].ProcessName() == ptp4lProcessName {
+					if masterOffsetSource == ptp4lProcessName {
 						if t, ok := p.PtpConfigMapUpdates.EventThreshold[profileName]; ok { // only if offset was reported by ptp4l process
 							log.Infof("interface %s is not anymore faulty, cancel holdover", ptpIFace)
 							t.SafeClose() // close any holdover go routines
@@ -130,7 +130,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 		if syncState != "" && syncState != ptpStats[master].LastSyncState() && syncState == ptp.HOLDOVER {
 			// Put master in HOLDOVER state
 			ptpStats[master].SetRole(role) // update slave port as faulty
-			if ptpStats[master].ProcessName() == ptp4lProcessName {
+			if ptpStats[master].ProcessName() == masterOffsetSource {
 				alias := ptpStats[master].Alias()
 				masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
 				p.PublishEvent(syncState, ptpStats[master].LastOffset(), masterResource, ptp.PtpStateChange)
