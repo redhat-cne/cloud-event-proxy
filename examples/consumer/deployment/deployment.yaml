@@ -42,7 +42,7 @@ spec:
             - "--store-path=/store"
             #- "--transport-host=amqp://router.router.svc.cluster.local"
             - "--transport-host=consumer-events-subscription-service.cloud-events.svc.cluster.local:9043"
-            - "--http-event-publishers=ptp-event-publisher-service.openshift-ptp.svc.cluster.local:9043"
+            - "--http-event-publishers=ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043"
             - "--api-port=8089"
           env:
             - name: NODE_NAME
