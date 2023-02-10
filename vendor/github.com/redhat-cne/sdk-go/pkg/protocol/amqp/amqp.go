@@ -597,7 +597,7 @@ func (q *Router) setReceiver(wg *sync.WaitGroup, d *channel.DataChan) error {
 								log.Errorf("failed to send(TO): %s result %v ", *out.ReturnAddress, result)
 								out.Status = channel.FAILED
 							} else if cloudevents.IsACK(result) {
-								log.Errorf("success status to send(TO): %s result %v ", *out.ReturnAddress, result)
+								log.Infof("success status to send(TO): %s ", *out.ReturnAddress)
 								out.Status = channel.SUCCESS
 							}
 						} else {

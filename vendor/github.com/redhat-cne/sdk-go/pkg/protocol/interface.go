@@ -21,7 +21,7 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 )
 
-//Binder ...protocol binder base struct
+// Binder ...protocol binder base struct
 type Binder struct {
 	ID            string
 	Ctx           context.Context
