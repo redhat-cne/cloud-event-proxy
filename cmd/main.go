@@ -21,7 +21,6 @@ import (
 	"os"
 	"os/signal"
 	"path"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -86,21 +85,7 @@ func main() {
 
 	nodeIP := os.Getenv("NODE_IP")
 	nodeName := os.Getenv("NODE_NAME")
-	if nodeIP != "" {
-		transportHost = strings.Replace(transportHost, "NODE_IP", nodeIP, 1)
-		log.Infof("transport host path is set to %s", transportHost)
-	} else if strings.Contains(transportHost, "NODE_NAME") { // allow overriding transport host
-		if nodeName != "" {
-			if strings.Contains(nodeName, ".") {
-				transportHost = strings.Replace(transportHost, "NODE_NAME", strings.Split(nodeName, ".")[0], 1)
-			} else {
-				transportHost = strings.Replace(transportHost, "NODE_NAME", nodeName, 1)
-			}
-			log.Infof("transport is overridden as %s ", transportHost)
-		} else {
-			log.Info("NODE_NAME env is not set")
-		}
-	}
+	transportHost = common.SanitizeTransportHost(transportHost, nodeIP, nodeName)
 
 	parsedTransportHost := &common.TransportHost{URL: transportHost}
 
