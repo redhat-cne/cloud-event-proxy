@@ -265,6 +265,7 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 			Addr:              fmt.Sprintf(":%d", h.Port),
 			Handler:           r,
 		}
+		h.ReloadSubsFromStore()
 		err := h.httpServer.ListenAndServe()
 		if err != nil {
 			log.Errorf("restarting due to error with http messaging server %s\n", err.Error())
@@ -524,6 +525,7 @@ func (h *Server) SendTo(wg *sync.WaitGroup, clientID uuid.UUID, clientAddress, r
 			defer wg.Done()
 			if sender == nil {
 				localmetrics.UpdateEventCreatedCount(clientAddress, localmetrics.FAILED, 1)
+				return
 			}
 			if err := sender.Send(*e); err != nil {
 				log.Errorf("failed to send(TO): %s result %v ", clientAddress, err)
@@ -612,7 +614,7 @@ func (h *Server) DeleteSender(key uuid.UUID) {
 	delete(h.Sender, key)
 }
 
-// NewSender creates new QDR ptp
+// NewSender creates new HTTP listener
 func (h *Server) NewSender(clientID uuid.UUID, address string) error {
 	l := map[ServiceResourcePath]*Protocol{}
 	h.SetSender(clientID, l)
@@ -638,6 +640,21 @@ func (h *Server) NewSender(clientID uuid.UUID, address string) error {
 		h.SetSender(clientID, l)
 	}
 	return nil
+}
+
+// ReloadSubsFromStore creates senders for subscribers restored from persistent store
+func (h *Server) ReloadSubsFromStore() {
+	for id, sub := range h.subscriberAPI.SubscriberStore.Store {
+		log.Infof("reloading registered clients %s : %s", id, sub.String())
+		if _, ok := h.Sender[id]; !ok {
+			if err := h.NewSender(id, sub.EndPointURI.String()); err != nil {
+				log.Errorf("(1)error creating sub %v for address %s", err, sub.EndPointURI.String())
+				localmetrics.UpdateSenderCreatedCount(sub.EndPointURI.String(), localmetrics.FAILED, 1)
+			}
+		} else {
+			log.Infof("sender already present for client %s", id.String())
+		}
+	}
 }
 
 // Send ...

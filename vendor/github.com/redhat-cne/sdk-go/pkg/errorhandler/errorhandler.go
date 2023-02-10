@@ -60,7 +60,7 @@ type SenderNotFoundError struct {
 	Desc string
 }
 
-//Error sender not found error string
+// Error sender not found error string
 func (s SenderNotFoundError) Error() string {
 	return fmt.Sprintf("sender %s not found", s.Name)
 }
