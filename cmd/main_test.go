@@ -12,6 +12,7 @@ import (
 
 	"sync"
 	"testing"
+	"time"
 
 	main "github.com/redhat-cne/cloud-event-proxy/cmd"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/plugins"
@@ -64,8 +65,9 @@ func TestSidecar_MainWithAMQP(t *testing.T) {
 	wg.Add(1)
 	go main.ProcessOutChannel(wg, scConfig)
 
-	log.Infof("loading amqp with host %s", scConfig.AMQPHost)
-	_, err = pl.LoadAMQPPlugin(wg, scConfig)
+	amqInitTimeout := 1 * time.Second
+	log.Infof("loading amqp with host %s, amqInitTimeout set to %v", scConfig.AMQPHost, amqInitTimeout)
+	_, err = pl.LoadAMQPPlugin(wg, scConfig, amqInitTimeout)
 	if err != nil {
 		t.Skipf("skipping amqp usage, test will be reading dirctly from in channel. reason: %v", err)
 	}
