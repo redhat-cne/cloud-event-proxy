@@ -52,7 +52,7 @@ spec:
           image: "$CONSUMER_IMG"
           args:
             - "--local-api-addr=127.0.0.1:9089"
-            - "--api-path=/api/cloudNotifications/v1/"
+            - "--api-path=/api/ocloudNotifications/v1/"
             - "--api-addr=127.0.0.1:9095"
           env:
             - name: NODE_NAME

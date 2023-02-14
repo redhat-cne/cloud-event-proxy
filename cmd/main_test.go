@@ -50,7 +50,7 @@ func TestSidecar_MainWithAMQP(t *testing.T) {
 		EventOutCh: make(chan *channel.DataChan, channelBufferSize),
 		CloseCh:    make(chan struct{}),
 		APIPort:    apiPort,
-		APIPath:    "/api/cloudNotifications/v1/",
+		APIPath:    "/api/ocloudNotifications/v1/",
 		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
 		StorePath:  storePath,
 		TransportHost: &common.TransportHost{
@@ -120,7 +120,7 @@ func TestSidecar_MainWithOutAMQP(t *testing.T) {
 		EventOutCh: make(chan *channel.DataChan, channelBufferSize),
 		CloseCh:    make(chan struct{}),
 		APIPort:    apiPort,
-		APIPath:    "/api/cloudNotifications/v1/",
+		APIPath:    "/api/ocloudNotifications/v1/",
 		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
 		StorePath:  storePath,
 		TransportHost: &common.TransportHost{
@@ -185,7 +185,7 @@ func TestSidecar_MainWithHTTP(t *testing.T) {
 		EventOutCh: make(chan *channel.DataChan, channelBufferSize),
 		CloseCh:    make(chan struct{}),
 		APIPort:    apiPort,
-		APIPath:    "/api/cloudNotifications/v1/",
+		APIPath:    "/api/ocloudNotifications/v1/",
 		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
 		StorePath:  storePath,
 		TransportHost: &common.TransportHost{
