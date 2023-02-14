@@ -17,82 +17,128 @@
 * [Subscriptions](#creating-subscriptions)
     * [JSON Example](#subscription-json-example)
     * [GO Example](#creating-subscription-golang-example)
-* [Events](#events)
+* [Rest API](#rest-api)
+* [Cloud Native Events](#cloud-native-events)
   * [Event via sdk](#publisher-event-create-via-go-sdk)
   * [Event via rest api](#publisher-event-create-via-rest-api)
 * [Metrics](#metrics)
 * [Plugin](#plugin)
   
 ## Event Transporter
-Cloud event proxy support two types of  transporter protocol
+Cloud event proxy support two types of transport protocol
 1. AMQ Protocol 
 2. HTTP Protocol
-#### AMQ Protocol 
+
+### AMQ Protocol
  AMQ protocol required qdr router deployed and running manually or via AMQ interconnect operator.
  Have `transport-host` variable set to AMQ instance example `amq:localhost:5672`
 The Producer will be sending  events to bus address specified by the  publisher and consumers connect to those bus address.
 AMQ producer example
-```json
+```yaml
  - name: cloud-event-sidecar
           image: quay.io/redhat-cne/cloud-event-proxy
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
-            - "--transport-host=amqp://router.router.svc.cluster.local"
-            - "--api-port=8089"
+            - "--transport-host=amqp://amq-router.amq-router.svc.cluster.local"
+            - "--api-port=9085"
 ```
 
 AMQ consumer example              
-```json
+```yaml
  - name: cloud-event-sidecar
           image: quay.io/redhat-cne/cloud-event-proxy
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
-            - "--transport-host=amqp://router.router.svc.cluster.local"
-            - "--api-port=8089"
+            - "--transport-host=amqp://amq-router.amq-router.svc.cluster.local"
+            - "--api-port=9085"
 ```
-#### HTTP Protocol
-##### Producer
-CloudEvents HTTP Protocol will be enabled based on  url in `transport-host`.
+### HTTP Protocol
+#### Producer
+CloudEvents HTTP Protocol will be enabled based on url in `transport-host`.
 If HTTP is identified then the publisher will start a publisher rest service, which is accessible outside the container via k8s service name.
-The Publisher service will have the ability to register  consumer endpoints to publish events.
+The Publisher service will have the ability to register consumer endpoints to publish events.
 
-HTTP producer example  
-```json
+The transport URL is defined in the format of 
+```yaml
+- "--transport-host=$(TRANSPORT_PROTOCAL)://$(TRANSPORT_SERVICE).$(TRANSPORT_NAMESPACE).svc.cluster.local:$(TRANSPORT_PORT)"
+```
+
+HTTP producer example
+
+```yaml
  - name: cloud-event-sidecar
           image: quay.io/redhat-cne/cloud-event-proxy
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
-            - "--transport-host=ptp-event-publisher-service.openshift-ptp.svc.cluster.local:9043"
-            - "--api-port=8089"
-
+            - "--ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043"
+            - "--api-port=9085"
 
 ```
-##### Consumer
+`NODE_NAME` can be the full node name `node1.example.com` or `node1`, which is the first sub string of node name delimited by ".".
+
+The event producer uses a `pubsubstore` to store Subscriber information, including clientID, consumer service endpoint URI, resource ID etc. These are stored as one json file per registered subscriber. The `pubsubstore` needs to be mounted to a persistent volume in order to survive a pod reboot.
+
+Example for configuring persistent storage
+
+```yaml
+     spec:
+      nodeSelector:
+        node-role.kubernetes.io/worker: ""
+      serviceAccountName: hw-event-proxy-sa
+      containers:
+        - name: cloud-event-sidecar
+          volumeMounts:
+            - name: pubsubstore
+              mountPath: /store
+      volumes:
+        - name: pubsubstore
+          persistentVolumeClaim:
+            claimName: cloud-event-proxy-store
+```
+
+Example PersistentVolumeClaim
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cloud-event-proxy-store
+spec:
+  storageClassName: local-storage
+  resources:
+    requests:
+      storage: 10Mi
+  accessModes:
+  - ReadWriteOnce
+```
+
+#### Consumer
 Consumer application will also set its own `transport-host`, which enabled cloud event proxy to run a service to listen to
 incoming events posted by the publisher.
 Consumer will also use `http-event-publishers` variable to request for registering  publisher endpoints for consuming events.
+
 HTTP consumer example
-```json
+```yaml
  - name: cloud-event-sidecar
           image: quay.io/redhat-cne/cloud-event-proxy
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
             - "--transport-host=consumer-events-subscription-service.cloud-events.svc.cluster.local:9043"
-            - "--http-event-publishers=ptp-event-publisher-service.openshift-ptp.svc.cluster.local:9043"
-            - "--api-port=8089"
+            - "--http-event-publishers=ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043"
+            - "--api-port=9085"
 ```
+`NODE_NAME` can be the full node name `node1.example.com` or `node1`, which is the first sub string of node name delimited by ".".
 
 ## Creating Publisher
-#### Publisher JSON Example 
+### Publisher JSON Example 
 Create Publisher Resource: JSON request
 ```json
 {
   "Resource": "/east-edge-10/vdu3/o-ran-sync/sync-group/sync-status/sync-state",
-  "UriLocation": "http://localhost:8089/ack/event"
+  "UriLocation": "http://localhost:9090/ack/event"
 }
 ```
 
@@ -102,10 +148,12 @@ Create Publisher Resource: JSON response
   "Id": "789be75d-7ac3-472e-bbbc-6d62878aad4a",
   "Resource": "/east-edge-10/vdu3/o-ran-sync/sync-group/sync-status/sync-state",
   "UriLocation": "http://localhost:9090/ack/event" ,
-  "EndpointUri ": "http://localhost:8089/api/ocloudNotifications/v1/publishers/{publisherid}"
+  "EndpointUri ": "http://localhost:9085/api/ocloudNotifications/v1/publishers/{publisherid}"
 }
 ```
-### Creating publisher golang example with AMQ as transporter protocol
+
+### Creating Publisher Golang Eexample
+#### Creating publisher golang example with AMQ as transporter protocol
 ```go
 package main
 import (
@@ -117,7 +165,7 @@ func main(){
   //channel for the transport handler subscribed to get and set events  
     eventInCh := make(chan *channel.DataChan, 10)
     pubSubInstance = v1pubsub.GetAPIInstance(".")
-    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8089", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
+    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:9085", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
     // create publisher 
     pub, err := pubSubInstance.CreatePublisher(v1pubsub.NewPubSub(endpointURL, "test/test"))
     // once the publisher response is received, create a transport sender object to send events.
@@ -128,7 +176,7 @@ func main(){
 ```
 
 
-### Creating publisher golang example with HTTP as transporter protocol
+#### Creating publisher golang example with HTTP as transporter protocol
 ```go
 package main
 import (
@@ -139,7 +187,7 @@ func main(){
   //channel for the transport handler subscribed to get and set events  
     eventInCh := make(chan *channel.DataChan, 10)
     pubSubInstance = v1pubsub.GetAPIInstance(".")
-    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8089", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
+    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:9085", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
     // create publisher 
     pub, err := pubSubInstance.CreatePublisher(v1pubsub.NewPubSub(endpointURL, "test/test"))
 
@@ -147,7 +195,7 @@ func main(){
 ```
 
 ## Creating Subscriptions
-#### Subscription JSON Example
+### Subscription JSON Example
 Create Subscription Resource: JSON request
 ```json
 {
@@ -161,11 +209,12 @@ Example Create Subscription Resource: JSON response
   "Id": "789be75d-7ac3-472e-bbbc-6d62878aad4a",
   "Resource": "/east-edge-10/vdu3/o-ran-sync/sync-group/sync-status/sync-state",
   "UriLocation": "http://localhost:9090/ack/event",
-  "EndpointUri": "http://localhost:8089/api/ocloudNotifications/v1/subscriptions/{subscriptionid}"
+  "EndpointUri": "http://localhost:9085/api/ocloudNotifications/v1/subscriptions/{subscriptionid}"
 }
 ```
 
-### Creating subscription golang example with AMQ as transporter protocol 
+### Creating Subscription Golang Example
+#### Creating subscription golang example with AMQ as transporter protocol 
 ```go
 package main
 import (
@@ -178,7 +227,7 @@ func main(){
     eventInCh := make(chan *channel.DataChan, 10)
     
     pubSubInstance = v1pubsub.GetAPIInstance(".")
-    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8089", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
+    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:9085", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
     // create subscription 
     pub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "test/test"))
     // once the subscription response is received, create a transport listener object to receive events.
@@ -187,7 +236,8 @@ func main(){
     }
 }
 ```
-### Creating subscription golang example with HTTP as transporter protocol
+
+#### Creating subscription golang example with HTTP as transporter protocol
 ```go
 package main
 import (
@@ -199,15 +249,17 @@ func main(){
     eventInCh := make(chan *channel.DataChan, 10)
     
     pubSubInstance = v1pubsub.GetAPIInstance(".")
-    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8089", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
+    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:9085", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
     // create subscription 
     pub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "test/test"))
     
 }
 
 ```
-#### Rest-API to create a Publisher and Subscription.
 
+## Rest-API
+
+### Rest-API to create a Publisher and Subscription
 Cloud-Event-Proxy container running with rest api plugin will be running a webservice and exposing following end points.
 ```html
 
@@ -222,18 +274,8 @@ POST /api/ocloudNotifications/v1/log
 POST /api/ocloudNotifications/v1/create/event
 
 ```
-#### Code snippet to create pub/sub
-```go
 
-// create publisher
-pub, err := pubSubInstance.CreatePublisher(v1pubsub.NewPubSub(endpointURL, "test/test"))
-
-//create subscription
-sub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "test/test"))
-
-
-```
-#### Create Status Listener
+### Create Status Listener
 ```go
 // 1.Create Status Listener Fn (onStatusRequestFn is action to be performed on status ping received)
 onStatusRequestFn := func(e v2.Event) error {
@@ -248,32 +290,7 @@ v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pub.Resour
 ```
 
 
-### AMQP Objects
-#### Create AMQP Sender for Publisher object
-```go
-package main
-
-import (
-  v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
-  v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
-)
-
-v1amqp.CreateSender(eventInCh, pub.GetResource())
-
-```
-
-#### Create AMQP listener for subscription object
-```go
-package main
-
-import (
-    v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
-    v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
-)
-
-v1amqp.CreateListener(eventInCh, sub.GetResource())
-```
-### PTP Events
+## Cloud Native Events
 The following example shows a Cloud Native Events serialized as JSON:
 (Following json should be validated with Cloud native events' event_spec.json schema)
 
