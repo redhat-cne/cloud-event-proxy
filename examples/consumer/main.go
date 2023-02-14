@@ -54,7 +54,7 @@ const (
 
 var (
 	apiAddr         string = "localhost:8089"
-	apiPath         string = "/api/cloudNotifications/v1/"
+	apiPath         string = "/api/ocloudNotifications/v1/"
 	localAPIAddr    string = "localhost:8989"
 	resourcePrefix  string = "/cluster/node/%s%s"
 	mockResource    string = "/mock"
@@ -64,7 +64,7 @@ var (
 func main() {
 	common.InitLogger()
 	flag.StringVar(&localAPIAddr, "local-api-addr", "localhost:8989", "The address the local api binds to .")
-	flag.StringVar(&apiPath, "api-path", "/api/cloudNotifications/v1/", "The rest api path.")
+	flag.StringVar(&apiPath, "api-path", "/api/ocloudNotifications/v1/", "The rest api path.")
 	flag.StringVar(&apiAddr, "api-addr", "localhost:8089", "The address the framework api endpoint binds to.")
 	flag.Parse()
 
