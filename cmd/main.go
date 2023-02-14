@@ -57,7 +57,7 @@ var (
 	statusChannelBufferSize = 50
 	scConfig                *common.SCConfiguration
 	metricsAddr             string
-	apiPath                 = "/api/cloudNotifications/v1/"
+	apiPath                 = "/api/ocloudNotifications/v1/"
 	httpEventPublisher      string
 	pluginHandler           plugins.Handler
 	amqInitTimeout          = 3 * time.Minute
