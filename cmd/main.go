@@ -55,7 +55,7 @@ var (
 	channelBufferSize = 100
 	scConfig          *common.SCConfiguration
 	metricsAddr       string
-	apiPath           = "/api/cloudNotifications/v1/"
+	apiPath           = "/api/ocloudNotifications/v1/"
 	amqInitTimeout    = 3 * time.Minute
 )
 
