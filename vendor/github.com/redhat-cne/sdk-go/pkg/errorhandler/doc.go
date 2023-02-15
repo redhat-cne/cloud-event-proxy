@@ -1,2 +1,2 @@
-//Package errorhandler custom error handler for events.
+// Package errorhandler custom error handler for events.
 package errorhandler

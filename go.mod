@@ -11,7 +11,7 @@ require (
 	github.com/onsi/gomega v1.22.1
 	github.com/prometheus/client_golang v1.13.0
 	github.com/redhat-cne/rest-api v0.1.1-0.20230119134700-82a3aab383a7
-	github.com/redhat-cne/sdk-go v0.1.1-0.20230119124426-1ed827004687
+	github.com/redhat-cne/sdk-go v0.1.1-0.20230215223206-506ca9294ab3
 	github.com/sirupsen/logrus v1.9.0
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/net v0.1.0

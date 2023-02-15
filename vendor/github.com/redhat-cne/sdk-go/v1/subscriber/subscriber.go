@@ -17,13 +17,13 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	subscriberStore "github.com/redhat-cne/sdk-go/pkg/store/subscriber"
+	SubscriberStore "github.com/redhat-cne/sdk-go/pkg/store/subscriber"
 	"github.com/redhat-cne/sdk-go/pkg/subscriber"
 )
 
 // API ... api methods  for publisher subscriber
 type API struct {
-	subscriberStore  *subscriberStore.Store //  each client will have one store
+	SubscriberStore  *SubscriberStore.Store //  each client will have one store
 	storeFilePath    string                 // subscribers
 	transportEnabled bool                   //  http  is enabled
 }
@@ -55,7 +55,7 @@ func GetAPIInstance(storeFilePath string) *API {
 	once.Do(func() {
 		instance = &API{
 			transportEnabled: true,
-			subscriberStore: &subscriberStore.Store{
+			SubscriberStore: &SubscriberStore.Store{
 				RWMutex: sync.RWMutex{},
 				Store:   map[uuid.UUID]*subscriber.Subscriber{},
 			},
@@ -77,14 +77,14 @@ func (p *API) ReloadStore() {
 				if len(b) > 0 {
 					var sub subscriber.Subscriber
 					if err := json.Unmarshal(b, &sub); err == nil {
-						p.subscriberStore.Set(sub.ClientID, sub)
+						p.SubscriberStore.Set(sub.ClientID, sub)
 					}
 				}
 			}
 		}
 	}
-	log.Infof("%d registered clients reloaded", len(p.subscriberStore.Store))
-	for k, v := range p.subscriberStore.Store {
+	log.Infof("%d registered clients reloaded", len(p.SubscriberStore.Store))
+	for k, v := range p.SubscriberStore.Store {
 		log.Infof("registered clients %s : %s", k, v.String())
 	}
 }
@@ -106,7 +106,7 @@ func (p *API) EnableTransport() {
 
 // ClientCount .. client cound
 func (p *API) ClientCount() int {
-	return len(p.subscriberStore.Store)
+	return len(p.SubscriberStore.Store)
 }
 
 // GetSubFromSubscriptionsStore get data from publisher store
@@ -137,7 +137,7 @@ func (p *API) HasSubscription(clientID uuid.UUID, address string) (pubsub.PubSub
 
 // HasClient check if  client is already exists in the store/cache
 func (p *API) HasClient(clientID uuid.UUID) (*subscriber.Subscriber, bool) {
-	if subscriber, ok := p.subscriberStore.Store[clientID]; ok {
+	if subscriber, ok := p.SubscriberStore.Store[clientID]; ok {
 		return subscriber, true
 	}
 	return nil, false
@@ -166,7 +166,7 @@ func (p *API) CreateSubscription(clientID uuid.UUID, sub subscriber.Subscriber) 
 			subscriptionClient.SubStore.Set(key, *value)
 		}
 	}
-	p.subscriberStore.Set(clientID, *subscriptionClient)
+	p.SubscriberStore.Set(clientID, *subscriptionClient)
 	// persist the subscriptionOne -
 	//TODO:might want to use PVC to live beyond pod crash
 	err = writeToFile(*subscriptionClient, fmt.Sprintf("%s/%s", p.storeFilePath, fmt.Sprintf("%s.json", clientID)))
@@ -182,7 +182,7 @@ func (p *API) CreateSubscription(clientID uuid.UUID, sub subscriber.Subscriber) 
 
 // GetSubscriptionClient  get a clientID by id
 func (p *API) GetSubscriptionClient(clientID uuid.UUID) (subscriber.Subscriber, error) {
-	if sub, ok := p.subscriberStore.Store[clientID]; ok {
+	if sub, ok := p.SubscriberStore.Store[clientID]; ok {
 		return *sub, nil
 	}
 	return subscriber.Subscriber{}, fmt.Errorf("subscriber data was not found for id %s", clientID)
@@ -196,7 +196,7 @@ func (p *API) GetSubscriptionsFromFile(clientID uuid.UUID) ([]byte, error) {
 
 // GetSubscriptions  get all subscriptionOne inforamtions
 func (p *API) GetSubscriptions(clientID uuid.UUID) (sub map[string]*pubsub.PubSub) {
-	if sub, ok := p.subscriberStore.Store[clientID]; ok {
+	if sub, ok := p.SubscriberStore.Store[clientID]; ok {
 		return sub.SubStore.Store
 	}
 	return
@@ -204,7 +204,7 @@ func (p *API) GetSubscriptions(clientID uuid.UUID) (sub map[string]*pubsub.PubSu
 
 // GetSubscription  get  subscriptionOne inforamtions
 func (p *API) GetSubscription(clientID uuid.UUID, subID string) (sub pubsub.PubSub) {
-	if subscriber, ok := p.subscriberStore.Store[clientID]; ok {
+	if subscriber, ok := p.SubscriberStore.Store[clientID]; ok {
 		if subscription, ok2 := subscriber.SubStore.Store[subID]; ok2 {
 			return *subscription
 		}
@@ -214,7 +214,7 @@ func (p *API) GetSubscription(clientID uuid.UUID, subID string) (sub pubsub.PubS
 
 // GetSubscriberURLByResourceAndClientID  get  subscription information by client id/resource
 func (p *API) GetSubscriberURLByResourceAndClientID(clientID uuid.UUID, resource string) (url *string) {
-	for _, subscriber := range p.subscriberStore.Store {
+	for _, subscriber := range p.SubscriberStore.Store {
 		if subscriber.ClientID == clientID {
 			for _, sub := range subscriber.SubStore.Store {
 				if sub.GetResource() == resource {
@@ -230,7 +230,7 @@ func (p *API) GetSubscriberURLByResourceAndClientID(clientID uuid.UUID, resource
 
 // GetSubscriberURLByResource  get  subscriptionOne information
 func (p *API) GetSubscriberURLByResource(resource string) (urls []string) {
-	for _, subscriber := range p.subscriberStore.Store {
+	for _, subscriber := range p.SubscriberStore.Store {
 		for _, sub := range subscriber.SubStore.Store {
 			if sub.GetResource() == resource {
 				urls = append(urls, subscriber.GetEndPointURI())
@@ -242,7 +242,7 @@ func (p *API) GetSubscriberURLByResource(resource string) (urls []string) {
 
 // GetClientIDByResource  get  subscriptionOne information
 func (p *API) GetClientIDByResource(resource string) (clientIds []uuid.UUID) {
-	for _, subscriber := range p.subscriberStore.Store {
+	for _, subscriber := range p.SubscriberStore.Store {
 		for _, sub := range subscriber.SubStore.Store {
 			if sub.GetResource() == resource {
 				clientIds = append(clientIds, subscriber.ClientID)
@@ -255,7 +255,7 @@ func (p *API) GetClientIDByResource(resource string) (clientIds []uuid.UUID) {
 // GetClientIDAddressByResource  get  subscriptionOne information
 func (p *API) GetClientIDAddressByResource(resource string) map[uuid.UUID]*types.URI {
 	clients := map[uuid.UUID]*types.URI{}
-	for _, subscriber := range p.subscriberStore.Store {
+	for _, subscriber := range p.SubscriberStore.Store {
 		for _, sub := range subscriber.SubStore.Store {
 			if sub.GetResource() == resource {
 				clients[subscriber.ClientID] = subscriber.EndPointURI
@@ -267,10 +267,10 @@ func (p *API) GetClientIDAddressByResource(resource string) map[uuid.UUID]*types
 
 // DeleteSubscription delete a subscriptionOne by id
 func (p *API) DeleteSubscription(clientID uuid.UUID, subscriptionID string) error {
-	if subStore, ok := p.subscriberStore.Store[clientID]; ok { // client found
+	if subStore, ok := p.SubscriberStore.Store[clientID]; ok { // client found
 		if sub, ok2 := subStore.SubStore.Store[subscriptionID]; ok2 {
 			err := deleteFromFile(*sub, fmt.Sprintf("%s/%s", p.storeFilePath, fmt.Sprintf("%s.json", clientID)))
-			p.subscriberStore.Store[clientID].SubStore.Delete(subscriptionID)
+			p.SubscriberStore.Store[clientID].SubStore.Delete(subscriptionID)
 			return err
 		}
 	}
@@ -279,7 +279,7 @@ func (p *API) DeleteSubscription(clientID uuid.UUID, subscriptionID string) erro
 
 // DeleteAllSubscriptions  delete all subscriptionOne information
 func (p *API) DeleteAllSubscriptions(clientID uuid.UUID) error {
-	if subStore, ok := p.subscriberStore.Store[clientID]; ok { // client found
+	if subStore, ok := p.SubscriberStore.Store[clientID]; ok { // client found
 		if err := deleteAllFromFile(fmt.Sprintf("%s/%s", p.storeFilePath, fmt.Sprintf("%s.json", clientID))); err != nil {
 			return err
 		}
@@ -294,7 +294,7 @@ func (p *API) DeleteAllSubscriptions(clientID uuid.UUID) error {
 // DeleteClient  delete all subscriptionOne information
 func (p *API) DeleteClient(clientID uuid.UUID) error {
 	log.Info("deleting client")
-	if subStore, ok := p.subscriberStore.Store[clientID]; ok { // client found
+	if subStore, ok := p.SubscriberStore.Store[clientID]; ok { // client found
 		if err := deleteAllFromFile(fmt.Sprintf("%s/%s", p.storeFilePath, fmt.Sprintf("%s.json", clientID))); err != nil {
 			return err
 		}
@@ -302,14 +302,14 @@ func (p *API) DeleteClient(clientID uuid.UUID) error {
 			RWMutex: sync.RWMutex{},
 			Store:   map[string]*pubsub.PubSub{},
 		}
-		delete(p.subscriberStore.Store, clientID)
+		delete(p.SubscriberStore.Store, clientID)
 	}
 	return nil
 }
 
 // UpdateStatus .. update status
 func (p *API) UpdateStatus(clientID uuid.UUID, status subscriber.Status) error {
-	if subStore, ok := p.subscriberStore.Store[clientID]; ok {
+	if subStore, ok := p.SubscriberStore.Store[clientID]; ok {
 		subStore.SetStatus(status)
 		// do not write to file , if restarts it will consider all client are active
 	} else {
@@ -320,7 +320,7 @@ func (p *API) UpdateStatus(clientID uuid.UUID, status subscriber.Status) error {
 
 // IncFailCountToFail .. update fail count
 func (p *API) IncFailCountToFail(clientID uuid.UUID) bool {
-	if subStore, ok := p.subscriberStore.Store[clientID]; ok {
+	if subStore, ok := p.SubscriberStore.Store[clientID]; ok {
 		subStore.IncFailCount()
 		if subStore.Action == channel.DELETE {
 			return true

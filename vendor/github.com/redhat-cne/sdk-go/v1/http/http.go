@@ -38,13 +38,13 @@ var (
 	once     sync.Once
 )
 
-//HTTP exposes http api methods
+// HTTP exposes http api methods
 type HTTP struct {
 	server  *cneHTTP.Server
 	started int32 // accessed with atomics
 }
 
-//GetHTTPInstance get event instance
+// GetHTTPInstance get event instance
 func GetHTTPInstance(serviceName string, port int, storePath string, dataIn <-chan *channel.DataChan, dataOut chan<- *channel.DataChan,
 	closeCh <-chan struct{}, onStatusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error, processEventFn func(e interface{}) error) (*HTTP, error) {
 	once.Do(func() {
@@ -62,7 +62,7 @@ func GetHTTPInstance(serviceName string, port int, storePath string, dataIn <-ch
 	return instance, nil
 }
 
-//Start start amqp processors
+// Start start amqp processors
 func (h *HTTP) Start(wg *sync.WaitGroup) {
 	if atomic.CompareAndSwapInt32(&h.started, 0, 1) { // protection for starting by other instances
 		log.Info("Starting http transport....")
