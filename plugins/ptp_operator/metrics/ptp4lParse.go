@@ -85,11 +85,13 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			/* with ts2phc enabled , when ptp4l reports port goes to faulty
 			there is no HOLDOVER State
 			*/
+			// there are times when ptp is disabled in switch the slave port goes to master
+			// based on its last role  as slave port  we should make sure we report HOLDOVER event
 			if lastRole == types.FAULTY { // recovery
-				if role == types.SLAVE { // cancel any HOLDOVER timeout for master, if new role is slave
+				if role == types.SLAVE { // cancel any HOLDOVER timeout, if new role is slave
 					if masterOffsetSource == ptp4lProcessName {
 						if t, ok := p.PtpConfigMapUpdates.EventThreshold[profileName]; ok { // only if offset was reported by ptp4l process
-							log.Infof("interface %s is not anymore faulty, cancel holdover", ptpIFace)
+							log.Infof("interface %s is not anymore faulty, cancel any holdover states", ptpIFace)
 							t.SafeClose() // close any holdover go routines
 						}
 						alias := ptpStats[master].Alias()
@@ -129,7 +131,8 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 		// Only if master (slave port ) offset was reported by ptp4l
 		if syncState != "" && syncState != ptpStats[master].LastSyncState() && syncState == ptp.HOLDOVER {
 			// Put master in HOLDOVER state
-			ptpStats[master].SetRole(role) // update slave port as faulty
+			ptpStats[master].SetRole(types.FAULTY) // update slave port as faulty
+			log.Infof("master process name %s and masteroffsetsource %s", ptpStats[master].ProcessName(), masterOffsetSource)
 			if ptpStats[master].ProcessName() == masterOffsetSource {
 				alias := ptpStats[master].Alias()
 				masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)

@@ -177,8 +177,6 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		if processName != ts2phcProcessName && !(interfaceName == master || interfaceName == ClockRealTime) {
 			return // only master and clock_realtime are supported
 		}
-		// set who is producing  master offset
-		masterOffsetSource = processName
 
 		offsetSource := master
 		if strings.Contains(output, "sys offset") {
@@ -186,6 +184,9 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		} else if strings.Contains(output, "phc offset") {
 			offsetSource = phc
 			eventType = ptp.OsClockSyncStateChange
+		} else if !strings.Contains(output, ClockRealTime) {
+			// set who is producing  master offset
+			masterOffsetSource = processName //decided between ptp4l and ts2phc
 		}
 		// if it was ts2phc then it was considered as master offset
 		interfaceType := types.IFace(master)

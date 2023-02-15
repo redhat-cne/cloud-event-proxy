@@ -149,7 +149,7 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 					}
 				}
 			} else {
-				if _, ok := h.Sender[obj.ClientID]; !ok {
+				if _, ok := h.Sender[obj.ClientID]; ok {
 					log.Infof("deleting subscribers")
 					_ = h.subscriberAPI.DeleteClient(obj.ClientID)
 					h.DeleteSender(obj.ClientID)
