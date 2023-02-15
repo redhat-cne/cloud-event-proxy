@@ -37,6 +37,8 @@ KUSTOMIZE=$(shell which kustomize)
 endif
 
 deps-update:
+	go get github.com/redhat-cne/sdk-go@$(branch) && \
+	go get github.com/redhat-cne/rest-api@$(branch) && \
 	go mod tidy && \
 	go mod vendor
 

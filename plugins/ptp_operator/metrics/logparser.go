@@ -218,15 +218,26 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 	}
 
 	clockState = ptp.FREERUN
-	if strings.Contains(output, "UNCALIBRATED to SLAVE") {
+	if strings.Contains(output, "UNCALIBRATED to SLAVE") ||
+		strings.Contains(output, "LISTENING to SLAVE") {
 		role = types.SLAVE
 	} else if strings.Contains(output, "UNCALIBRATED to PASSIVE") || strings.Contains(output, "MASTER to PASSIVE") ||
 		strings.Contains(output, "SLAVE to PASSIVE") || strings.Contains(output, "LISTENING to PASSIVE") {
 		role = types.PASSIVE
-	} else if strings.Contains(output, "UNCALIBRATED to MASTER") || strings.Contains(output, "LISTENING to MASTER") {
+	} else if strings.Contains(output, "UNCALIBRATED to MASTER") ||
+		strings.Contains(output, "LISTENING to MASTER") {
 		role = types.MASTER
-	} else if strings.Contains(output, "FAULT_DETECTED") || strings.Contains(output, "SYNCHRONIZATION_FAULT") {
+	} else if strings.Contains(output, "FAULT_DETECTED") ||
+		strings.Contains(output, "SYNCHRONIZATION_FAULT") ||
+		strings.Contains(output, "SLAVE to UNCALIBRATED") {
 		role = types.FAULTY
+		clockState = ptp.HOLDOVER
+	} else if strings.Contains(output, "SLAVE to MASTER") ||
+		strings.Contains(output, "SLAVE to GRAND_MASTER") {
+		role = types.MASTER
+		clockState = ptp.HOLDOVER
+	} else if strings.Contains(output, "SLAVE to LISTENING") {
+		role = types.LISTENING
 		clockState = ptp.HOLDOVER
 	}
 	return
