@@ -71,7 +71,7 @@ var (
 			Namespace: ptpNamespace,
 			Subsystem: ptpSubsystem,
 			Name:      "interface_role",
-			Help:      "0 = PASSIVE, 1 = SLAVE, 2 = MASTER, 3 = FAULTY, 4 =  UNKNOWN",
+			Help:      "0 = PASSIVE, 1 = SLAVE, 2 = MASTER, 3 = FAULTY, 4 =  UNKNOWN, 5 = LISTENING",
 		}, []string{"process", "node", "iface"})
 
 	// ClockClassMetrics metrics to show current clock class for the node

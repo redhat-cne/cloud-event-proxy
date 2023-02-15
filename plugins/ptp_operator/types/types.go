@@ -55,6 +55,8 @@ func (r PtpPortRole) String() string {
 		return "FAULTY"
 	case UNKNOWN:
 		return "UNKNOWN"
+	case LISTENING:
+		return "LISTENING"
 	default:
 		return fmt.Sprintf("%d", int(r))
 	}
