@@ -29,15 +29,18 @@ const (
 	FAULTY
 	// UNKNOWN role
 	UNKNOWN
+	// LISTENING ...
+	LISTENING = 5
 )
 
 // PtpRoleMappings ... set ptp role mapping
 var PtpRoleMappings = map[string]PtpPortRole{
-	"PASSIVE": PASSIVE,
-	"SLAVE":   SLAVE,
-	"MASTER":  MASTER,
-	"FAULTY":  FAULTY,
-	"UNKNOWN": UNKNOWN,
+	"PASSIVE":   PASSIVE,
+	"SLAVE":     SLAVE,
+	"MASTER":    MASTER,
+	"FAULTY":    FAULTY,
+	"UNKNOWN":   UNKNOWN,
+	"LISTENING": LISTENING,
 }
 
 func (r PtpPortRole) String() string {
@@ -52,6 +55,8 @@ func (r PtpPortRole) String() string {
 		return "FAULTY"
 	case UNKNOWN:
 		return "UNKNOWN"
+	case LISTENING:
+		return "LISTENING"
 	default:
 		return fmt.Sprintf("%d", int(r))
 	}
