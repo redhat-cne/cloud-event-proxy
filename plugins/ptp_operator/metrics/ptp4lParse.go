@@ -126,7 +126,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 		// make any slave interface master offset to FREERUN
 		if syncState != "" && syncState != ptpStats[master].LastSyncState() && syncState == ptp.HOLDOVER {
 			// Put master in HOLDOVER state
-			ptpStats[master].SetRole(role) // update slave port as faulty
+			ptpStats[master].SetRole(types.FAULTY) // update slave port as faulty
 			alias := ptpStats[master].Alias()
 			masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
 			p.PublishEvent(syncState, ptpStats[master].LastOffset(), masterResource, ptp.PtpStateChange)

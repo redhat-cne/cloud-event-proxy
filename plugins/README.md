@@ -97,7 +97,7 @@ openshift_ptp_delay_ns{from="master",iface="ens2fx",node="NODE_NAME",process="pt
 # HELP openshift_ptp_frequency_adjustment_ns 
 # TYPE openshift_ptp_frequency_adjustment_ns gauge
 openshift_ptp_frequency_adjustment_ns{from="master",iface="ens2fx",node="NODE_NAME",process="ptp4l"} -15705
-# HELP openshift_ptp_interface_role 0 = PASSIVE, 1 = SLAVE, 2 = MASTER, 3 = FAULTY, 4 =  UNKNOWN
+# HELP openshift_ptp_interface_role 0 = PASSIVE, 1 = SLAVE, 2 = MASTER, 3 = FAULTY, 4 =  UNKNOWN, 5 = LISTENING
 # TYPE openshift_ptp_interface_role gauge
 openshift_ptp_interface_role{iface="ens2f0",node="NODE_NAME",process="ptp4l"} 1
 # HELP openshift_ptp_max_offset_ns 
