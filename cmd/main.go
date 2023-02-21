@@ -86,6 +86,7 @@ func main() {
 	nodeIP := os.Getenv("NODE_IP")
 	nodeName := os.Getenv("NODE_NAME")
 	transportHost = common.SanitizeTransportHost(transportHost, nodeIP, nodeName)
+	eventPublishers := updateHTTPPublishers(nodeIP, nodeName, httpEventPublisher)
 
 	parsedTransportHost := &common.TransportHost{URL: transportHost}
 
@@ -137,7 +138,7 @@ func main() {
 			}
 		}
 	} else if scConfig.TransportHost.Type == common.HTTP {
-		transportEnabled = enableHTTPTransport(&wg)
+		transportEnabled = enableHTTPTransport(&wg, eventPublishers)
 	} else {
 		transportEnabled = false
 	}
@@ -339,7 +340,7 @@ func loadFromPubSubStore() {
 	}
 }
 
-func enableHTTPTransport(wg *sync.WaitGroup) bool {
+func enableHTTPTransport(wg *sync.WaitGroup, eventPublishers []string) bool {
 	log.Infof("HTTP enabled as event transport %s", scConfig.TransportHost.String())
 	var httpServer *v1http.HTTP
 	httpServer, err := pluginHandler.LoadHTTPPlugin(wg, scConfig, nil, nil)
@@ -361,28 +362,38 @@ RETRY:
 	if common.GetBoolEnv("PTP_PLUGIN") || common.GetBoolEnv("HW_PLUGIN") {
 		httpServer.RegisterPublishers(types.ParseURI(scConfig.TransportHost.URL))
 	}
-	func(addr ...string) {
-		for _, s := range addr {
-			if s == "" {
-				continue
-			}
-			th := common.TransportHost{URL: s}
-			th.ParseTransportHost()
-			if th.URI != nil {
-				s = th.URI.String()
-				th.URI.Path = path.Join(th.URI.Path, "health")
-				if ok, _ := common.HTTPTransportHealthCheck(th.URI, 2*time.Second); ok {
-					log.Infof("Registering publisher %s", s)
-					httpServer.RegisterPublishers(types.ParseURI(s))
-				} else {
-					log.Errorf("health check failed, skipping registration for %s", s)
-				}
-			} else {
-				log.Errorf("failed to parse publisher url %s", s)
-			}
+	for _, s := range eventPublishers {
+		if s == "" {
+			continue
 		}
-	}(httpEventPublisher)
+		th := common.TransportHost{URL: s}
+		th.ParseTransportHost()
+		if th.URI != nil {
+			s = th.URI.String()
+			th.URI.Path = path.Join(th.URI.Path, "health")
+			if ok, _ := common.HTTPTransportHealthCheck(th.URI, 2*time.Second); ok {
+				log.Infof("Registering publisher %s", s)
+				httpServer.RegisterPublishers(types.ParseURI(s))
+			} else {
+				log.Errorf("health check failed, skipping registration for %s", s)
+			}
+		} else {
+			log.Errorf("failed to parse publisher url %s", s)
+		}
+	}
 
-	log.Infof("following publishers are registered %s", httpEventPublisher)
+	log.Infof("following publishers are registered %s", eventPublishers)
 	return true
+}
+
+func updateHTTPPublishers(nodeIP, nodeName string, addr ...string) (httpPublishers []string) {
+	for _, s := range addr {
+		if s == "" {
+			continue
+		}
+		publisherServiceName := common.SanitizeTransportHost(s, nodeIP, nodeName)
+		httpPublishers = append(httpPublishers, publisherServiceName)
+		log.Infof("publisher endpoint updated from %s to %s", s, publisherServiceName)
+	}
+	return httpPublishers
 }
