@@ -365,7 +365,6 @@ func APIHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
 
 // HTTPTransportHealthCheck ... http transport should be ready before starting to consume events
 func HTTPTransportHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
-	log.Printf("checking for http transport health\n")
 	for i := 0; i <= 5; i++ {
 		log.Infof("health check %s ", uri.String())
 		response, errResp := http.Get(uri.String())
