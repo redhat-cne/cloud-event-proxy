@@ -420,7 +420,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 						UpdateSyncStateMetrics(ptpStats[master].ProcessName(), ptpStats[master].Alias(), ptp.FREERUN)
 
 						p.GenPhc2SysEvent(ptp4lCfg.Profile, ptpStats[ClockRealTime], ClockRealTime, FreeRunOffsetValue, ptp.FREERUN)
-						UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ptpIFace, ptp.FREERUN)
+						UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ClockRealTime, ptp.FREERUN)
 
 					}
 				}
