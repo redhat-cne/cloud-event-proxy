@@ -420,7 +420,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 						UpdateSyncStateMetrics(ptpStats[master].ProcessName(), ptpStats[master].Alias(), ptp.FREERUN)
 
 						p.GenPhc2SysEvent(ptp4lCfg.Profile, ptpStats[ClockRealTime], ClockRealTime, FreeRunOffsetValue, ptp.FREERUN)
-						UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ptpIFace, ptp.FREERUN)
+						UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ClockRealTime, ptp.FREERUN)
 
 					}
 				}
@@ -561,7 +561,7 @@ func (p *PTPEventManager) GenPhc2SysEvent(profileName string, stats *stats.Stats
 	}
 }
 
-//PublishEvent ...publish events
+// PublishEvent ...publish events
 func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, eventResourceName string, eventType ptp.EventType) {
 	// create an event
 	if state == "" {
@@ -649,13 +649,13 @@ func UpdateSyncStateMetrics(process string, iface string, state ptp.SyncState) {
 	}
 }
 
-//UpdateInterfaceRoleMetrics ...
+// UpdateInterfaceRoleMetrics ...
 func UpdateInterfaceRoleMetrics(process, ptpInterface string, role types.PtpPortRole) {
 	InterfaceRole.With(prometheus.Labels{
 		"process": process, "node": ptpNodeName, "iface": ptpInterface}).Set(float64(role))
 }
 
-//DeleteInterfaceRoleMetrics ...
+// DeleteInterfaceRoleMetrics ...
 func DeleteInterfaceRoleMetrics(process, ptpInterface string) {
 	InterfaceRole.Delete(prometheus.Labels{
 		"process": process, "node": ptpNodeName, "iface": ptpInterface})
@@ -871,7 +871,7 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 	return
 }
 
-//FindInLogForCfgFileIndex ...
+// FindInLogForCfgFileIndex ...
 func FindInLogForCfgFileIndex(out string) int {
 	match := ptpConfigFileRegEx.FindStringIndex(out)
 	if len(match) == 2 {
