@@ -1,7 +1,9 @@
 package stats
 
 import (
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
 	"math"
+	"strings"
 
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 )
@@ -22,6 +24,7 @@ type Stats struct {
 	lastOffset          int64
 	lastSyncState       ptp.SyncState
 	aliasName           string
+	role                types.PtpPortRole
 }
 
 // AddValue ...
@@ -100,7 +103,7 @@ func (s *Stats) SyncState() ptp.SyncState {
 	return s.lastSyncState
 }
 
-//ConfigName ...
+// ConfigName ...
 func (s *Stats) ConfigName() string {
 	return s.configName
 }
@@ -114,6 +117,7 @@ func (s *Stats) reset() { //nolint:unused
 	s.sumDiffSqr = 0
 	s.sumSqr = 0
 	s.aliasName = ""
+	s.role = types.UNKNOWN
 }
 
 // NewStats ... create new stats
@@ -159,4 +163,24 @@ func (s *Stats) LastOffset() int64 {
 // LastSyncState ...
 func (s *Stats) LastSyncState() ptp.SyncState {
 	return s.lastSyncState
+}
+
+// SetRole ... set role name
+func (s *Stats) SetRole(role types.PtpPortRole) {
+	s.role = role
+}
+
+// Role ... get role name
+func (s *Stats) Role() types.PtpPortRole {
+	return s.role
+}
+
+// String ...
+func (s *Stats) String() string {
+	b := strings.Builder{}
+	b.WriteString("  configName: " + s.configName + "\n")
+	b.WriteString("  processName: " + s.processName + "\n")
+	b.WriteString("  aliasName: " + s.aliasName + "\n")
+	b.WriteString("  offsetSource: " + s.offsetSource + "\n")
+	return b.String()
 }

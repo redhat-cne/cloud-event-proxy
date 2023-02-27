@@ -5,7 +5,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
 	log "github.com/sirupsen/logrus"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -21,7 +21,7 @@ const (
 	ptp4lGlobalSection = "global"
 )
 
-//PtpConfigUpdate ...
+// PtpConfigUpdate ...
 type PtpConfigUpdate struct {
 	Name      *string `json:"name,omitempty"`
 	Ptp4lConf *string `json:"ptp4lConf,omitempty"`
@@ -56,7 +56,7 @@ func (p *PtpConfigUpdate) GetAllInterface() []*string {
 	return interfaces
 }
 
-//PTPInterface ...
+// PTPInterface ...
 type PTPInterface struct {
 	Name     string
 	PortID   int
@@ -64,14 +64,14 @@ type PTPInterface struct {
 	Role     types.PtpPortRole
 }
 
-//PTP4lConfig ...
+// PTP4lConfig ...
 type PTP4lConfig struct {
 	Name       string
 	Profile    string
 	Interfaces []*PTPInterface
 }
 
-//ByRole ...
+// ByRole ...
 func (Ptp4lCfg *PTP4lConfig) ByRole(role types.PtpPortRole) (PTPInterface, error) {
 	for _, p := range Ptp4lCfg.Interfaces {
 		if p != nil && p.Role == role {
@@ -81,7 +81,7 @@ func (Ptp4lCfg *PTP4lConfig) ByRole(role types.PtpPortRole) (PTPInterface, error
 	return PTPInterface{}, fmt.Errorf("interfaces not found for the role %d --> %s", role, Ptp4lCfg.String())
 }
 
-//UpdateRole ...
+// UpdateRole ...
 func (pi *PTPInterface) UpdateRole(role types.PtpPortRole) {
 	pi.Role = role
 }
@@ -99,7 +99,7 @@ func (Ptp4lCfg *PTP4lConfig) String() string {
 	return b.String()
 }
 
-//ByInterface ...
+// ByInterface ...
 func (Ptp4lCfg *PTP4lConfig) ByInterface(iface string) (PTPInterface, error) {
 	for _, p := range Ptp4lCfg.Interfaces {
 		if p != nil && p.Name == iface {
@@ -109,7 +109,7 @@ func (Ptp4lCfg *PTP4lConfig) ByInterface(iface string) (PTPInterface, error) {
 	return PTPInterface{}, fmt.Errorf("interfaces not found for the interface %s", iface)
 }
 
-//ByPortID ...
+// ByPortID ...
 func (Ptp4lCfg *PTP4lConfig) ByPortID(id int) (PTPInterface, error) {
 	for _, p := range Ptp4lCfg.Interfaces {
 		if p != nil && p.PortID == id {
@@ -125,12 +125,12 @@ type Watcher struct {
 	close     chan struct{}
 }
 
-//Close ...
+// Close ...
 func (w *Watcher) Close() {
 	close(w.close)
 }
 
-//NewPtp4lConfigWatcher ...
+// NewPtp4lConfigWatcher ...
 func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpdate) (w *Watcher, err error) {
 
 	fsWatcher, err := fsnotify.NewWatcher()
@@ -192,7 +192,7 @@ func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpd
 
 func readAllConfig(dir string) []*PtpConfigUpdate {
 	var ptpConfigs []*PtpConfigUpdate
-	files, err := ioutil.ReadDir(dir)
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		log.Errorf("error reading all config fils %s", err)
 	}
@@ -207,7 +207,7 @@ func readAllConfig(dir string) []*PtpConfigUpdate {
 }
 func readConfig(path string) (*PtpConfigUpdate, error) {
 	fName := filename(path)
-	b, err := ioutil.ReadFile(path)
+	b, err := os.ReadFile(path)
 	if err != nil {
 		log.Errorf("error reading ptpconfig %s error %s", path, err)
 		return nil, err

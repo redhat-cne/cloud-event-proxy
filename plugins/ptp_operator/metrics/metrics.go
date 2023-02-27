@@ -355,7 +355,10 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		switch interfaceName {
 		case ClockRealTime: //CLOCK_REALTIME is active slave interface
 			// copy  ClockRealTime value to current slave interface
-			p.GenPhc2SysEvent(ptp4lCfg.Profile, ptpStats[interfaceType], interfaceName, int64(ptpOffset), syncState)
+			if r, ok := ptpStats[master]; ok && r.Role() == types.SLAVE { // publish event only if the master role is active
+				// when related slave is faulty the holdover will make clock clear time as FREERUN
+				p.GenPhc2SysEvent(ptp4lCfg.Profile, ptpStats[interfaceType], interfaceName, int64(ptpOffset), syncState)
+			}
 			UpdateSyncStateMetrics(processName, interfaceName, ptpStats[interfaceType].LastSyncState())
 			UpdatePTPMetrics(offsetSource, processName, interfaceName, ptpOffset, float64(ptpStats[interfaceType].MaxAbs()), frequencyAdjustment, delay)
 		case MasterClockType: // this ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay
@@ -402,6 +405,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 					ptpStats[master] = stats.NewStats(configName)
 					ptpStats[master].SetProcessName(ptp4lProcessName)
 				}
+				ptpStats[master].SetRole(role)
 			}
 
 			if lastRole != role {
@@ -412,7 +416,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				if lastRole == types.FAULTY { //recovery
 					if role == types.SLAVE { // cancel any HOLDOVER timeout for master, if new role is slave
 						if t, ok := p.PtpConfigMapUpdates.EventThreshold[ptp4lCfg.Profile]; ok {
-							log.Infof("interface %s is not anymore faulty, cancel holdover", ptpIFace)
+							log.Infof("interface %s is not anymore faulty, (cancel any holdover if found)", ptpIFace)
 							t.SafeClose() // close any holdover go routines
 						}
 						masterResource := fmt.Sprintf("%s/%s", ptpStats[master].Alias(), MasterClockType)
@@ -421,8 +425,8 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 
 						p.GenPhc2SysEvent(ptp4lCfg.Profile, ptpStats[ClockRealTime], ClockRealTime, FreeRunOffsetValue, ptp.FREERUN)
 						UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ClockRealTime, ptp.FREERUN)
-
 					}
+					ptpStats[master].SetRole(role)
 				}
 
 				log.Infof("update interface %s with portid %d from role %s to  role %s", ptpIFace, portID, lastRole, role)
@@ -437,7 +441,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			}
 
 			if _, ok := ptpStats[master]; !ok { //
-				log.Errorf("no offset stats found for master for  portid %d with role %s (the port started in fault state)", portID, role)
+				log.Errorf("no offset stats found for master for portid %d with role %s (the port started in fault state)", portID, role)
 				return
 			}
 			//Enter the HOLDOVER state: If current sycState is HOLDOVER(Role is at FAULTY) ,then spawn a go routine to hold the state until

@@ -18,7 +18,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -68,7 +67,7 @@ type PtpClockThreshold struct {
 	Close chan struct{} `json:"close,omitempty"`
 }
 
-//SafeClose ... handle close channel
+// SafeClose ... handle close channel
 func (pt *PtpClockThreshold) SafeClose() (justClosed bool) {
 	defer func() {
 		if recover() != nil {
@@ -296,7 +295,7 @@ func (l *LinuxPTPConfigMapUpdate) updatePtpConfig(nodeName string) {
 		log.Errorf("error stating node profile %v: %v", nodeName, err)
 		return
 	}
-	nodeProfilesJSON, err := ioutil.ReadFile(nodeProfile)
+	nodeProfilesJSON, err := os.ReadFile(nodeProfile)
 	if err != nil {
 		log.Errorf("error reading node profile: %v", nodeProfile)
 		return
