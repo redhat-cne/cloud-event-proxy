@@ -53,6 +53,7 @@ type PtpProfile struct {
 	PtpClockThreshold *PtpClockThreshold `json:"ptpClockThreshold,omitempty"`
 	Ptp4lOpts         *string            `json:"ptp4lOpts,omitempty"`
 	Phc2sysOpts       *string            `json:"phc2sysOpts,omitempty"`
+	TS2PhcOpts        *string            `json:"ts2PhcOpts,omitempty"`
 	Ptp4lConf         *string            `json:"ptp4lConf,omitempty"`
 	Interfaces        []*string
 }
@@ -75,6 +76,8 @@ type PtpProcessOpts struct {
 	Ptp4lOpts *string `json:"Ptp4lOpts,omitempty"`
 	// Phc2Opts options are set
 	Phc2Opts *string `json:"Phc2Opts,omitempty"`
+	// TS2PhcOpts
+	TS2PhcOpts *string `json:"TS2PhcOpts,omitempty"`
 }
 
 // Ptp4lEnabled check if ptp4l is enabled
@@ -85,6 +88,11 @@ func (ptpOpts *PtpProcessOpts) Ptp4lEnabled() bool {
 // Phc2SysEnabled check if phc2sys is enabled
 func (ptpOpts *PtpProcessOpts) Phc2SysEnabled() bool {
 	return ptpOpts.Phc2Opts != nil && *ptpOpts.Phc2Opts != ""
+}
+
+// TS2PhcEnabled check if phc2sys is enabled
+func (ptpOpts *PtpProcessOpts) TS2PhcEnabled() bool {
+	return ptpOpts.TS2PhcOpts != nil && *ptpOpts.TS2PhcOpts != ""
 }
 
 // GetPTPProfileName  ... get profile name from ptpconfig
@@ -209,8 +217,9 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPProcessOptions() {
 	l.PtpProcessOpts = make(map[string]*PtpProcessOpts)
 	for _, profile := range l.NodeProfiles {
 		l.PtpProcessOpts[*profile.Name] = &PtpProcessOpts{
-			Ptp4lOpts: profile.Ptp4lOpts,
-			Phc2Opts:  profile.Phc2sysOpts}
+			Ptp4lOpts:  profile.Ptp4lOpts,
+			Phc2Opts:   profile.Phc2sysOpts,
+			TS2PhcOpts: profile.TS2PhcOpts}
 	}
 }
 

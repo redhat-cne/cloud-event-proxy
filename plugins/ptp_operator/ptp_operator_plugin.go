@@ -52,6 +52,7 @@ const (
 	ptpConfigDir       = "/var/run/"
 	phc2sysProcessName = "phc2sys"
 	ptp4lProcessName   = "ptp4l"
+	ts2PhcProcessName  = "ts2phc"
 	// ClockRealTime is the slave
 	ClockRealTime = "CLOCK_REALTIME"
 	// MasterClockType is the slave sync slave clock to master
@@ -128,6 +129,8 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 					for _, pConfig := range eventManager.Ptp4lConfigInterfaces {
 						ptpMetrics.DeleteThresholdMetrics(pConfig.Profile)
 					}
+					// delete all metrics related to process
+					ptpMetrics.DeleteProcessStatusMetricsForConfig(nodeName, "", "")
 				} else {
 					// updates
 					eventManager.PtpConfigMapUpdates.UpdatePTPProcessOptions()
@@ -279,7 +282,7 @@ func processPtp4lConfigFileUpdates() {
 						if !isExists(ptpInterface.Name) {
 							log.Errorf("config updated and interface not found, deleting %s", ptpInterface.Name)
 							// Remove interface role metrics if the interface has been removed from ptpConfig
-							ptpMetrics.DeleteInterfaceRoleMetrics(ptp4lProcessName, ptpInterface.Name)
+							ptpMetrics.DeleteInterfaceRoleMetrics("", ptpInterface.Name)
 						}
 					}
 				}
@@ -306,6 +309,23 @@ func processPtp4lConfigFileUpdates() {
 				}
 				// add to eventManager
 				eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
+				// clean up process metrics
+				for cName, opts := range eventManager.PtpConfigMapUpdates.PtpProcessOpts {
+					var process []string
+					if !opts.Ptp4lEnabled() {
+						process = append(process, ptp4lProcessName)
+					}
+					if !opts.Phc2SysEnabled() {
+						process = append(process, phc2sysProcessName)
+					}
+					ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), cName,
+						process...)
+					// special ts2phc due to different configName replace ptp4l.0.conf to ts2phc cnf
+					if !opts.TS2PhcEnabled() {
+						ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(),
+							strings.Replace(cName, ptp4lProcessName, ts2PhcProcessName, 1), ts2PhcProcessName)
+					}
+				}
 			case true: // ptp4l.X.conf is deleted
 				// delete metrics, ptp4l config is removed
 				ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
@@ -336,6 +356,9 @@ func processPtp4lConfigFileUpdates() {
 				}
 				eventManager.DeleteStatsConfig(ptpConfigFileName)
 				eventManager.DeletePTPConfig(ptpConfigFileName)
+				// clean up process metrics
+				ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), string(ptpConfigFileName), ptp4lProcessName, phc2sysProcessName)
+				ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), strings.Replace(string(ptpConfigFileName), ptp4lProcessName, ts2PhcProcessName, 1), ts2PhcProcessName)
 			}
 		case <-config.CloseCh:
 			fileWatcher.Close()

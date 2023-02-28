@@ -187,8 +187,11 @@ func UpdateInterfaceRoleMetrics(process, ptpInterface string, role types.PtpPort
 
 // DeleteInterfaceRoleMetrics ... delete interface role metrics
 func DeleteInterfaceRoleMetrics(process, ptpInterface string) {
-	InterfaceRole.Delete(prometheus.Labels{
-		"process": process, "node": ptpNodeName, "iface": ptpInterface})
+	if process != "" {
+		InterfaceRole.Delete(prometheus.Labels{"process": process, "iface": ptpInterface, "node": ptpNodeName})
+	} else {
+		InterfaceRole.Delete(prometheus.Labels{"iface": ptpInterface, "node": ptpNodeName})
+	}
 }
 
 // UpdateProcessStatusMetrics  -- update process status metrics
@@ -198,5 +201,27 @@ func UpdateProcessStatusMetrics(process, cfgName string, status int64) {
 	if status == PtpProcessUp {
 		ProcessReStartCount.With(prometheus.Labels{
 			"process": process, "node": ptpNodeName, "config": cfgName}).Inc()
+	}
+}
+
+// DeleteProcessStatusMetricsForConfig ...
+func DeleteProcessStatusMetricsForConfig(node string, cfgName string, process ...string) {
+	labels := prometheus.Labels{}
+	if node != "" {
+		labels["node"] = node
+	}
+	if cfgName != "" {
+		labels["config"] = cfgName
+	}
+	if len(process) == 0 {
+		ProcessStatus.Delete(labels)
+		ProcessReStartCount.Delete(labels)
+	}
+	for _, p := range process {
+		if p != "" {
+			labels["process"] = p
+			ProcessStatus.Delete(labels)
+			ProcessReStartCount.Delete(labels)
+		}
 	}
 }
