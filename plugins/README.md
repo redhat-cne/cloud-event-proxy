@@ -23,24 +23,24 @@ Resource address | Resource Type | Description
 The publisher details will be available to access via following url within  cloud-event-proxy-container
 
 ```
-curl http://localhost:9085/api/cloudNotifications/v1/publishers
+curl http://localhost:9085/api/ocloudNotifications/v1/publishers
 [
  {
   "id": "a8c0b15c-567d-4b77-8b93-585794903745",
-  "endpointUri": "http://localhost:9085/api/cloudNotifications/v1/dummy",
-  "uriLocation": "http://localhost:9085/api/cloudNotifications/v1/publishers/a8c0b15c-567d-4b77-8b93-585794903745",
+  "endpointUri": "http://localhost:9085/api/ocloudNotifications/v1/dummy",
+  "uriLocation": "http://localhost:9085/api/ocloudNotifications/v1/publishers/a8c0b15c-567d-4b77-8b93-585794903745",
   "resource": "/cluster/node/NODE_NAME/sync/ptp-status/lock-state"
  },
  {
   "id": "f9ed7264-797c-407e-830e-854f8b48c24f",
-  "endpointUri": "http://localhost:9085/api/cloudNotifications/v1/dummy",
-  "uriLocation": "http://localhost:9085/api/cloudNotifications/v1/publishers/f9ed7264-797c-407e-830e-854f8b48c24f",
+  "endpointUri": "http://localhost:9085/api/ocloudNotifications/v1/dummy",
+  "uriLocation": "http://localhost:9085/api/ocloudNotifications/v1/publishers/f9ed7264-797c-407e-830e-854f8b48c24f",
   "resource": "/cluster/node/NODE_NAME/sync/sync-status/os-clock-sync-state"
  },
  {
   "id": "c53efc49-2f24-4afd-a610-d0eee96ffd04",
-  "endpointUri": "http://localhost:9085/api/cloudNotifications/v1/dummy",
-  "uriLocation": "http://localhost:9085/api/cloudNotifications/v1/publishers/c53efc49-2f24-4afd-a610-d0eee96ffd04",
+  "endpointUri": "http://localhost:9085/api/ocloudNotifications/v1/dummy",
+  "uriLocation": "http://localhost:9085/api/ocloudNotifications/v1/publishers/c53efc49-2f24-4afd-a610-d0eee96ffd04",
   "resource": "/cluster/node/NODE_NAME/sync/ptp-status/ptp-clock-class-change"
  }
 ]
