@@ -301,3 +301,8 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 		oStats.SetLastOffset(ptpOffset)
 	}
 }
+
+// NodeName ...
+func (p *PTPEventManager) NodeName() string {
+	return p.nodeName
+}

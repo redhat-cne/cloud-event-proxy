@@ -265,6 +265,7 @@ func isOffsetInRange(ptpOffset, maxOffsetThreshold, minOffsetThreshold int64) bo
 
 func parsePTPStatus(output string, fields []string) (int64, error) {
 	// ptp4l 5196819.100 ptp4l.0.config PTP_PROCESS_STOPPED:0/1
+
 	if len(fields) < 5 {
 		e := fmt.Errorf("ptp process status is not in right format %s", output)
 		log.Println(e)
