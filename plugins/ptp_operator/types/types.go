@@ -26,7 +26,7 @@ const (
 	UNKNOWN
 )
 
-//PtpRoleMappings ...
+// PtpRoleMappings ...
 var PtpRoleMappings = map[string]PtpPortRole{
 	"PASSIVE": PASSIVE,
 	"SLAVE":   SLAVE,

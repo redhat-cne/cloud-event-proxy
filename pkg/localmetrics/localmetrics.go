@@ -49,7 +49,7 @@ var (
 		}, []string{"type", "status"})
 )
 
-//RegisterMetrics ... register metrics collector with Prometheus
+// RegisterMetrics ... register metrics collector with Prometheus
 func RegisterMetrics() {
 	prometheus.MustRegister(cneEventAckCount)
 	prometheus.MustRegister(cneEventReceivedCount)

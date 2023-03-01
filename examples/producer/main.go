@@ -46,7 +46,7 @@ var (
 func main() {
 	common.InitLogger()
 	flag.StringVar(&localAPIAddr, "local-api-addr", "localhost:9088", "The address the local api binds to .")
-	flag.StringVar(&apiPath, "api-path", "/api/cloudNotifications/v1/", "The rest api path.")
+	flag.StringVar(&apiPath, "api-path", "/api/ocloudNotifications/v1/", "The rest api path.")
 	flag.StringVar(&apiAddr, "api-addr", "localhost:8089", "The address the framework api endpoint binds to.")
 	flag.Parse()
 
