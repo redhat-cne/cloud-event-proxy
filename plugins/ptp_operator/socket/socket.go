@@ -10,7 +10,7 @@ var (
 	staleSocketTimeout = 100 * time.Millisecond
 )
 
-//Listen ... listen to ptp daemon logs
+// Listen ... listen to ptp daemon logs
 func Listen(addr string) (net.Listener, error) {
 	uAddr, err := net.ResolveUnixAddr("unix", addr)
 	if err != nil {

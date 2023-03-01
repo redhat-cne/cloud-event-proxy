@@ -302,7 +302,7 @@ func processMessages(c net.Conn) {
 	}
 }
 
-//HasEqualInterface checks if configmap  changes has same interface
+// HasEqualInterface checks if configmap  changes has same interface
 func HasEqualInterface(a []*string, b []*ptp4lconf.PTPInterface) bool {
 	if len(a) != len(b) {
 		return false
