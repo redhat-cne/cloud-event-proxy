@@ -137,8 +137,8 @@ func (p *API) HasSubscription(clientID uuid.UUID, address string) (pubsub.PubSub
 
 // HasClient check if  client is already exists in the store/cache
 func (p *API) HasClient(clientID uuid.UUID) (*subscriber.Subscriber, bool) {
-	if subscriber, ok := p.SubscriberStore.Store[clientID]; ok {
-		return subscriber, true
+	if subscriber, ok := p.SubscriberStore.Get(clientID); ok {
+		return &subscriber, true
 	}
 	return nil, false
 }
@@ -182,8 +182,8 @@ func (p *API) CreateSubscription(clientID uuid.UUID, sub subscriber.Subscriber) 
 
 // GetSubscriptionClient  get a clientID by id
 func (p *API) GetSubscriptionClient(clientID uuid.UUID) (subscriber.Subscriber, error) {
-	if sub, ok := p.SubscriberStore.Store[clientID]; ok {
-		return *sub, nil
+	if subscriber, ok := p.SubscriberStore.Get(clientID); ok {
+		return subscriber, nil
 	}
 	return subscriber.Subscriber{}, fmt.Errorf("subscriber data was not found for id %s", clientID)
 }
@@ -196,24 +196,25 @@ func (p *API) GetSubscriptionsFromFile(clientID uuid.UUID) ([]byte, error) {
 
 // GetSubscriptions  get all subscriptionOne inforamtions
 func (p *API) GetSubscriptions(clientID uuid.UUID) (sub map[string]*pubsub.PubSub) {
-	if sub, ok := p.SubscriberStore.Store[clientID]; ok {
-		return sub.SubStore.Store
+	if subscriber, ok := p.SubscriberStore.Get(clientID); ok {
+		sub = subscriber.SubStore.Store
 	}
+
 	return
 }
 
 // GetSubscription  get  subscriptionOne inforamtions
-func (p *API) GetSubscription(clientID uuid.UUID, subID string) (sub pubsub.PubSub) {
-	if subscriber, ok := p.SubscriberStore.Store[clientID]; ok {
-		if subscription, ok2 := subscriber.SubStore.Store[subID]; ok2 {
-			return *subscription
-		}
+func (p *API) GetSubscription(clientID uuid.UUID, subID string) pubsub.PubSub {
+	if subscriber, ok := p.SubscriberStore.Get(clientID); ok {
+		return subscriber.Get(subID)
 	}
-	return
+	return pubsub.PubSub{}
 }
 
 // GetSubscriberURLByResourceAndClientID  get  subscription information by client id/resource
 func (p *API) GetSubscriberURLByResourceAndClientID(clientID uuid.UUID, resource string) (url *string) {
+	p.SubscriberStore.RLock()
+	defer p.SubscriberStore.RUnlock()
 	for _, subscriber := range p.SubscriberStore.Store {
 		if subscriber.ClientID == clientID {
 			for _, sub := range subscriber.SubStore.Store {
@@ -230,6 +231,8 @@ func (p *API) GetSubscriberURLByResourceAndClientID(clientID uuid.UUID, resource
 
 // GetSubscriberURLByResource  get  subscriptionOne information
 func (p *API) GetSubscriberURLByResource(resource string) (urls []string) {
+	p.SubscriberStore.RLock()
+	defer p.SubscriberStore.RUnlock()
 	for _, subscriber := range p.SubscriberStore.Store {
 		for _, sub := range subscriber.SubStore.Store {
 			if sub.GetResource() == resource {
@@ -242,6 +245,8 @@ func (p *API) GetSubscriberURLByResource(resource string) (urls []string) {
 
 // GetClientIDByResource  get  subscriptionOne information
 func (p *API) GetClientIDByResource(resource string) (clientIds []uuid.UUID) {
+	p.SubscriberStore.RLock()
+	defer p.SubscriberStore.RUnlock()
 	for _, subscriber := range p.SubscriberStore.Store {
 		for _, sub := range subscriber.SubStore.Store {
 			if sub.GetResource() == resource {
@@ -255,6 +260,8 @@ func (p *API) GetClientIDByResource(resource string) (clientIds []uuid.UUID) {
 // GetClientIDAddressByResource  get  subscriptionOne information
 func (p *API) GetClientIDAddressByResource(resource string) map[uuid.UUID]*types.URI {
 	clients := map[uuid.UUID]*types.URI{}
+	p.SubscriberStore.RLock()
+	defer p.SubscriberStore.RUnlock()
 	for _, subscriber := range p.SubscriberStore.Store {
 		for _, sub := range subscriber.SubStore.Store {
 			if sub.GetResource() == resource {
@@ -267,10 +274,11 @@ func (p *API) GetClientIDAddressByResource(resource string) map[uuid.UUID]*types
 
 // DeleteSubscription delete a subscriptionOne by id
 func (p *API) DeleteSubscription(clientID uuid.UUID, subscriptionID string) error {
-	if subStore, ok := p.SubscriberStore.Store[clientID]; ok { // client found
+	if subStore, ok := p.SubscriberStore.Get(clientID); ok { // client found
 		if sub, ok2 := subStore.SubStore.Store[subscriptionID]; ok2 {
 			err := deleteFromFile(*sub, fmt.Sprintf("%s/%s", p.storeFilePath, fmt.Sprintf("%s.json", clientID)))
-			p.SubscriberStore.Store[clientID].SubStore.Delete(subscriptionID)
+			subStore.SubStore.Delete(subscriptionID)
+			p.SubscriberStore.Set(clientID, subStore)
 			return err
 		}
 	}
@@ -279,7 +287,7 @@ func (p *API) DeleteSubscription(clientID uuid.UUID, subscriptionID string) erro
 
 // DeleteAllSubscriptions  delete all subscriptionOne information
 func (p *API) DeleteAllSubscriptions(clientID uuid.UUID) error {
-	if subStore, ok := p.SubscriberStore.Store[clientID]; ok { // client found
+	if subStore, ok := p.SubscriberStore.Get(clientID); ok {
 		if err := deleteAllFromFile(fmt.Sprintf("%s/%s", p.storeFilePath, fmt.Sprintf("%s.json", clientID))); err != nil {
 			return err
 		}
@@ -287,30 +295,31 @@ func (p *API) DeleteAllSubscriptions(clientID uuid.UUID) error {
 			RWMutex: sync.RWMutex{},
 			Store:   map[string]*pubsub.PubSub{},
 		}
+		p.SubscriberStore.Set(clientID, subStore)
 	}
 	return nil
 }
 
 // DeleteClient  delete all subscriptionOne information
 func (p *API) DeleteClient(clientID uuid.UUID) error {
-	log.Info("deleting client")
-	if subStore, ok := p.SubscriberStore.Store[clientID]; ok { // client found
+	if _, ok := p.SubscriberStore.Get(clientID); ok { // client found
+		log.Infof("delete from file %s",
+			fmt.Sprintf("%s/%s", p.storeFilePath, fmt.Sprintf("%s.json", clientID)))
 		if err := deleteAllFromFile(fmt.Sprintf("%s/%s", p.storeFilePath, fmt.Sprintf("%s.json", clientID))); err != nil {
 			return err
 		}
-		subStore.SubStore = &store.PubSubStore{
-			RWMutex: sync.RWMutex{},
-			Store:   map[string]*pubsub.PubSub{},
-		}
-		delete(p.SubscriberStore.Store, clientID)
+		p.SubscriberStore.Delete(clientID)
+	} else {
+		log.Infof("subscription for client id %s not found", clientID)
 	}
 	return nil
 }
 
 // UpdateStatus .. update status
 func (p *API) UpdateStatus(clientID uuid.UUID, status subscriber.Status) error {
-	if subStore, ok := p.SubscriberStore.Store[clientID]; ok {
+	if subStore, ok := p.SubscriberStore.Get(clientID); ok {
 		subStore.SetStatus(status)
+		p.SubscriberStore.Set(clientID, subStore)
 		// do not write to file , if restarts it will consider all client are active
 	} else {
 		return errors.New("failed to update subscriber status")
@@ -320,8 +329,31 @@ func (p *API) UpdateStatus(clientID uuid.UUID, status subscriber.Status) error {
 
 // IncFailCountToFail .. update fail count
 func (p *API) IncFailCountToFail(clientID uuid.UUID) bool {
-	if subStore, ok := p.SubscriberStore.Store[clientID]; ok {
+	if subStore, ok := p.SubscriberStore.Get(clientID); ok {
 		subStore.IncFailCount()
+		p.SubscriberStore.Set(clientID, subStore)
+		if subStore.Action == channel.DELETE {
+			return true
+		}
+	}
+	return false
+}
+
+// FailCountThreshold .. get threshold
+func (p *API) FailCountThreshold() int {
+	return subscriber.SetConnectionToFailAfter
+}
+
+func (p *API) GetFailCount(clientID uuid.UUID) int {
+	if subStore, ok := p.SubscriberStore.Get(clientID); ok {
+		return subStore.FailedCount()
+	}
+	return 0
+}
+
+// SubscriberMarkedForDelete ...
+func (p *API) SubscriberMarkedForDelete(clientID uuid.UUID) bool {
+	if subStore, ok := p.SubscriberStore.Get(clientID); ok {
 		if subStore.Action == channel.DELETE {
 			return true
 		}

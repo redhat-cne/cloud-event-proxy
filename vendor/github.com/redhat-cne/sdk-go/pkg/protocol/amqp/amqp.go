@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -297,8 +298,9 @@ func (q *Router) QDRRouter(wg *sync.WaitGroup) {
 							}()
 							select {
 							case d.StatusChan <- &channel.StatusChan{
-								ClientID: d.ClientID,
-								Data:     e,
+								ClientID:   d.ClientID,
+								Data:       e,
+								StatusCode: http.StatusOK,
 							}:
 							case <-time.After(5 * time.Second):
 								log.Info("timed out sending current state back to calling channel")
