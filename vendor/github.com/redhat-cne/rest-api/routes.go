@@ -366,14 +366,17 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 		}
 		select {
 		case d := <-statusChannel:
-			if d.Data == nil {
-				respondWithError(w, "event not found")
+			if d.Data == nil || d.StatusCode != http.StatusOK {
+				if string(d.Message) == "" {
+					d.Message = []byte("event not found")
+				}
+				respondWithError(w, string(d.Message))
 			} else {
-				respondWithJSON(w, http.StatusOK, *d.Data)
+				respondWithJSON(w, d.StatusCode, *d.Data)
 			}
 		case <-time.After(5 * time.Second):
 			close(statusChannel)
-			respondWithError(w, "time Out waiting for status")
+			respondWithError(w, "timeout waiting for status")
 		}
 	}
 }

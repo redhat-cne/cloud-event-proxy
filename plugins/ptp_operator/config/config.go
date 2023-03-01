@@ -345,7 +345,7 @@ func (l *LinuxPTPConfigMapUpdate) updatePtpConfig(nodeName string) {
 			l.UpdateCh <- true // if profile doesn't exist let the caller know
 			return
 		}
-		log.Errorf("error stating node profile %v: %v", nodeName, err)
+		log.Errorf("error finding node profile %v: %v", nodeName, err)
 		return
 	}
 	nodeProfilesJSON, err := os.ReadFile(nodeProfile)

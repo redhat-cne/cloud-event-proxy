@@ -53,25 +53,25 @@ curl http://localhost:9085/api/ocloudNotifications/v1/publishers
 
  ```
  curl localhost:9091/metrics
-# HELP cne_amqp_events_published Metric to get number of events published by the transport
-# TYPE cne_amqp_events_published gauge
-cne_amqp_events_published{address="/cluster/node/NODE_NAME/sync/ptp-status/lock-state",status="success"} 3
-cne_amqp_events_published{address="/cluster/node/NODE_NAME/sync/ptp-status/ptp-clock-class-change",status="success"} 2
-# HELP cne_amqp_events_received Metric to get number of events received  by the transport
-# TYPE cne_amqp_events_received gauge
-cne_amqp_events_received{address="/cluster/node/NODE_NAME/sync/ptp-status/lock-state/status",status="success"} 2053
-cne_amqp_events_received{address="/cluster/node/NODE_NAME/sync/ptp-status/ptp-clock-class-change/status",status="success"} 2053
-cne_amqp_events_received{address="/cluster/node/NODE_NAME/sync/sync-status/os-clock-sync-state/status",status="success"} 2053
-# HELP cne_amqp_receiver Metric to get number of receiver created
-# TYPE cne_amqp_receiver gauge
-cne_amqp_receiver{address="/cluster/node/NODE_NAME/sync/ptp-status/lock-state/status",status="active"} 1
-cne_amqp_receiver{address="/cluster/node/NODE_NAME/sync/ptp-status/ptp-clock-class-change/status",status="active"} 1
-cne_amqp_receiver{address="/cluster/node/NODE_NAME/sync/sync-status/os-clock-sync-state/status",status="active"} 1
-# HELP cne_amqp_sender Metric to get number of sender created
-# TYPE cne_amqp_sender gauge
-cne_amqp_sender{address="/cluster/node/NODE_NAME/sync/ptp-status/lock-state",status="active"} 1
-cne_amqp_sender{address="/cluster/node/NODE_NAME/sync/ptp-status/ptp-clock-class-change",status="active"} 1
-cne_amqp_sender{address="/cluster/node/NODE_NAME/sync/sync-status/os-clock-sync-state",status="active"} 1
+# HELP cne_transport_events_published Metric to get number of events published by the transport
+# TYPE cne_transport_events_published gauge
+cne_transport_events_published{address="/cluster/node/NODE_NAME/sync/ptp-status/lock-state",status="success"} 3
+cne_transport_events_published{address="/cluster/node/NODE_NAME/sync/ptp-status/ptp-clock-class-change",status="success"} 2
+# HELP cne_transport_events_received Metric to get number of events received  by the transport
+# TYPE cne_transport_events_received gauge
+cne_transport_events_received{address="/cluster/node/NODE_NAME/sync/ptp-status/lock-state/status",status="success"} 2053
+cne_transport_events_received{address="/cluster/node/NODE_NAME/sync/ptp-status/ptp-clock-class-change/status",status="success"} 2053
+cne_transport_events_received{address="/cluster/node/NODE_NAME/sync/sync-status/os-clock-sync-state/status",status="success"} 2053
+# HELP cne_transport_receiver Metric to get number of receiver created
+# TYPE cne_transport_receiver gauge
+cne_transport_receiver{address="/cluster/node/NODE_NAME/sync/ptp-status/lock-state/status",status="active"} 1
+cne_transport_receiver{address="/cluster/node/NODE_NAME/sync/ptp-status/ptp-clock-class-change/status",status="active"} 1
+cne_transport_receiver{address="/cluster/node/NODE_NAME/sync/sync-status/os-clock-sync-state/status",status="active"} 1
+# HELP cne_transport_sender Metric to get number of sender created
+# TYPE cne_transport_sender gauge
+cne_transport_sender{address="/cluster/node/NODE_NAME/sync/ptp-status/lock-state",status="active"} 1
+cne_transport_sender{address="/cluster/node/NODE_NAME/sync/ptp-status/ptp-clock-class-change",status="active"} 1
+cne_transport_sender{address="/cluster/node/NODE_NAME/sync/sync-status/os-clock-sync-state",status="active"} 1
 # HELP cne_api_events_published Metric to get number of events published by the rest api
 # TYPE cne_api_events_published gauge
 cne_api_events_published{address="/cluster/node/NODE_NAME/sync/ptp-status/lock-state",status="success"} 3
