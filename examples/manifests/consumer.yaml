@@ -39,9 +39,9 @@ spec:
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
-            #- "--transport-host=amqp://amq-router.$(AMQP_NAMESPACE).svc.cluster.local"
-            - "--transport-host=consumer-events-subscription-service.cloud-events.svc.cluster.local:9043"
-            - "--http-event-publishers=ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043"
+            - "--transport-host=amqp://amq-router.$(AMQP_NAMESPACE).svc.cluster.local"
+            #- "--transport-host=consumer-events-subscription-service.cloud-events.svc.cluster.local:9043"
+            #- "--http-event-publishers=ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043"
             - "--api-port=8089"
           env:
             - name: AMQP_NAMESPACE
