@@ -25,6 +25,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	"github.com/redhat-cne/sdk-go/pkg/event"
@@ -100,6 +102,7 @@ RETRY:
 	var subs []*pubsub.PubSub
 	for _, resource := range subscribeTo {
 		subs = append(subs, &pubsub.PubSub{
+			ID:       getUUID(fmt.Sprintf(resourcePrefix, nodeName, resource)).String(),
 			Resource: fmt.Sprintf(resourcePrefix, nodeName, resource),
 		})
 	}
@@ -245,4 +248,10 @@ func initSubscribers(cType ConsumerTypeEnum) map[string]string {
 		subscribeTo[mockResourceKey] = mockResource
 	}
 	return subscribeTo
+}
+
+func getUUID(s string) uuid.UUID {
+	var namespace = uuid.NameSpaceURL
+	var url = []byte(s)
+	return uuid.NewMD5(namespace, url)
 }
