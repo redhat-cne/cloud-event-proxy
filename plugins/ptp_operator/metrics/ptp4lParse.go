@@ -104,7 +104,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 						// Send os clock sync state only if os clock is synced via phc
 						if t, ok := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && t.Phc2SysEnabled() {
 							p.GenPTPEvent(profileName, ptpStats[ClockRealTime], ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
-							UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ClockRealTime, ptp.FREERUN)
+							UpdateSyncStateMetrics(phc2sysProcessName, ClockRealTime, ptp.FREERUN)
 						} else {
 							log.Infof("phc2sys is not enabled for profile %s, skiping os clock syn state ", profileName)
 						}
@@ -145,7 +145,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 				if ptpOpts, ok = p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && ptpOpts != nil && ptpOpts.Phc2SysEnabled() {
 					p.PublishEvent(ptp.FREERUN, ptpStats[ClockRealTime].LastOffset(), ClockRealTime, ptp.OsClockSyncStateChange)
 					ptpStats[ClockRealTime].SetLastSyncState(ptp.FREERUN)
-					UpdateSyncStateMetrics(ptpStats[ClockRealTime].ProcessName(), ClockRealTime, ptp.FREERUN)
+					UpdateSyncStateMetrics(phc2sysProcessName, ClockRealTime, ptp.FREERUN)
 				}
 				threshold := p.PtpThreshold(profileName, true)
 				go handleHoldOverState(p, ptpOpts, configName, profileName, threshold.HoldOverTimeout, MasterClockType, threshold.Close)
@@ -182,7 +182,7 @@ func handleHoldOverState(ptpManager *PTPEventManager,
 				// don't check of os clock sync state if phc2 not enabled
 				if cStats, ok := ptpStats[ClockRealTime]; ok && ptpOpts != nil && ptpOpts.Phc2SysEnabled() {
 					ptpManager.GenPTPEvent(ptpProfileName, cStats, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
-					UpdateSyncStateMetrics(cStats.ProcessName(), ptpIFace, ptp.FREERUN)
+					UpdateSyncStateMetrics(phc2sysProcessName, ClockRealTime, ptp.FREERUN)
 				} else {
 					log.Infof("phc2sys is not enabled for profile %s, skiping os clock syn state ", ptpProfileName)
 				}
