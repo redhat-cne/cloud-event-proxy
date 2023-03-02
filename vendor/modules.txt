@@ -197,7 +197,7 @@ github.com/prometheus/procfs/internal/util
 ## explicit; go 1.17
 github.com/redhat-cne/rest-api
 github.com/redhat-cne/rest-api/pkg/localmetrics
-# github.com/redhat-cne/sdk-go v0.1.1-0.20230119124426-1ed827004687
+# github.com/redhat-cne/sdk-go v0.1.1-0.20230215223206-506ca9294ab3
 ## explicit; go 1.17
 github.com/redhat-cne/sdk-go/pkg/channel
 github.com/redhat-cne/sdk-go/pkg/errorhandler

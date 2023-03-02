@@ -89,6 +89,9 @@ func main() {
 		transportHost = strings.Replace(transportHost, "NODE_IP", nodeIP, 1)
 		log.Infof("transport host path is set to %s", transportHost)
 	}
+	nodeName := os.Getenv("NODE_NAME")
+	transportHost = common.SanitizeTransportHost(transportHost, nodeIP, nodeName)
+
 	parsedTransportHost := &common.TransportHost{URL: transportHost}
 
 	parsedTransportHost.ParseTransportHost()
