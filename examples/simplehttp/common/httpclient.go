@@ -2,11 +2,13 @@ package common
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"syscall"
 	"time"
+
+	cneevent "github.com/redhat-cne/sdk-go/pkg/event"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	log "github.com/sirupsen/logrus"
@@ -42,21 +44,25 @@ func Post(address string, e cloudevents.Event) (int, error) {
 	return http.StatusOK, nil
 }
 
-// GetByte ... getter method
-func GetByte(url string) ([]byte, int, error) {
-	log.Infof("health check %s ", url)
+// GetEventData ... getter method
+func GetEventData(url string) (*cloudevents.Event, *cneevent.Data, error) {
 	// using variable url is security hole. Do we need to fix this
 	response, errResp := http.Get(url)
 	if errResp != nil {
 		log.Warnf("return rest service  error  %v", errResp)
-		return []byte(errResp.Error()), http.StatusBadRequest, errResp
+		return nil, nil, errResp
 	}
 	defer response.Body.Close()
-	var bodyBytes []byte
+
+	event := &cloudevents.Event{}
+	data := &cneevent.Data{}
 	var err error
-	bodyBytes, err = io.ReadAll(response.Body)
-	if err != nil {
-		return []byte(err.Error()), http.StatusBadRequest, err
+	if err = json.NewDecoder(response.Body).Decode(event); err != nil {
+		return nil, nil, err
 	}
-	return bodyBytes, response.StatusCode, nil
+	if err = json.Unmarshal(event.Data(), &data); err != nil {
+		return nil, nil, err
+	}
+
+	return event, data, nil
 }
