@@ -3,6 +3,8 @@ package metrics
 import (
 	"sync"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
@@ -174,6 +176,11 @@ func UpdateSyncStateMetrics(process, iface string, state ptp.SyncState) {
 		clockState = 0
 	} else if state == ptp.HOLDOVER {
 		clockState = 2
+	}
+	// prevent reporting wrong metrics
+	if iface == master && process == phc2sysProcessName {
+		log.Errorf("wrong meterics are processed, ignoring interface %s with process %s", iface, process)
+		return
 	}
 	SyncState.With(prometheus.Labels{
 		"process": process, "node": ptpNodeName, "iface": iface}).Set(clockState)
