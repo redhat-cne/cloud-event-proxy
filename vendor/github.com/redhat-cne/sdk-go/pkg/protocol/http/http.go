@@ -123,7 +123,6 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 		var obj subscriber.Subscriber
 		if err = json.Unmarshal(e.Data(), &obj); err != nil {
 			out.Status = channel.FAILED
-			localmetrics.UpdateSenderCreatedCount(out.Address, localmetrics.FAILED, 1)
 			log.Errorf("failied to parse subscription %s", err)
 		} else {
 			out.Address = obj.GetEndPointURI()
@@ -131,23 +130,20 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 				if _, ok := h.Sender[obj.ClientID]; !ok { // we have a sender object
 					log.Infof("(1)subscriber not found for the following address %s by %s, will attempt to create", e.Source(), obj.GetEndPointURI())
 					if err = h.NewSender(obj.ClientID, obj.GetEndPointURI()); err != nil {
+						out.Status = channel.FAILED
 						log.Errorf("(1)error creating subscriber %v for address %s", err, obj.GetEndPointURI())
-						localmetrics.UpdateSenderCreatedCount(obj.GetEndPointURI(), localmetrics.FAILED, 1)
+					} else if _, err = h.subscriberAPI.CreateSubscription(obj.ClientID, obj); err != nil {
+						log.Errorf("failed creating subscription for %s", obj.ClientID.String())
 						out.Status = channel.FAILED
 					} else {
-						if _, err = h.subscriberAPI.CreateSubscription(obj.ClientID, obj); err != nil {
-							localmetrics.UpdateSenderCreatedCount(obj.GetEndPointURI(), localmetrics.ACTIVE, 1)
-							out.Status = channel.SUCCESS
-						} else {
-							localmetrics.UpdateSenderCreatedCount(obj.GetEndPointURI(), localmetrics.ACTIVE, 1)
-							out.Status = channel.FAILED
-						}
+						out.Status = channel.SUCCESS
+						localmetrics.UpdateSenderCreatedCount(obj.ClientID.String(), localmetrics.ACTIVE, 1)
 					}
 				} else {
 					log.Infof("sender already present,updating %s", obj.ClientID.String())
 					out.Status = channel.SUCCESS
 					if _, err = h.subscriberAPI.CreateSubscription(obj.ClientID, obj); err != nil {
-						log.Errorf("failed creating subscriber %s", err)
+						log.Errorf("failed updating subscription %s", err)
 						out.Status = channel.FAILED
 					}
 				}
@@ -157,7 +153,7 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 					_ = h.subscriberAPI.DeleteClient(obj.ClientID)
 					h.DeleteSender(obj.ClientID)
 					out.Status = channel.SUCCESS
-					localmetrics.UpdateSenderCreatedCount(obj.GetEndPointURI(), localmetrics.ACTIVE, -1)
+					localmetrics.UpdateSenderCreatedCount(obj.ClientID.String(), localmetrics.ACTIVE, -1)
 				}
 			}
 		}
@@ -400,7 +396,7 @@ func (h *Server) HTTPProcessor(wg *sync.WaitGroup) {
 						log.Infof("Deleting client %s", d.ClientID)
 						if dErr := h.subscriberAPI.DeleteClient(d.ClientID); dErr == nil {
 							h.DeleteSender(d.ClientID)
-							localmetrics.UpdateSenderCreatedCount(d.Address, localmetrics.ACTIVE, -1)
+							localmetrics.UpdateSenderCreatedCount(d.ClientID.String(), localmetrics.ACTIVE, -1)
 						} else {
 							log.Errorf("Failed to delete subscriber %s", d.Address)
 						}
@@ -425,12 +421,12 @@ func (h *Server) HTTPProcessor(wg *sync.WaitGroup) {
 						for _, pubURL := range h.Publishers { // if you call
 							if err := Post(fmt.Sprintf("%s/subscription", pubURL.String()), *ce); err != nil {
 								log.Errorf("(1)error creating: %v at  %s with data %s=%s", err, pubURL.String(), ce.String(), ce.Data())
-								localmetrics.UpdateSenderCreatedCount(d.Address, localmetrics.ACTIVE, -1)
+								localmetrics.UpdateSenderCreatedCount(d.ClientID.String(), localmetrics.FAILED, 1)
 								d.Status = channel.FAILED
 								h.DataOut <- d
 							} else {
 								log.Infof("successfully created subscription for %s", d.Address)
-								localmetrics.UpdateSenderCreatedCount(d.Address, localmetrics.ACTIVE, 1)
+								localmetrics.UpdateSenderCreatedCount(d.ClientID.String(), localmetrics.ACTIVE, 1)
 								d.Status = channel.SUCCESS
 								h.DataOut <- d
 							}
@@ -568,13 +564,13 @@ func (h *Server) SendTo(wg *sync.WaitGroup, clientID uuid.UUID, clientAddress, r
 				return
 			}
 			if sender == nil {
-				localmetrics.UpdateEventCreatedCount(clientAddress, localmetrics.FAILED, 1)
+				localmetrics.UpdateEventCreatedCount(resourceAddress, localmetrics.FAILED, 1)
 				return
 			}
 			if err := sender.Send(*e); err != nil {
 				log.Errorf("failed to send(TO): %s result %v ", clientAddress, err)
 				if eventType == channel.EVENT {
-					localmetrics.UpdateEventCreatedCount(clientAddress, localmetrics.FAILED, 1)
+					localmetrics.UpdateEventCreatedCount(resourceAddress, localmetrics.FAILED, 1)
 				}
 				// has subscriber failed to connect for n times delete the subscribers
 				if h.subscriberAPI.IncFailCountToFail(clientID) {
@@ -597,7 +593,7 @@ func (h *Server) SendTo(wg *sync.WaitGroup, clientID uuid.UUID, clientAddress, r
 				}
 				log.Errorf("connection lost addressing %s", clientAddress)
 			} else {
-				localmetrics.UpdateEventCreatedCount(clientAddress, localmetrics.SUCCESS, 1)
+				localmetrics.UpdateEventCreatedCount(resourceAddress, localmetrics.SUCCESS, 1)
 				h.DataOut <- &channel.DataChan{
 					Address: resourceAddress,
 					Data:    e,
@@ -766,16 +762,9 @@ func GetByte(url string) ([]byte, int, error) {
 	defer response.Body.Close()
 	var bodyBytes []byte
 	var err error
-	if response.StatusCode == http.StatusOK {
-		bodyBytes, err = io.ReadAll(response.Body)
-		if err != nil {
-			return []byte(err.Error()), http.StatusBadRequest, err
-		}
-	} else {
-		bodyBytes, err = io.ReadAll(response.Body)
-		if err != nil {
-			return []byte(err.Error()), http.StatusBadRequest, err
-		}
+	bodyBytes, err = io.ReadAll(response.Body)
+	if err != nil {
+		return []byte(err.Error()), http.StatusBadRequest, err
 	}
 	return bodyBytes, response.StatusCode, nil
 }

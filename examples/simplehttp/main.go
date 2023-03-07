@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/redhat-cne/cloud-event-proxy/examples/simplehttp/common"
@@ -24,7 +25,7 @@ var (
 	wg                 sync.WaitGroup
 )
 
-// oc -n openshift-ptp port-forward linuxptpdaemon 9043:9043 --address='0.0.0.0
+// oc -n openshift-ptp port-forward linuxptpdaemon 9043:9043 --address='0.0.0.0'
 const (
 	clientAddress          = ":27017"
 	clientExternalEndPoint = "http://event-consumer-external:27017"
@@ -50,7 +51,9 @@ func initResources() {
 
 func main() {
 	cancelChan := make(chan os.Signal, 1)
+	readerDone := make(chan bool)
 	stopHTTPServerChan = make(chan bool)
+	input := make(chan string, 1)
 	// catch SIGETRM or SIGINTERRUPT
 	signal.Notify(cancelChan, syscall.SIGTERM, syscall.SIGINT)
 	wg = sync.WaitGroup{}
@@ -83,7 +86,24 @@ func main() {
 	callGetCurrentState()
 	fmt.Println("\n---------------------------------------------------------------------------------")
 	//wait for 5 secs for any events and then delete subscription
+	wg.Add(1)
+	go readKey(&wg, input, readerDone)
+	log.Println("press `p` to GetCurrentState and `q` to exit reading from GetCurrentState")
+loop:
+	for {
+		select {
+		case <-readerDone:
+			break loop
+		case <-cancelChan:
+			break loop
+		case i := <-input:
+			if i == "p" {
+				callGetCurrentState()
+			}
+		}
+	}
 	<-cancelChan
+	log.Println("handling exit")
 	callGetCurrentState()
 	common.DeleteSubscription(fmt.Sprintf("%s/subscription", publisherServiceName), clientID)
 	stopHTTPServerChan <- true
@@ -136,4 +156,29 @@ func healthCheckPublisher() {
 		log.Fatalln(err)
 	}
 	defer resp.Body.Close()
+}
+
+func readKey(wg *sync.WaitGroup, input chan string, readerDone chan bool) {
+	defer wg.Done()
+
+	// Receive input in a loop
+	for {
+		select {
+		case <-readerDone:
+			return
+		default:
+			var s string
+			fmt.Scan(&s)
+			// Send what we read over the channel
+			if s == "q" {
+				log.Println("ctrl+c to terminate")
+				readerDone <- true
+				return
+			} else if s != "p" {
+				log.Println("press `p` to GetCurrentState and `q` to exit reading from GetCurrentState")
+			}
+			input <- s
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 }

@@ -257,8 +257,17 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 					log.Errorf("failed to receive status request to address %s", d.Address)
 					localmetrics.UpdateStatusAckCount(d.Address, localmetrics.FAILED)
 				}
-			} else if d.Type == channel.SUBSCRIBER && d.Status == channel.SUCCESS {
-				log.Infof("subscriber processed for %s", d.Address)
+			} else if d.Type == channel.SUBSCRIBER {
+				if d.Status == channel.SUCCESS {
+					log.Infof("subscriber processed for %s", d.Address)
+				} else if d.Status == channel.DELETE {
+					scConfig.EventInCh <- &channel.DataChan{
+						ClientID: d.ClientID,
+						Data:     d.Data,
+						Status:   channel.DELETE,
+						Type:     channel.SUBSCRIBER,
+					}
+				}
 			}
 		case <-scConfig.CloseCh:
 			return

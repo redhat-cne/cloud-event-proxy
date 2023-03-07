@@ -152,6 +152,7 @@ func (p *API) CreateSubscription(clientID uuid.UUID, sub subscriber.Subscriber) 
 	subscriptionClient.ResetFailCount()
 	_ = subscriptionClient.SetEndPointURI(sub.GetEndPointURI())
 	subscriptionClient.SetStatus(subscriber.Active)
+	subscriptionClient.Action = channel.NEW
 	pubStore := subscriptionClient.GetSubStore()
 	var hasResource bool
 	for key, value := range sub.SubStore.Store {
