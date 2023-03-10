@@ -42,6 +42,7 @@ func DeleteSubscription(publisherURL string, clientID uuid.UUID) error {
 	log.Infof("Deleting subscriptions for client %s", clientID.String())
 	eventSubscriber := subscriber.New(clientID)
 	eventSubscriber.Action = channel.DELETE //2 == delete
+	eventSubscriber.Status = subscriber.InActive
 	ce, _ := eventSubscriber.CreateCloudEvents()
 	ce.SetSubject(channel.DELETE.String())
 	_, err := Post(publisherURL, *ce)
