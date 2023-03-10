@@ -63,6 +63,5 @@ func GetEventData(url string) (*cloudevents.Event, *cneevent.Data, error) {
 	if err = json.Unmarshal(event.Data(), &data); err != nil {
 		return nil, nil, err
 	}
-
 	return event, data, nil
 }
