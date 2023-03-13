@@ -190,11 +190,13 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		}
 		// if it was ts2phc then it was considered as master offset
 		interfaceType := types.IFace(master)
-		if masterOffsetSource == ts2phcProcessName {
+		if processName == ts2phcProcessName { // if current offset is read from ts2phc
+			// ts2phc return actual interface name unlike ptp4l
 			ptpInterface = ptp4lconf.PTPInterface{Name: interfaceName}
 		} else {
 			// for ts2phc there is no slave interface configuration
-			interfaceType = types.IFace(interfaceName)
+			// fort pt4l find the slave configured
+			interfaceType = types.IFace(interfaceName) // this will be CLOCK_REALTIME or master
 			ptpInterface, _ = ptp4lCfg.ByRole(types.SLAVE)
 		}
 
@@ -210,7 +212,10 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		switch interfaceName {
 		case ClockRealTime: // CLOCK_REALTIME is active slave interface
 			// copy  ClockRealTime value to current slave interface
-			if r, ok := ptpStats[master]; ok && r.Role() == types.SLAVE { // publish event only if the master role is active
+			if masterOffsetSource == ts2phcProcessName {
+				//TODO: once ts2phc events are identified we need to add that here
+				p.GenPTPEvent(profileName, ptpStats[interfaceType], interfaceName, int64(ptpOffset), syncState, eventType)
+			} else if r, ok := ptpStats[master]; ok && r.Role() == types.SLAVE { // publish event only if the master role is active
 				// when related slave is faulty the holdover will make clock clear time as FREERUN
 				p.GenPTPEvent(profileName, ptpStats[interfaceType], interfaceName, int64(ptpOffset), syncState, eventType)
 			}
