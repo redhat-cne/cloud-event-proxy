@@ -64,7 +64,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 		lastRole := ptpInterface.Role
 		ptpIFace := ptpInterface.Name
 
-		if role == types.SLAVE {
+		if role == types.SLAVE || masterOffsetSource == ts2phcProcessName {
 			// initialize
 			if _, found := ptpStats[ClockRealTime]; !found {
 				ptpStats[ClockRealTime] = stats.NewStats(configName)
@@ -72,7 +72,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			}
 			if _, found := ptpStats[master]; !found {
 				ptpStats[master] = stats.NewStats(configName)
-				ptpStats[master].SetProcessName(ptp4lProcessName)
+				ptpStats[master].SetProcessName(masterOffsetSource)
 			}
 			ptpStats[master].SetRole(role)
 		}
@@ -118,7 +118,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			// update role metrics
 			UpdateInterfaceRoleMetrics(processName, ptpIFace, role)
 		}
-		if lastRole != types.SLAVE {
+		if lastRole != types.SLAVE { //tsphc doesnt have slave port and doesnt have fault state yet
 			return // no need to go to holdover state if the Fault was not in master(slave) port
 		}
 		if _, ok := ptpStats[master]; !ok { //
