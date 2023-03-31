@@ -15,8 +15,12 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/redhat-cne/sdk-go/pkg/subscriber"
+	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
 	"net/http"
 	"os"
 	"os/signal"
@@ -33,6 +37,9 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/localmetrics"
+	storageClient "github.com/redhat-cne/cloud-event-proxy/pkg/storage/kubernetes"
+
+	crdV1beta1 "github.com/redhat-cne/cloud-event-proxy/pkg/crd/v1beta1"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -45,7 +52,7 @@ import (
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
 	v1http "github.com/redhat-cne/sdk-go/v1/http"
-	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
+	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 )
 
 var (
@@ -61,6 +68,9 @@ var (
 	httpEventPublisher      string
 	pluginHandler           plugins.Handler
 	amqInitTimeout          = 3 * time.Minute
+	eventStorageClient      *storageClient.Client
+	nodeName                string
+	namespace               string
 )
 
 func main() {
@@ -84,7 +94,9 @@ func main() {
 	prometheus.Unregister(collectors.NewGoCollector())
 
 	nodeIP := os.Getenv("NODE_IP")
-	nodeName := os.Getenv("NODE_NAME")
+	nodeName = os.Getenv("NODE_NAME")
+	namespace = os.Getenv("NAMESPACE")
+	namespace = "openshift-ptp"
 	transportHost = common.SanitizeTransportHost(transportHost, nodeIP, nodeName)
 	eventPublishers := updateHTTPPublishers(nodeIP, nodeName, httpEventPublisher)
 
@@ -94,7 +106,6 @@ func main() {
 	if parsedTransportHost.Err != nil {
 		log.Errorf("error parsing transport host, data will written to log %s", parsedTransportHost.Err.Error())
 	}
-
 	scConfig = &common.SCConfiguration{
 		EventInCh:     make(chan *channel.DataChan, channelBufferSize),
 		EventOutCh:    make(chan *channel.DataChan, channelBufferSize),
@@ -106,6 +117,38 @@ func main() {
 		StorePath:     storePath,
 		BaseURL:       nil,
 		TransportHost: parsedTransportHost,
+		StorageType:   "emptyDir",
+	}
+	/****/
+
+	// Use kubeconfig to create client config.
+	client, kconfig, err := storageClient.NewClient(5 * time.Second)
+	if err != nil {
+		log.Infof("error fetching client, storage defaulted to emptyDir{} %s", err.Error())
+	} else {
+		scConfig.K8sClient = client
+	}
+	apiextensionsClientSet, err := apiextensionsclient.NewForConfig(kconfig)
+	if err != nil {
+		log.Infof("error fetching client, storage defaulted to emptyDir{} %s", err.Error())
+	} else {
+		if err = crdV1beta1.CreateCustomResourceDefinition(context.Background(), apiextensionsClientSet); err != nil {
+			log.Errorf("failed to register CRD, storage is backed to emptyDir %s", err.Error())
+		} else {
+			scConfig.StorageType = "CR"
+		}
+	}
+
+	// create crd for storage
+	// update storage
+	//TODO:
+	if s, errs := scConfig.K8sClient.GetSubscriberForNode(context.Background(), namespace, nodeName); errs == nil {
+		log.Infof("This is  where you wirte subscription data back to emptydir")
+		for id, subscriber := range s.Spec.Subscriber {
+			log.Infof("clientid:%s Subscription %v", id, subscriber)
+		}
+	} else {
+		log.Infof("There was error wrriting to CR")
 	}
 
 	metricServer(metricsAddr)
@@ -150,7 +193,7 @@ func main() {
 	}
 
 	/* Enable pub/sub services */
-	_, err := common.StartPubSubService(scConfig)
+	_, err = common.StartPubSubService(scConfig)
 	if err != nil {
 		log.Fatal("pub/sub service API failed to start.")
 	}
@@ -260,7 +303,17 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 			} else if d.Type == channel.SUBSCRIBER {
 				if d.Status == channel.SUCCESS {
 					log.Infof("subscriber processed for %s", d.Address)
+					var obj subscriber.Subscriber
+					if err := json.Unmarshal(d.Data.Data(), &obj); err == nil {
+						scConfig.K8sClient.UpdateSubscriber(context.Background(), namespace, nodeName, obj.ClientID.String(), obj)
+						log.Errorf("failied to parse subscription %s", err)
+					}
 				} else if d.Status == channel.DELETE {
+					var obj subscriber.Subscriber
+					if err := json.Unmarshal(d.Data.Data(), &obj); err == nil {
+						scConfig.K8sClient.DeleteSubscriber(context.Background(), namespace, nodeName, obj.ClientID.String(), obj)
+						log.Errorf("failied to parse subscription %s", err)
+					}
 					scConfig.EventInCh <- &channel.DataChan{
 						ClientID: d.ClientID,
 						Data:     d.Data,

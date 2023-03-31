@@ -17,6 +17,7 @@ package common
 import (
 	"encoding/json"
 	"fmt"
+	storageClient "github.com/redhat-cne/cloud-event-proxy/pkg/storage/kubernetes"
 	"net"
 	"net/http"
 	"net/url"
@@ -165,6 +166,8 @@ type SCConfiguration struct {
 	TransportHost     *TransportHost
 	TransPortInstance interface{}
 	clientID          uuid.UUID
+	StorageType       string
+	K8sClient         *storageClient.Client
 }
 
 // ClientID ... read clientID from the configurations

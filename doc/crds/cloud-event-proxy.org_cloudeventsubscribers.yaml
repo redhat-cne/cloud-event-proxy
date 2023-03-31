@@ -1,0 +1,68 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.4.1
+  creationTimestamp: null
+  name: cloudeventsubscribers.cloud-event-proxy.org
+spec:
+  group: cloud-event-proxy.org
+  names:
+    kind: CloudEventSubscriber
+    listKind: CloudEventSubscriberList
+    plural: cloudeventsubscribers
+    singular: cloudeventsubscriber
+  scope: Namespaced
+  subresources:
+    status: {}
+  validation:
+    openAPIV3Schema:
+      description: CloudEventSubscriber is the Schema for the cloudeventsubscribers
+        API
+      properties:
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation
+            of an object. Servers should convert recognized schemas to the latest
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this
+            object represents. Servers may infer this from the endpoint the client
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+          type: string
+        metadata:
+          type: object
+        spec:
+          description: CloudEventSubscriberSpec defines the desired state of CloudEventSubscriber
+          properties:
+            subscriber:
+              additionalProperties:
+                type: string
+              description: map of clients
+              type: object
+          type: object
+        status:
+          description: CloudEventSubscriberStatus defines the observed state of CloudEventSubscriber
+          properties:
+            inactiveSubscriber:
+              additionalProperties:
+                type: string
+              description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                of cluster Important: Run "make" to regenerate code after modifying
+                this file'
+              type: object
+          type: object
+      type: object
+  version: v1beta1
+  versions:
+  - name: v1beta1
+    served: true
+    storage: true
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
