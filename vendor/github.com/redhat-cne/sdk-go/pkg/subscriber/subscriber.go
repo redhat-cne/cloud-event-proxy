@@ -53,9 +53,9 @@ type Subscriber struct {
 	// Status ...
 	Status Status `json:"status" omit:"empty"`
 	// Action ...
-	Action channel.Status
+	Action channel.Status `json:"status" omit:"empty"`
 	// FailedCount ...
-	failedCount int
+	failedCount int `json:"failedCount" omit:"empty"`
 }
 
 // Get ... get pubsub
