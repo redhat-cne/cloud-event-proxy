@@ -25,6 +25,8 @@ import (
 	"sync"
 	"time"
 
+	"k8s.io/utils/pointer"
+
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	log "github.com/sirupsen/logrus"
 )
@@ -55,6 +57,7 @@ type PtpProfile struct {
 	Phc2sysOpts       *string            `json:"phc2sysOpts,omitempty"`
 	TS2PhcOpts        *string            `json:"ts2PhcOpts,omitempty"`
 	Ptp4lConf         *string            `json:"ptp4lConf,omitempty"`
+	TS2PhcConf        *string            `json:"ts2PhcConf,omitempty"`
 	Interfaces        []*string
 }
 
@@ -90,7 +93,7 @@ func (ptpOpts *PtpProcessOpts) Phc2SysEnabled() bool {
 	return ptpOpts.Phc2Opts != nil && *ptpOpts.Phc2Opts != ""
 }
 
-// TS2PhcEnabled check if phc2sys is enabled
+// TS2PhcEnabled check if ts2phc is enabled
 func (ptpOpts *PtpProcessOpts) TS2PhcEnabled() bool {
 	return ptpOpts.TS2PhcOpts != nil && *ptpOpts.TS2PhcOpts != ""
 }
@@ -220,6 +223,10 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPProcessOptions() {
 			Ptp4lOpts:  profile.Ptp4lOpts,
 			Phc2Opts:   profile.Phc2sysOpts,
 			TS2PhcOpts: profile.TS2PhcOpts}
+		// ts2phcOpts are empty by default
+		if profile.TS2PhcConf != nil && (profile.TS2PhcOpts == nil || *profile.TS2PhcOpts == "") {
+			l.PtpProcessOpts[*profile.Name].TS2PhcOpts = pointer.StringPtr("-m")
+		}
 	}
 }
 
