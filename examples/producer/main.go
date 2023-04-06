@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package main ...
 package main
 
 import (
@@ -39,8 +40,8 @@ var (
 	apiAddr                string
 	apiPath                string
 	localAPIAddr           string
-	resourceAddressSports  string = "/news-service/sports"
-	resourceAddressFinance string = "/news-service/finance"
+	resourceAddressSports  = "/news-service/sports"
+	resourceAddressFinance = "/news-service/finance"
 )
 
 func main() {

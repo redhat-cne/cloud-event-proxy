@@ -8,12 +8,15 @@ package amqp
 import (
 	"context"
 	"io"
+	"strings"
 
 	"github.com/Azure/go-amqp"
 
 	"github.com/cloudevents/sdk-go/v2/binding"
 	"github.com/cloudevents/sdk-go/v2/protocol"
 )
+
+const serverDown = "session ended by server"
 
 // receiver wraps an amqp.Receiver as a binding.Receiver
 type receiver struct{ amqp *amqp.Receiver }
@@ -24,10 +27,14 @@ func (r *receiver) Receive(ctx context.Context) (binding.Message, error) {
 		if err == ctx.Err() {
 			return nil, io.EOF
 		}
+		// handle case when server goes down
+		if strings.HasPrefix(err.Error(), serverDown) {
+			return nil, io.EOF
+		}
 		return nil, err
 	}
 
-	return NewMessage(m), nil
+	return NewMessage(m, r.amqp), nil
 }
 
 // NewReceiver create a new Receiver which wraps an amqp.Receiver in a binding.Receiver

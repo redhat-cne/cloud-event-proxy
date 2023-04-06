@@ -48,7 +48,7 @@ var (
 	amqpLinkCredit uint32 = 50
 	cancelTimeout         = 100 * time.Millisecond
 	retryTimeout          = 500 * time.Millisecond
-	channelBuffer  int    = 10
+	channelBuffer         = 10
 )
 
 // Protocol ...
