@@ -15,8 +15,8 @@ output:
 issues:
   exclude-use-default: false
   exclude:
-    # should have a package comment, unless it's in another file for this package (golint)
     - 'ST1000: at least one file in a package should have a package comment'
+    - 'package-comments: should have a package comment'
 linters-settings:
   govet:
     # Enable all analyzers.
@@ -54,7 +54,6 @@ linters:
   disable-all: true
   enable: # NOTE: please keep this list alphabetically sorted
     - bodyclose
-    - deadcode
     - decorder
     - dogsled
     #- errcheck
@@ -67,7 +66,6 @@ linters:
     - ineffassign
     - megacheck
     - misspell
-    #- structcheck
     - revive
     - stylecheck
     - staticcheck # is a go vet on steroids, applying a ton of static analysis checks
@@ -75,7 +73,6 @@ linters:
     - unconvert
     - unparam
     - unused
-    - varcheck
     - whitespace
   fast: false
 

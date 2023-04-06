@@ -55,12 +55,12 @@ const (
 )
 
 var (
-	apiAddr         string = "localhost:8089"
-	apiPath         string = "/api/ocloudNotifications/v1/"
-	localAPIAddr    string = "localhost:8989"
-	resourcePrefix  string = "/cluster/node/%s%s"
-	mockResource    string = "/mock"
-	mockResourceKey string = "mock"
+	apiAddr         = "localhost:8089"
+	apiPath         = "/api/ocloudNotifications/v1/"
+	localAPIAddr    = "localhost:8989"
+	resourcePrefix  = "/cluster/node/%s%s"
+	mockResource    = "/mock"
+	mockResourceKey = "mock"
 )
 
 func main() {

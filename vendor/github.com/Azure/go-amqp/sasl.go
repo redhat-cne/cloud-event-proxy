@@ -2,35 +2,23 @@ package amqp
 
 import (
 	"fmt"
-)
 
-// SASL Codes
-const (
-	codeSASLOK      saslCode = iota // Connection authentication succeeded.
-	codeSASLAuth                    // Connection authentication failed due to an unspecified problem with the supplied credentials.
-	codeSASLSys                     // Connection authentication failed due to a system error.
-	codeSASLSysPerm                 // Connection authentication failed due to a system error that is unlikely to be corrected without intervention.
-	codeSASLSysTemp                 // Connection authentication failed due to a transient system error.
+	"github.com/Azure/go-amqp/internal/encoding"
+	"github.com/Azure/go-amqp/internal/frames"
 )
 
 // SASL Mechanisms
 const (
-	saslMechanismPLAIN     symbol = "PLAIN"
-	saslMechanismANONYMOUS symbol = "ANONYMOUS"
-	saslMechanismXOAUTH2   symbol = "XOAUTH2"
+	saslMechanismPLAIN     encoding.Symbol = "PLAIN"
+	saslMechanismANONYMOUS encoding.Symbol = "ANONYMOUS"
+	saslMechanismEXTERNAL  encoding.Symbol = "EXTERNAL"
+	saslMechanismXOAUTH2   encoding.Symbol = "XOAUTH2"
 )
 
-type saslCode uint8
-
-func (s saslCode) marshal(wr *buffer) error {
-	return marshal(wr, uint8(s))
-}
-
-func (s *saslCode) unmarshal(r *buffer) error {
-	n, err := readUbyte(r)
-	*s = saslCode(n)
-	return err
-}
+const (
+	frameTypeAMQP = 0x0
+	frameTypeSASL = 0x1
+)
 
 // ConnSASLPlain enables SASL PLAIN authentication for the connection.
 //
@@ -41,21 +29,21 @@ func ConnSASLPlain(username, password string) ConnOption {
 	return func(c *conn) error {
 		// make handlers map if no other mechanism has
 		if c.saslHandlers == nil {
-			c.saslHandlers = make(map[symbol]stateFunc)
+			c.saslHandlers = make(map[encoding.Symbol]stateFunc)
 		}
 
 		// add the handler the the map
 		c.saslHandlers[saslMechanismPLAIN] = func() stateFunc {
 			// send saslInit with PLAIN payload
-			init := &saslInit{
+			init := &frames.SASLInit{
 				Mechanism:       "PLAIN",
 				InitialResponse: []byte("\x00" + username + "\x00" + password),
 				Hostname:        "",
 			}
-			debug(1, "TX: %s", init)
-			c.err = c.writeFrame(frame{
-				type_: frameTypeSASL,
-				body:  init,
+			debug(1, "TX (ConnSASLPlain): %s", init)
+			c.err = c.writeFrame(frames.Frame{
+				Type: frameTypeSASL,
+				Body: init,
 			})
 			if c.err != nil {
 				return nil
@@ -73,19 +61,51 @@ func ConnSASLAnonymous() ConnOption {
 	return func(c *conn) error {
 		// make handlers map if no other mechanism has
 		if c.saslHandlers == nil {
-			c.saslHandlers = make(map[symbol]stateFunc)
+			c.saslHandlers = make(map[encoding.Symbol]stateFunc)
 		}
 
 		// add the handler the the map
 		c.saslHandlers[saslMechanismANONYMOUS] = func() stateFunc {
-			init := &saslInit{
+			init := &frames.SASLInit{
 				Mechanism:       saslMechanismANONYMOUS,
 				InitialResponse: []byte("anonymous"),
 			}
-			debug(1, "TX: %s", init)
-			c.err = c.writeFrame(frame{
-				type_: frameTypeSASL,
-				body:  init,
+			debug(1, "TX (ConnSASLAnonymous): %s", init)
+			c.err = c.writeFrame(frames.Frame{
+				Type: frameTypeSASL,
+				Body: init,
+			})
+			if c.err != nil {
+				return nil
+			}
+
+			// go to c.saslOutcome to handle the server response
+			return c.saslOutcome
+		}
+		return nil
+	}
+}
+
+// ConnSASLExternal enables SASL EXTERNAL authentication for the connection.
+// The value for resp is dependent on the type of authentication (empty string is common for TLS).
+// See https://datatracker.ietf.org/doc/html/rfc4422#appendix-A for additional info.
+func ConnSASLExternal(resp string) ConnOption {
+	return func(c *conn) error {
+		// make handlers map if no other mechanism has
+		if c.saslHandlers == nil {
+			c.saslHandlers = make(map[encoding.Symbol]stateFunc)
+		}
+
+		// add the handler the the map
+		c.saslHandlers[saslMechanismEXTERNAL] = func() stateFunc {
+			init := &frames.SASLInit{
+				Mechanism:       saslMechanismEXTERNAL,
+				InitialResponse: []byte(resp),
+			}
+			debug(1, "TX (ConnSASLExternal): %s", init)
+			c.err = c.writeFrame(frames.Frame{
+				Type: frameTypeSASL,
+				Body: init,
 			})
 			if c.err != nil {
 				return nil
@@ -112,7 +132,7 @@ func ConnSASLXOAUTH2(username, bearer string, saslMaxFrameSizeOverride uint32) C
 	return func(c *conn) error {
 		// make handlers map if no other mechanism has
 		if c.saslHandlers == nil {
-			c.saslHandlers = make(map[symbol]stateFunc)
+			c.saslHandlers = make(map[encoding.Symbol]stateFunc)
 		}
 
 		response, err := saslXOAUTH2InitialResponse(username, bearer)
@@ -139,18 +159,18 @@ type saslXOAUTH2Handler struct {
 }
 
 func (s saslXOAUTH2Handler) init() stateFunc {
-	originalPeerMaxFrameSize := s.conn.peerMaxFrameSize
-	if s.maxFrameSizeOverride > s.conn.peerMaxFrameSize {
-		s.conn.peerMaxFrameSize = s.maxFrameSizeOverride
+	originalPeerMaxFrameSize := s.conn.PeerMaxFrameSize
+	if s.maxFrameSizeOverride > s.conn.PeerMaxFrameSize {
+		s.conn.PeerMaxFrameSize = s.maxFrameSizeOverride
 	}
-	s.conn.err = s.conn.writeFrame(frame{
-		type_: frameTypeSASL,
-		body: &saslInit{
+	s.conn.err = s.conn.writeFrame(frames.Frame{
+		Type: frameTypeSASL,
+		Body: &frames.SASLInit{
 			Mechanism:       saslMechanismXOAUTH2,
 			InitialResponse: s.response,
 		},
 	})
-	s.conn.peerMaxFrameSize = originalPeerMaxFrameSize
+	s.conn.PeerMaxFrameSize = originalPeerMaxFrameSize
 	if s.conn.err != nil {
 		return nil
 	}
@@ -166,11 +186,11 @@ func (s saslXOAUTH2Handler) step() stateFunc {
 		return nil
 	}
 
-	switch v := fr.body.(type) {
-	case *saslOutcome:
+	switch v := fr.Body.(type) {
+	case *frames.SASLOutcome:
 		// check if auth succeeded
-		if v.Code != codeSASLOK {
-			s.conn.err = errorErrorf("SASL XOAUTH2 auth failed with code %#00x: %s : %s",
+		if v.Code != encoding.CodeSASLOK {
+			s.conn.err = fmt.Errorf("SASL XOAUTH2 auth failed with code %#00x: %s : %s",
 				v.Code, v.AdditionalData, s.errorResponse)
 			return nil
 		}
@@ -178,25 +198,25 @@ func (s saslXOAUTH2Handler) step() stateFunc {
 		// return to c.negotiateProto
 		s.conn.saslComplete = true
 		return s.conn.negotiateProto
-	case *saslChallenge:
+	case *frames.SASLChallenge:
 		if s.errorResponse == nil {
 			s.errorResponse = v.Challenge
 
 			// The SASL protocol requires clients to send an empty response to this challenge.
-			s.conn.err = s.conn.writeFrame(frame{
-				type_: frameTypeSASL,
-				body: &saslResponse{
+			s.conn.err = s.conn.writeFrame(frames.Frame{
+				Type: frameTypeSASL,
+				Body: &frames.SASLResponse{
 					Response: []byte{},
 				},
 			})
 			return s.step
 		} else {
-			s.conn.err = errorErrorf("SASL XOAUTH2 unexpected additional error response received during "+
+			s.conn.err = fmt.Errorf("SASL XOAUTH2 unexpected additional error response received during "+
 				"exchange. Initial error response: %s, additional response: %s", s.errorResponse, v.Challenge)
 			return nil
 		}
 	default:
-		s.conn.err = errorErrorf("unexpected frame type %T", fr.body)
+		s.conn.err = fmt.Errorf("sasl: unexpected frame type %T", fr.Body)
 		return nil
 	}
 }

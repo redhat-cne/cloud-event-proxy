@@ -1,6 +1,7 @@
 //go:build !unittests
 // +build !unittests
 
+// Package cne ...
 package cne
 
 import (
