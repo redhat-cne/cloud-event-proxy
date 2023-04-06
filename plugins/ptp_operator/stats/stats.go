@@ -1,3 +1,4 @@
+// Package stats ...
 package stats
 
 import (

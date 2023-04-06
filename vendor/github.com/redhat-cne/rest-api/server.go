@@ -44,7 +44,7 @@ var once sync.Once
 
 // ServerInstance ... is singleton instance
 var ServerInstance *Server
-var healthCheckPause time.Duration = 2 * time.Second
+var healthCheckPause = 2 * time.Second
 
 type serverStatus int
 

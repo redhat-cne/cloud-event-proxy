@@ -1,3 +1,4 @@
+// Package main ...
 package main
 
 import (
@@ -17,7 +18,7 @@ import (
 )
 
 var (
-	resourcePrefix     string = "/cluster/node/%s%s"
+	resourcePrefix     = "/cluster/node/%s%s"
 	subs               []pubsub.PubSub
 	nodeName           string
 	clientID           uuid.UUID
