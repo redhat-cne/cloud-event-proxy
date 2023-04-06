@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -47,7 +48,7 @@ var (
 	amqpLinkCredit uint32 = 50
 	cancelTimeout         = 100 * time.Millisecond
 	retryTimeout          = 500 * time.Millisecond
-	channelBuffer  int    = 10
+	channelBuffer         = 10
 )
 
 // Protocol ...
@@ -297,8 +298,9 @@ func (q *Router) QDRRouter(wg *sync.WaitGroup) {
 							}()
 							select {
 							case d.StatusChan <- &channel.StatusChan{
-								ClientID: d.ClientID,
-								Data:     e,
+								ClientID:   d.ClientID,
+								Data:       e,
+								StatusCode: http.StatusOK,
 							}:
 							case <-time.After(5 * time.Second):
 								log.Info("timed out sending current state back to calling channel")
@@ -597,7 +599,7 @@ func (q *Router) setReceiver(wg *sync.WaitGroup, d *channel.DataChan) error {
 								log.Errorf("failed to send(TO): %s result %v ", *out.ReturnAddress, result)
 								out.Status = channel.FAILED
 							} else if cloudevents.IsACK(result) {
-								log.Infof("success status to send(TO): %s", *out.ReturnAddress)
+								log.Infof("success status to send(TO): %s ", *out.ReturnAddress)
 								out.Status = channel.SUCCESS
 							}
 						} else {

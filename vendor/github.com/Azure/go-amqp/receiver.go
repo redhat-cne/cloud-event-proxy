@@ -5,89 +5,51 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/Azure/go-amqp/internal/encoding"
+	"github.com/Azure/go-amqp/internal/frames"
 )
 
 type messageDisposition struct {
 	id    uint32
-	state interface{}
+	state encoding.DeliveryState
 }
 
 // Receiver receives messages on a single AMQP link.
 type Receiver struct {
-	link         *link                   // underlying link
-	batching     bool                    // enable batching of message dispositions
-	batchMaxAge  time.Duration           // maximum time between the start n batch and sending the batch to the server
-	dispositions chan messageDisposition // message dispositions are sent on this channel when batching is enabled
-	maxCredit    uint32                  // maximum allowed inflight messages
-	inFlight     inFlight                // used to track message disposition when rcv-settle-mode == second
+	link           *link                   // underlying link
+	batching       bool                    // enable batching of message dispositions
+	batchMaxAge    time.Duration           // maximum time between the start n batch and sending the batch to the server
+	dispositions   chan messageDisposition // message dispositions are sent on this channel when batching is enabled
+	maxCredit      uint32                  // maximum allowed inflight messages
+	inFlight       inFlight                // used to track message disposition when rcv-settle-mode == second
+	manualCreditor *manualCreditor         // allows for credits to be managed manually (via calls to IssueCredit/DrainCredit)
 }
 
-// HandleMessage takes in a func to handle the incoming message.
-// Blocks until a message is received, ctx completes, or an error occurs.
-// When using ModeSecond, You must take an action on the message in the provided handler (Accept/Reject/Release/Modify)
-// or the unsettled message tracker will get out of sync, and reduce the flow.
-// When using ModeFirst, the message is spontaneously Accepted at reception.
-func (r *Receiver) HandleMessage(ctx context.Context, handle func(*Message) error) error {
-	debug(3, "Entering link %s Receive()", r.link.key.name)
-
-	trackCompletion := func(msg *Message) {
-		if msg.doneSignal == nil {
-			msg.doneSignal = make(chan struct{})
-		}
-		<-msg.doneSignal
-		r.link.deleteUnsettled(msg)
-		debug(3, "Receive() deleted unsettled %d", msg.deliveryID)
-		if atomic.LoadUint32(&r.link.paused) == 1 {
-			select {
-			case r.link.receiverReady <- struct{}{}:
-				debug(3, "Receive() unpause link on completion")
-			default:
-			}
-		}
-	}
-	callHandler := func(msg *Message) error {
-		debug(3, "Receive() blocking %d", msg.deliveryID)
-		msg.receiver = r
-		// we only need to track message disposition for mode second
-		// spec : http://docs.oasis-open.org/amqp/core/v1.0/os/amqp-core-transport-v1.0-os.html#type-receiver-settle-mode
-		if r.link.receiverSettleMode.value() == ModeSecond {
-			go trackCompletion(msg)
-		}
-		// tracks messages until exiting handler
-		if err := handle(msg); err != nil {
-			debug(3, "Receive() blocking %d - error: %s", msg.deliveryID, err.Error())
-			return err
-		}
-		return nil
-	}
-
-	select {
-	case msg := <-r.link.messages:
-		return callHandler(&msg)
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-		// pass through, to buffer msgs when the handler is busy
-	}
-
-	select {
-	case msg := <-r.link.messages:
-		return callHandler(&msg)
-	case <-r.link.detached:
-		return r.link.err
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+// IssueCredit adds credits to be requested in the next flow
+// request.
+func (r *Receiver) IssueCredit(credit uint32) error {
+	return r.link.IssueCredit(credit)
 }
 
-// Receive returns the next message from the sender.
+// DrainCredit sets the drain flag on the next flow frame and
+// waits for the drain to be acknowledged.
+func (r *Receiver) DrainCredit(ctx context.Context) error {
+	return r.link.DrainCredit(ctx)
+}
+
+// Prefetched returns the next message that is stored in the Receiver's
+// prefetch cache. It does NOT wait for the remote sender to send messages
+// and returns immediately if the prefetch cache is empty. To receive from the
+// prefetch and wait for messages from the remote Sender use `Receive`.
 //
-// Blocks until a message is received, ctx completes, or an error occurs.
-// Deprecated: prefer HandleMessage
-func (r *Receiver) Receive(ctx context.Context) (*Message, error) {
-	if atomic.LoadUint32(&r.link.paused) == 1 {
+// When using ModeSecond, you *must* take an action on the message by calling
+// one of the following: AcceptMessage, RejectMessage, ReleaseMessage, ModifyMessage.
+// When using ModeFirst, the message is spontaneously Accepted at reception.
+func (r *Receiver) Prefetched(ctx context.Context) (*Message, error) {
+	if atomic.LoadUint32(&r.link.Paused) == 1 {
 		select {
-		case r.link.receiverReady <- struct{}{}:
+		case r.link.ReceiverReady <- struct{}{}:
 		default:
 		}
 	}
@@ -95,54 +57,119 @@ func (r *Receiver) Receive(ctx context.Context) (*Message, error) {
 	// non-blocking receive to ensure buffered messages are
 	// delivered regardless of whether the link has been closed.
 	select {
-	case msg := <-r.link.messages:
-		// we remove the message from unsettled map as soon as it's popped off the channel
-		// This makes the unsettled count the same as messages buffer count
-		// and keeps the behavior the same as before the unsettled messages tracking was introduced
-		defer r.link.deleteUnsettled(&msg)
+	case msg := <-r.link.Messages:
 		debug(3, "Receive() non blocking %d", msg.deliveryID)
-		msg.receiver = r
+		msg.link = r.link
 		return &msg, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	default:
+		// done draining messages
+		return nil, nil
+	}
+}
+
+// Receive returns the next message from the sender.
+//
+// Blocks until a message is received, ctx completes, or an error occurs.
+// When using ModeSecond, you *must* take an action on the message by calling
+// one of the following: AcceptMessage, RejectMessage, ReleaseMessage, ModifyMessage.
+// When using ModeFirst, the message is spontaneously Accepted at reception.
+func (r *Receiver) Receive(ctx context.Context) (*Message, error) {
+	msg, err := r.Prefetched(ctx)
+
+	if err != nil || msg != nil {
+		return msg, err
 	}
 
 	// wait for the next message
 	select {
-	case msg := <-r.link.messages:
-		// we remove the message from unsettled map as soon as it's popped off the channel
-		// This makes the unsettled count the same as messages buffer count
-		// and keeps the behavior the same as before the unsettled messages tracking was introduced
-		defer r.link.deleteUnsettled(&msg)
+	case msg := <-r.link.Messages:
 		debug(3, "Receive() blocking %d", msg.deliveryID)
-		msg.receiver = r
+		msg.link = r.link
 		return &msg, nil
-	case <-r.link.detached:
+	case <-r.link.Detached:
 		return nil, r.link.err
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
 }
 
+// Accept notifies the server that the message has been
+// accepted and does not require redelivery.
+func (r *Receiver) AcceptMessage(ctx context.Context, msg *Message) error {
+	if !msg.shouldSendDisposition() {
+		return nil
+	}
+	return r.messageDisposition(ctx, msg, &encoding.StateAccepted{})
+}
+
+// Reject notifies the server that the message is invalid.
+//
+// Rejection error is optional.
+func (r *Receiver) RejectMessage(ctx context.Context, msg *Message, e *Error) error {
+	if !msg.shouldSendDisposition() {
+		return nil
+	}
+	return r.messageDisposition(ctx, msg, &encoding.StateRejected{Error: e})
+}
+
+// Release releases the message back to the server. The message
+// may be redelivered to this or another consumer.
+func (r *Receiver) ReleaseMessage(ctx context.Context, msg *Message) error {
+	if !msg.shouldSendDisposition() {
+		return nil
+	}
+	return r.messageDisposition(ctx, msg, &encoding.StateReleased{})
+}
+
+// Modify notifies the server that the message was not acted upon
+// and should be modifed.
+//
+// deliveryFailed indicates that the server must consider this and
+// unsuccessful delivery attempt and increment the delivery count.
+//
+// undeliverableHere indicates that the server must not redeliver
+// the message to this link.
+//
+// messageAnnotations is an optional annotation map to be merged
+// with the existing message annotations, overwriting existing keys
+// if necessary.
+func (r *Receiver) ModifyMessage(ctx context.Context, msg *Message, deliveryFailed, undeliverableHere bool, messageAnnotations Annotations) error {
+	if !msg.shouldSendDisposition() {
+		return nil
+	}
+	return r.messageDisposition(ctx,
+		msg, &encoding.StateModified{
+			DeliveryFailed:     deliveryFailed,
+			UndeliverableHere:  undeliverableHere,
+			MessageAnnotations: messageAnnotations,
+		})
+}
+
 // Address returns the link's address.
 func (r *Receiver) Address() string {
-	if r.link.source == nil {
+	if r.link.Source == nil {
 		return ""
 	}
-	return r.link.source.Address
+	return r.link.Source.Address
+}
+
+// LinkName returns associated link name or an empty string if link is not defined.
+func (r *Receiver) LinkName() string {
+	return r.link.Key.name
 }
 
 // LinkSourceFilterValue retrieves the specified link source filter value or nil if it doesn't exist.
 func (r *Receiver) LinkSourceFilterValue(name string) interface{} {
-	if r.link.source == nil {
+	if r.link.Source == nil {
 		return nil
 	}
-	filter, ok := r.link.source.Filter[symbol(name)]
+	filter, ok := r.link.Source.Filter[encoding.Symbol(name)]
 	if !ok {
 		return nil
 	}
-	return filter.value
+	return filter.Value
 }
 
 // Close closes the Receiver and AMQP link.
@@ -178,12 +205,12 @@ func (r *Receiver) dispositionBatcher() {
 		case msgDis := <-r.dispositions:
 
 			// not accepted or batch out of order
-			_, isAccept := msgDis.state.(*stateAccepted)
+			_, isAccept := msgDis.state.(*encoding.StateAccepted)
 			if !isAccept || (batchStarted && last+1 != msgDis.id) {
 				// send the current batch, if any
 				if batchStarted {
 					lastCopy := last
-					err := r.sendDisposition(first, &lastCopy, &stateAccepted{})
+					err := r.sendDisposition(first, &lastCopy, &encoding.StateAccepted{})
 					if err != nil {
 						r.inFlight.remove(first, &lastCopy, err)
 					}
@@ -212,7 +239,7 @@ func (r *Receiver) dispositionBatcher() {
 			// send batch if current size == batchSize
 			if last-first+1 >= batchSize {
 				lastCopy := last
-				err := r.sendDisposition(first, &lastCopy, &stateAccepted{})
+				err := r.sendDisposition(first, &lastCopy, &encoding.StateAccepted{})
 				if err != nil {
 					r.inFlight.remove(first, &lastCopy, err)
 				}
@@ -225,44 +252,44 @@ func (r *Receiver) dispositionBatcher() {
 		// maxBatchAge elapsed, send batch
 		case <-batchTimer.C:
 			lastCopy := last
-			err := r.sendDisposition(first, &lastCopy, &stateAccepted{})
+			err := r.sendDisposition(first, &lastCopy, &encoding.StateAccepted{})
 			if err != nil {
 				r.inFlight.remove(first, &lastCopy, err)
 			}
 			batchStarted = false
 			batchTimer.Stop()
 
-		case <-r.link.detached:
+		case <-r.link.Detached:
 			return
 		}
 	}
 }
 
 // sendDisposition sends a disposition frame to the peer
-func (r *Receiver) sendDisposition(first uint32, last *uint32, state interface{}) error {
-	fr := &performDisposition{
-		Role:    roleReceiver,
+func (r *Receiver) sendDisposition(first uint32, last *uint32, state encoding.DeliveryState) error {
+	fr := &frames.PerformDisposition{
+		Role:    encoding.RoleReceiver,
 		First:   first,
 		Last:    last,
-		Settled: r.link.receiverSettleMode == nil || *r.link.receiverSettleMode == ModeFirst,
+		Settled: r.link.ReceiverSettleMode == nil || *r.link.ReceiverSettleMode == ModeFirst,
 		State:   state,
 	}
 
-	debug(1, "TX: %s", fr)
-	return r.link.session.txFrame(fr, nil)
+	debug(1, "TX (sendDisposition): %s", fr)
+	return r.link.Session.txFrame(fr, nil)
 }
 
-func (r *Receiver) messageDisposition(ctx context.Context, id uint32, state interface{}) error {
+func (r *Receiver) messageDisposition(ctx context.Context, msg *Message, state encoding.DeliveryState) error {
 	var wait chan error
-	if r.link.receiverSettleMode != nil && *r.link.receiverSettleMode == ModeSecond {
-		debug(3, "RX: add %d to inflight", id)
-		wait = r.inFlight.add(id)
+	if r.link.ReceiverSettleMode != nil && *r.link.ReceiverSettleMode == ModeSecond {
+		debug(3, "RX (messageDisposition): add %d to inflight", msg.deliveryID)
+		wait = r.inFlight.add(msg.deliveryID)
 	}
 
 	if r.batching {
-		r.dispositions <- messageDisposition{id: id, state: state}
+		r.dispositions <- messageDisposition{id: msg.deliveryID, state: state}
 	} else {
-		err := r.sendDisposition(id, nil, state)
+		err := r.sendDisposition(msg.deliveryID, nil, state)
 		if err != nil {
 			return err
 		}
@@ -274,6 +301,9 @@ func (r *Receiver) messageDisposition(ctx context.Context, id uint32, state inte
 
 	select {
 	case err := <-wait:
+		// we've received confirmation of disposition
+		r.link.DeleteUnsettled(msg)
+		msg.settled = true
 		return err
 	case <-ctx.Done():
 		return ctx.Err()
@@ -284,7 +314,7 @@ func (r *Receiver) messageDisposition(ctx context.Context, id uint32, state inte
 // to block waiting for the server to respond when an appropriate
 // settlement mode is configured.
 type inFlight struct {
-	mu sync.Mutex
+	mu sync.RWMutex
 	m  map[uint32]chan error
 }
 
@@ -333,4 +363,10 @@ func (f *inFlight) clear(err error) {
 		delete(f.m, id)
 	}
 	f.mu.Unlock()
+}
+
+func (f *inFlight) len() int {
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return len(f.m)
 }

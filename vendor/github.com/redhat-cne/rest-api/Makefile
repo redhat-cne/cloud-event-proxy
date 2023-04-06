@@ -21,6 +21,10 @@ lint:
 test:
 	go test ./...  -coverprofile=cover.out
 
+update-deps:
+	go get github.com/redhat-cne/sdk-go@$(branch)
+	go mod tidy && \
+    	go mod vendor
 
 # For GitHub Actions CI
 gha:

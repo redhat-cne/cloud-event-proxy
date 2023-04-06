@@ -22,6 +22,16 @@ func (ss *Store) Set(clientID uuid.UUID, val subscriber.Subscriber) {
 	ss.Store[clientID] = &val
 }
 
+// Get is a wrapper for Getting the value of a key in the underlying map
+func (ss *Store) Get(clientID uuid.UUID) (subscriber.Subscriber, bool) {
+	ss.Lock()
+	defer ss.Unlock()
+	if s, ok := ss.Store[clientID]; ok {
+		return *s, true
+	}
+	return subscriber.Subscriber{}, false
+}
+
 // Delete ... delete from store
 func (ss *Store) Delete(clientID uuid.UUID) {
 	ss.Lock()
