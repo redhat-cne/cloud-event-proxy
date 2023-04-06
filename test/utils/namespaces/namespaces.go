@@ -1,3 +1,4 @@
+// Package namespaces ...
 package namespaces
 
 import (
