@@ -26,4 +26,5 @@ sub.json
 build/
 bin/
 
+pkg/storage/kubernetes/*.json
 
