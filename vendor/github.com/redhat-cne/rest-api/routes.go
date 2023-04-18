@@ -157,10 +157,22 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 func (s *Server) sendOut(eType channel.Type, sub *pubsub.PubSub) {
 	// go ahead and create QDR to this address
 	s.dataOut <- &channel.DataChan{
+		ID:      sub.GetID(),
 		Address: sub.GetResource(),
 		Data:    &ce.Event{},
 		Type:    eType,
 		Status:  channel.NEW,
+	}
+}
+
+func (s *Server) sendOutToDelete(eType channel.Type, sub *pubsub.PubSub) {
+	// go ahead and create QDR to this address
+	s.dataOut <- &channel.DataChan{
+		ID:      sub.GetID(),
+		Address: sub.GetResource(),
+		Data:    &ce.Event{},
+		Type:    eType,
+		Status:  channel.DELETE,
 	}
 }
 
@@ -257,6 +269,8 @@ func (s *Server) deleteAllSubscriptions(w http.ResponseWriter, r *http.Request) 
 	if size > 0 {
 		localmetrics.UpdateSubscriptionCount(localmetrics.ACTIVE, -(size))
 	}
+	// go ahead and create QDR to this address
+	s.sendOutToDelete(channel.SUBSCRIBER, &pubsub.PubSub{ID: "", Resource: "delete-all-subscriptions"})
 	respondWithMessage(w, http.StatusOK, "deleted all subscriptions")
 }
 
