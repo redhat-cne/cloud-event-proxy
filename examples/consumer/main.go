@@ -137,9 +137,20 @@ RETRY:
 			}
 		}()
 	}
-
 	log.Info("waiting for events")
 	wg.Wait()
+	deleteAllSubscriptions()
+	time.Sleep(3 * time.Second)
+}
+
+func deleteAllSubscriptions() int {
+	var status int
+	deleteURL := &types.URI{URL: url.URL{Scheme: "http",
+		Host: apiAddr,
+		Path: fmt.Sprintf("%s%s", apiPath, "subscriptions")}}
+	rc := restclient.New()
+	status = rc.Delete(deleteURL)
+	return status
 }
 
 func createSubscription(resourceAddress string) (sub pubsub.PubSub, err error) {

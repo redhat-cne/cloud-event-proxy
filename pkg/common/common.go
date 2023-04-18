@@ -25,6 +25,8 @@ import (
 	"strings"
 	"time"
 
+	storageClient "github.com/redhat-cne/cloud-event-proxy/pkg/storage/kubernetes"
+
 	"github.com/cloudevents/sdk-go/v2/event"
 	"github.com/google/uuid"
 
@@ -165,6 +167,8 @@ type SCConfiguration struct {
 	TransportHost     *TransportHost
 	TransPortInstance interface{}
 	clientID          uuid.UUID
+	StorageType       storageClient.StorageTypeType
+	K8sClient         *storageClient.Client
 }
 
 // ClientID ... read clientID from the configurations

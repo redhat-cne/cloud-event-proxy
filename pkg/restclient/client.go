@@ -135,6 +135,26 @@ func (r *Rest) Put(url *types.URI) int {
 	return res.StatusCode
 }
 
+// Delete  http request
+func (r *Rest) Delete(url *types.URI) int {
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, "DELETE", url.String(), nil)
+	if err != nil {
+		log.Errorf("error creating post request %v", err)
+		return http.StatusBadRequest
+	}
+	request.Header.Set("content-type", "application/json")
+	res, err := r.client.Do(request)
+	if err != nil {
+		log.Errorf("error in post response %v to %s ", err, url)
+		return http.StatusBadRequest
+	}
+	defer res.Body.Close()
+	return res.StatusCode
+}
+
 // Get  http request
 func (r *Rest) Get(url *types.URI) (int, string) {
 	ctx := context.Background()

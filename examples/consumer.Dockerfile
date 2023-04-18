@@ -9,7 +9,7 @@ COPY . .
 
 RUN hack/build-example-go.sh
 
-FROM openshift/origin-base AS bin
+FROM registry.ci.openshift.org/ocp/4.12:base AS bin
 COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/build/cloud-event-consumer /
 
 LABEL io.k8s.display-name="Cloud Event Proxy Sample Consumer" \
