@@ -53,7 +53,7 @@ type Subscriber struct {
 	// Status ...
 	Status Status `json:"status" omit:"empty"`
 	// Action ...
-	Action channel.Status
+	Action channel.Status `json:"action" omit:"empty"`
 	// FailedCount ...
 	failedCount int
 }
@@ -84,14 +84,15 @@ func (s *Subscriber) FailedCount() int {
 // String returns a pretty-printed representation of the Event.
 func (s *Subscriber) String() string {
 	b := strings.Builder{}
-
 	b.WriteString("  EndPointURI: " + s.GetEndPointURI() + "\n")
 	b.WriteString("  ID: " + s.GetClientID().String() + "\n")
 	b.WriteString("  sub :{")
-	for _, v := range s.SubStore.Store {
-		b.WriteString(" {")
-		b.WriteString(v.String() + "\n")
-		b.WriteString(" },")
+	if s.SubStore != nil {
+		for _, v := range s.SubStore.Store {
+			b.WriteString(" {")
+			b.WriteString(v.String() + "\n")
+			b.WriteString(" },")
+		}
 	}
 	b.WriteString(" }")
 	return b.String()

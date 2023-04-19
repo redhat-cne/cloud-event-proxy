@@ -70,14 +70,17 @@ func GetAPIInstance(storeFilePath string) *API {
 // ReloadStore reload store if there is any change or refresh is required
 func (p *API) ReloadStore() {
 	// load for file
-	log.Info("reloading subscribers from the store")
+	log.Infof("reloading subscribers from the store %s", p.storeFilePath)
 	if files, err := loadFileNamesFromDir(p.storeFilePath); err == nil {
 		for _, f := range files {
-			if b, err := loadFromFile(fmt.Sprintf("%s/%s", p.storeFilePath, f)); err == nil {
+			if b, err1 := loadFromFile(fmt.Sprintf("%s/%s", p.storeFilePath, f)); err1 == nil {
 				if len(b) > 0 {
 					var sub subscriber.Subscriber
-					if err := json.Unmarshal(b, &sub); err == nil {
+					var err2 error
+					if err2 = json.Unmarshal(b, &sub); err2 == nil {
 						p.SubscriberStore.Set(sub.ClientID, sub)
+					} else {
+						log.Errorf("error parsing subscriber %s \n %s", string(b), err2.Error())
 					}
 				}
 			}
@@ -157,13 +160,16 @@ func (p *API) CreateSubscription(clientID uuid.UUID, sub subscriber.Subscriber) 
 	var hasResource bool
 	for key, value := range sub.SubStore.Store {
 		hasResource = false
-		for _, p := range pubStore.Store {
-			if p.Resource == value.Resource {
+		for _, s := range pubStore.Store {
+			if s.Resource == value.Resource {
 				hasResource = true
 				continue
 			}
 		}
 		if !hasResource {
+			if key == "" {
+				key = uuid.New().String()
+			}
 			subscriptionClient.SubStore.Set(key, *value)
 		}
 	}
@@ -183,8 +189,8 @@ func (p *API) CreateSubscription(clientID uuid.UUID, sub subscriber.Subscriber) 
 
 // GetSubscriptionClient  get a clientID by id
 func (p *API) GetSubscriptionClient(clientID uuid.UUID) (subscriber.Subscriber, error) {
-	if subscriber, ok := p.SubscriberStore.Get(clientID); ok {
-		return subscriber, nil
+	if subs, ok := p.SubscriberStore.Get(clientID); ok {
+		return subs, nil
 	}
 	return subscriber.Subscriber{}, fmt.Errorf("subscriber data was not found for id %s", clientID)
 }
@@ -197,8 +203,8 @@ func (p *API) GetSubscriptionsFromFile(clientID uuid.UUID) ([]byte, error) {
 
 // GetSubscriptions  get all subscriptionOne inforamtions
 func (p *API) GetSubscriptions(clientID uuid.UUID) (sub map[string]*pubsub.PubSub) {
-	if subscriber, ok := p.SubscriberStore.Get(clientID); ok {
-		sub = subscriber.SubStore.Store
+	if subs, ok := p.SubscriberStore.Get(clientID); ok {
+		sub = subs.SubStore.Store
 	}
 
 	return
@@ -206,8 +212,8 @@ func (p *API) GetSubscriptions(clientID uuid.UUID) (sub map[string]*pubsub.PubSu
 
 // GetSubscription  get  subscriptionOne inforamtions
 func (p *API) GetSubscription(clientID uuid.UUID, subID string) pubsub.PubSub {
-	if subscriber, ok := p.SubscriberStore.Get(clientID); ok {
-		return subscriber.Get(subID)
+	if subs, ok := p.SubscriberStore.Get(clientID); ok {
+		return subs.Get(subID)
 	}
 	return pubsub.PubSub{}
 }
@@ -216,13 +222,13 @@ func (p *API) GetSubscription(clientID uuid.UUID, subID string) pubsub.PubSub {
 func (p *API) GetSubscriberURLByResourceAndClientID(clientID uuid.UUID, resource string) (url *string) {
 	p.SubscriberStore.RLock()
 	defer p.SubscriberStore.RUnlock()
-	for _, subscriber := range p.SubscriberStore.Store {
-		if subscriber.ClientID == clientID {
-			for _, sub := range subscriber.SubStore.Store {
+	for _, subs := range p.SubscriberStore.Store {
+		if subs.ClientID == clientID {
+			for _, sub := range subs.SubStore.Store {
 				if sub.GetResource() == resource {
 					return func(s string) *string {
 						return &s
-					}(subscriber.GetEndPointURI())
+					}(subs.GetEndPointURI())
 				}
 			}
 		}
@@ -234,10 +240,10 @@ func (p *API) GetSubscriberURLByResourceAndClientID(clientID uuid.UUID, resource
 func (p *API) GetSubscriberURLByResource(resource string) (urls []string) {
 	p.SubscriberStore.RLock()
 	defer p.SubscriberStore.RUnlock()
-	for _, subscriber := range p.SubscriberStore.Store {
-		for _, sub := range subscriber.SubStore.Store {
+	for _, subs := range p.SubscriberStore.Store {
+		for _, sub := range subs.SubStore.Store {
 			if sub.GetResource() == resource {
-				urls = append(urls, subscriber.GetEndPointURI())
+				urls = append(urls, subs.GetEndPointURI())
 			}
 		}
 	}
@@ -248,10 +254,10 @@ func (p *API) GetSubscriberURLByResource(resource string) (urls []string) {
 func (p *API) GetClientIDByResource(resource string) (clientIds []uuid.UUID) {
 	p.SubscriberStore.RLock()
 	defer p.SubscriberStore.RUnlock()
-	for _, subscriber := range p.SubscriberStore.Store {
-		for _, sub := range subscriber.SubStore.Store {
+	for _, subs := range p.SubscriberStore.Store {
+		for _, sub := range subs.SubStore.Store {
 			if sub.GetResource() == resource {
-				clientIds = append(clientIds, subscriber.ClientID)
+				clientIds = append(clientIds, subs.ClientID)
 			}
 		}
 	}
@@ -263,10 +269,10 @@ func (p *API) GetClientIDAddressByResource(resource string) map[uuid.UUID]*types
 	clients := map[uuid.UUID]*types.URI{}
 	p.SubscriberStore.RLock()
 	defer p.SubscriberStore.RUnlock()
-	for _, subscriber := range p.SubscriberStore.Store {
-		for _, sub := range subscriber.SubStore.Store {
+	for _, subs := range p.SubscriberStore.Store {
+		for _, sub := range subs.SubStore.Store {
 			if sub.GetResource() == resource {
-				clients[subscriber.ClientID] = subscriber.EndPointURI
+				clients[subs.ClientID] = subs.EndPointURI
 			}
 		}
 	}
