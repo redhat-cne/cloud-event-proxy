@@ -34,89 +34,89 @@ const (
 
 var (
 
-	//amqpEventReceivedCount ...  Total no of events received by the transport
-	amqpEventReceivedCount = prometheus.NewGaugeVec(
+	//transportEventReceivedCount ...  Total no of events received by the transport
+	transportEventReceivedCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cne_amqp_events_received",
-			Help: "Metric to get number of events received  by the transport",
+			Name: "cne_transport_events_received",
+			Help: "Metric to get number of events received by the transport",
 		}, []string{"address", "status"})
-	//amqpEventPublishedCount ...  Total no of events published by the transport
-	amqpEventPublishedCount = prometheus.NewGaugeVec(
+	//transportEventPublishedCount ...  Total no of events published by the transport
+	transportEventPublishedCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cne_amqp_events_published",
+			Name: "cne_transport_events_published",
 			Help: "Metric to get number of events published by the transport",
 		}, []string{"address", "status"})
 
-	//amqpConnectionResetCount ...  Total no of connection resets
-	amqpConnectionResetCount = prometheus.NewGaugeVec(
+	//transportConnectionResetCount ...  Total no of connection resets
+	transportConnectionResetCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cne_amqp_connection_reset",
+			Name: "cne_transport_connection_reset",
 			Help: "Metric to get number of connection resets",
 		}, []string{})
 
-	//amqpSenderCount ...  Total no of events published by the transport
-	amqpSenderCount = prometheus.NewGaugeVec(
+	//transportSenderCount ...  Total no of events published by the transport
+	transportSenderCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cne_amqp_sender",
+			Name: "cne_transport_sender",
 			Help: "Metric to get number of sender created",
 		}, []string{"address", "status"})
 
-	//amqpReceiverCount ...  Total no of events published by the transport
-	amqpReceiverCount = prometheus.NewGaugeVec(
+	//transportReceiverCount ...  Total no of events published by the transport
+	transportReceiverCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cne_amqp_receiver",
+			Name: "cne_transport_receiver",
 			Help: "Metric to get number of receiver created",
 		}, []string{"address", "status"})
 
-	//amqpStatusCheckCount ...  Total no of status check received by the transport
-	amqpStatusCheckCount = prometheus.NewGaugeVec(
+	//transportStatusCheckCount ...  Total no of status check received by the transport
+	transportStatusCheckCount = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cne_amqp_status_check_published",
+			Name: "cne_transport_status_check_published",
 			Help: "Metric to get number of status check published by the transport",
 		}, []string{"address", "status"})
 )
 
 // RegisterMetrics ...
 func RegisterMetrics() {
-	prometheus.MustRegister(amqpEventReceivedCount)
-	prometheus.MustRegister(amqpEventPublishedCount)
-	prometheus.MustRegister(amqpConnectionResetCount)
-	prometheus.MustRegister(amqpSenderCount)
-	prometheus.MustRegister(amqpReceiverCount)
-	prometheus.MustRegister(amqpStatusCheckCount)
+	prometheus.MustRegister(transportEventReceivedCount)
+	prometheus.MustRegister(transportEventPublishedCount)
+	prometheus.MustRegister(transportConnectionResetCount)
+	prometheus.MustRegister(transportSenderCount)
+	prometheus.MustRegister(transportReceiverCount)
+	prometheus.MustRegister(transportStatusCheckCount)
 }
 
 // UpdateTransportConnectionResetCount ...
 func UpdateTransportConnectionResetCount(val int) {
-	amqpConnectionResetCount.With(prometheus.Labels{}).Add(float64(val))
+	transportConnectionResetCount.With(prometheus.Labels{}).Add(float64(val))
 }
 
 // UpdateEventReceivedCount ...
 func UpdateEventReceivedCount(address string, status MetricStatus, val int) {
-	amqpEventReceivedCount.With(
+	transportEventReceivedCount.With(
 		prometheus.Labels{"address": address, "status": string(status)}).Add(float64(val))
 }
 
 // UpdateEventCreatedCount ...
 func UpdateEventCreatedCount(address string, status MetricStatus, val int) {
-	amqpEventPublishedCount.With(
+	transportEventPublishedCount.With(
 		prometheus.Labels{"address": address, "status": string(status)}).Add(float64(val))
 }
 
 // UpdateStatusCheckCount ...
 func UpdateStatusCheckCount(address string, status MetricStatus, val int) {
-	amqpEventPublishedCount.With(
+	transportEventPublishedCount.With(
 		prometheus.Labels{"address": address, "status": string(status)}).Add(float64(val))
 }
 
 // UpdateSenderCreatedCount ...
 func UpdateSenderCreatedCount(address string, status MetricStatus, val int) {
-	amqpSenderCount.With(
+	transportSenderCount.With(
 		prometheus.Labels{"address": address, "status": string(status)}).Add(float64(val))
 }
 
 // UpdateReceiverCreatedCount ...
 func UpdateReceiverCreatedCount(address string, status MetricStatus, val int) {
-	amqpReceiverCount.With(
+	transportReceiverCount.With(
 		prometheus.Labels{"address": address, "status": string(status)}).Add(float64(val))
 }

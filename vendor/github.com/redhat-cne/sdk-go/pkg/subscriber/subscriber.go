@@ -58,6 +58,11 @@ type Subscriber struct {
 	failedCount int
 }
 
+// Get ... get pubsub
+func (s *Subscriber) Get(subID string) pubsub.PubSub {
+	return s.SubStore.Get(subID)
+}
+
 // IncFailCount ...
 func (s *Subscriber) IncFailCount() {
 	s.failedCount++
