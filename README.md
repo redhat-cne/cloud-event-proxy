@@ -31,7 +31,7 @@ Cloud event proxy support two types of transport protocol
 
 ### AMQ Protocol
  AMQ protocol required qdr router deployed and running manually or via AMQ interconnect operator.
- Have `transport-host` variable set to AMQ instance example `amq:localhost:5672`
+ Have `transport-host` variable set to AMQ instance example `amqp://localhost:5672`
 The Producer will be sending  events to bus address specified by the  publisher and consumers connect to those bus address.
 AMQ producer example
 ```yaml
@@ -52,7 +52,7 @@ AMQ consumer example
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
             - "--transport-host=amqp://amq-router.amq-router.svc.cluster.local"
-            - "--api-port=9085"
+            - "--api-port=8089"
 ```
 ### HTTP Protocol
 #### Producer
@@ -73,12 +73,10 @@ HTTP producer example
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
-            - "--ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043"
+            - "--transport-host=http://ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043
             - "--api-port=9085"
 
 ```
-`NODE_NAME` can be the full node name `node1.example.com` or `node1`, which is the first sub string of node name delimited by ".".
-
 The event producer uses a `pubsubstore` to store Subscriber information, including clientID, consumer service endpoint URI, resource ID etc. These are stored as one json file per registered subscriber. The `pubsubstore` needs to be mounted to a persistent volume in order to survive a pod reboot.
 
 Example for configuring persistent storage
@@ -96,7 +94,7 @@ Example for configuring persistent storage
       volumes:
         - name: pubsubstore
           persistentVolumeClaim:
-            claimName: cloud-event-proxy-store
+            claimName: cloud-event-proxy-store-storage-class-http-events
 ```
 
 Example PersistentVolumeClaim
@@ -104,9 +102,9 @@ Example PersistentVolumeClaim
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: cloud-event-proxy-store
+  name: cloud-event-proxy-store-storage-class-http-events
 spec:
-  storageClassName: local-storage
+  storageClassName: storage-class-http-events
   resources:
     requests:
       storage: 10Mi
@@ -128,9 +126,8 @@ HTTP consumer example
             - "--store-path=/store"
             - "--transport-host=consumer-events-subscription-service.cloud-events.svc.cluster.local:9043"
             - "--http-event-publishers=ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043"
-            - "--api-port=9085"
+            - "--api-port=8089"
 ```
-`NODE_NAME` can be the full node name `node1.example.com` or `node1`, which is the first sub string of node name delimited by ".".
 
 ## Creating Publisher
 ### Publisher JSON Example 
@@ -209,7 +206,7 @@ Example Create Subscription Resource: JSON response
   "Id": "789be75d-7ac3-472e-bbbc-6d62878aad4a",
   "Resource": "/east-edge-10/vdu3/o-ran-sync/sync-group/sync-status/sync-state",
   "UriLocation": "http://localhost:9090/ack/event",
-  "EndpointUri": "http://localhost:9085/api/ocloudNotifications/v1/subscriptions/{subscriptionid}"
+  "EndpointUri": "http://localhost:8089/api/ocloudNotifications/v1/subscriptions/{subscriptionid}"
 }
 ```
 
@@ -227,7 +224,7 @@ func main(){
     eventInCh := make(chan *channel.DataChan, 10)
     
     pubSubInstance = v1pubsub.GetAPIInstance(".")
-    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:9085", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
+    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8089", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
     // create subscription 
     pub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "test/test"))
     // once the subscription response is received, create a transport listener object to receive events.
@@ -249,7 +246,7 @@ func main(){
     eventInCh := make(chan *channel.DataChan, 10)
     
     pubSubInstance = v1pubsub.GetAPIInstance(".")
-    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:9085", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
+    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8089", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
     // create subscription 
     pub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "test/test"))
     
