@@ -128,6 +128,8 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 					for _, pConfig := range eventManager.Ptp4lConfigInterfaces {
 						ptpMetrics.DeleteThresholdMetrics(pConfig.Profile)
 					}
+					// delete all metrics related to process
+					ptpMetrics.DeleteProcessStatusMetricsForConfig(nodeName, "", "")
 				} else {
 					// updates
 					eventManager.PtpConfigMapUpdates.UpdatePTPProcessOptions()
@@ -306,6 +308,18 @@ func processPtp4lConfigFileUpdates() {
 				}
 				// add to eventManager
 				eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
+				// clean up process metrics
+				for cName, opts := range eventManager.PtpConfigMapUpdates.PtpProcessOpts {
+					var process []string
+					if !opts.Ptp4lEnabled() {
+						process = append(process, ptp4lProcessName)
+					}
+					if !opts.Phc2SysEnabled() {
+						process = append(process, phc2sysProcessName)
+					}
+					ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), cName,
+						process...)
+				}
 			case true: // ptp4l.X.conf is deleted
 				// delete metrics, ptp4l config is removed
 				ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
@@ -336,6 +350,8 @@ func processPtp4lConfigFileUpdates() {
 				}
 				eventManager.DeleteStatsConfig(ptpConfigFileName)
 				eventManager.DeletePTPConfig(ptpConfigFileName)
+				// clean up process metrics
+				ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), string(ptpConfigFileName), ptp4lProcessName, phc2sysProcessName)
 			}
 		case <-config.CloseCh:
 			fileWatcher.Close()
