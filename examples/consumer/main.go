@@ -112,9 +112,9 @@ RETRY:
 	for _, s := range subs {
 		su, e := createSubscription(s.Resource)
 		if e != nil {
-			log.Errorf("failed to create a subscription object %v\n", e)
+			log.Errorf("failed to create a subscription object %v", e)
 		} else {
-			log.Infof("created subscription: %s\n", su.String())
+			log.Infof("created subscription: %s", su.String())
 			s.URILocation = su.URILocation
 			s.ID = su.ID
 		}
@@ -237,7 +237,7 @@ func processEvent(data []byte) {
 	// divide from nanoseconds.
 	latency := (time.Now().UnixNano() - e.Time.UnixNano()) / 1000000
 	// set log to Info level for performance measurement
-	log.Infof("Latency for the event: %v ms\n", latency)
+	log.Infof("Latency for the event: %v ms", latency)
 }
 
 func initSubscribers(cType ConsumerTypeEnum) map[string]string {
