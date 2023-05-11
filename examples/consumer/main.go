@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -71,6 +72,12 @@ func main() {
 	flag.Parse()
 
 	nodeName := os.Getenv("NODE_NAME")
+
+	// using the first component of the node name before the first dot (master2.example.com -> master2)
+	if nodeName != "" && strings.Contains(nodeName, ".") {
+		nodeName = strings.Split(nodeName, ".")[0]
+	}
+
 	if nodeName == "" {
 		log.Error("cannot find NODE_NAME environment variable,setting to default `mock` node")
 		nodeName = mockResourceKey
