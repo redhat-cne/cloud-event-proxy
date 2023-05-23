@@ -355,7 +355,9 @@ func processPtp4lConfigFileUpdates() {
 						ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), ptp4lProcessName, s.Alias())
 					} else {
 						ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), ts2PhcProcessName, s.Alias())
+						ptpStats[MasterClockType].DeleteAllMetrics()
 					}
+
 					masterResource := fmt.Sprintf("%s/%s", s.Alias(), MasterClockType)
 					eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, masterResource, ptp.PtpStateChange)
 				}
@@ -441,6 +443,10 @@ func InitPubSubTypes() map[ptp.EventType]*ptpTypes.EventPublisherType {
 	InitPubs[ptp.PtpStateChange] = &ptpTypes.EventPublisherType{
 		EventType: ptp.PtpStateChange,
 		Resource:  ptp.PtpLockState,
+	}
+	InitPubs[ptp.GnssStateChange] = &ptpTypes.EventPublisherType{
+		EventType: ptp.GnssStateChange,
+		Resource:  ptp.GnssSyncStatus,
 	}
 	return InitPubs
 }

@@ -16,7 +16,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// PTPEventManager for PTP
+// PTPEventManager ... for PTP
 type PTPEventManager struct {
 	resourcePrefix string
 	publisherTypes map[ptp.EventType]*types.EventPublisherType
@@ -149,6 +149,19 @@ func (p *PTPEventManager) DeletePTPConfig(key types.ConfigName) {
 // PublishClockClassEvent ...publish events
 func (p *PTPEventManager) PublishClockClassEvent(clockClass float64, source string, eventType ptp.EventType) {
 	data := p.GetPTPEventsData(ptp.LOCKED, int64(clockClass), source, eventType)
+	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
+	p.publish(*data, resourceAddress, eventType)
+}
+
+// PublishClockClassEvent ...publish events
+func (p *PTPEventManager) publishGNSSEvent(state int64, offset float64, source string, eventType ptp.EventType) {
+	var data *ceevent.Data
+	if state < 3 {
+		data = p.GetPTPEventsData(ptp.LOCKED, int64(offset), source, eventType)
+	} else {
+		data = p.GetPTPEventsData(ptp.FREERUN, int64(offset), source, eventType)
+	}
+
 	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
 	p.publish(*data, resourceAddress, eventType)
 }

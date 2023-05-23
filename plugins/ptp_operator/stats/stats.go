@@ -2,9 +2,12 @@
 package stats
 
 import (
+	"fmt"
 	"math"
 	"strings"
+	"sync"
 
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/event"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
 
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
@@ -12,22 +15,23 @@ import (
 
 // Stats calculates stats  nolint:unused
 type Stats struct {
-	configName          string
-	offsetSource        string
-	processName         string
-	num                 int64
-	max                 int64
-	min                 int64
-	mean                int64
-	sumSqr              int64
-	sumDiffSqr          int64
-	frequencyAdjustment int64
-	delay               int64
-	lastOffset          int64
-	lastSyncState       ptp.SyncState
-	aliasName           string
-	clackClass          int64
-	role                types.PtpPortRole
+	configName             string
+	offsetSource           string
+	processName            string
+	num                    int64
+	max                    int64
+	min                    int64
+	mean                   int64
+	sumSqr                 int64
+	sumDiffSqr             int64
+	frequencyAdjustment    int64
+	delay                  int64
+	lastOffset             int64
+	lastSyncState          ptp.SyncState
+	aliasName              string
+	clackClass             int64
+	role                   types.PtpPortRole
+	ptpDependentEventState *event.PTPEventState
 }
 
 // AddValue ...add value
@@ -183,6 +187,48 @@ func (s *Stats) Role() types.PtpPortRole {
 	return s.role
 }
 
+// PtpDependentEventState ... get ptp dependent event state
+func (s *Stats) PtpDependentEventState() *event.PTPEventState {
+	return s.ptpDependentEventState
+}
+
+// GetCurrentDependentEventState ... get current dependent event state
+func (s *Stats) GetCurrentDependentEventState() ptp.SyncState {
+	if s.ptpDependentEventState == nil {
+		return ptp.LOCKED
+	}
+	return s.ptpDependentEventState.CurrentPTPStateEvent
+}
+
+// SetPtpDependentEventState ... set ptp dependent event state
+func (s *Stats) SetPtpDependentEventState(e event.ClockState) {
+	if s.ptpDependentEventState == nil {
+		s.ptpDependentEventState = &event.PTPEventState{
+			Mutex:                sync.Mutex{},
+			CurrentPTPStateEvent: "",
+			DependsOn:            map[string]*event.ClockState{},
+			Type:                 "",
+		}
+	}
+	s.ptpDependentEventState.UpdateCurrentEventState(e)
+}
+
+// GetStateValue ... get state value
+func (s *Stats) GetStateValue(processName string) (map[string]int64, error) {
+	if s.ptpDependentEventState != nil {
+		return s.ptpDependentEventState.DependsOn[processName].Value, nil
+	}
+	return map[string]int64{}, fmt.Errorf("sync state not found %s", processName)
+}
+
+// GetStateSate ... get state
+func (s *Stats) GetStateSate(processName string) (ptp.SyncState, error) {
+	if s.ptpDependentEventState != nil {
+		return s.ptpDependentEventState.DependsOn[processName].State, nil
+	}
+	return ptp.FREERUN, fmt.Errorf("sync state not found %s", processName)
+}
+
 func (s *Stats) String() string {
 	b := strings.Builder{}
 	b.WriteString("  configName: " + s.configName + "\n")
@@ -190,4 +236,12 @@ func (s *Stats) String() string {
 	b.WriteString("  aliasName: " + s.aliasName + "\n")
 	b.WriteString("  offsetSource: " + s.offsetSource + "\n")
 	return b.String()
+}
+
+// DeleteAllMetrics ...  delete all metrics
+//
+//	write a functions to delete meteric from dependson object
+func (s *Stats) DeleteAllMetrics() {
+	// write loop p.DependsOn
+	s.ptpDependentEventState.DeleteAllMetrics()
 }

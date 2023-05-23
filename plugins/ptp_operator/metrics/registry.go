@@ -12,7 +12,6 @@ import (
 )
 
 var (
-
 	// PtpOffset metrics for offset
 	PtpOffset = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
