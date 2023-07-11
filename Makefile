@@ -105,7 +105,7 @@ gha:
 	go test ./... --tags=unittests -coverprofile=cover.out
 
 docker-build: #test ## Build docker image with the manager.
-	docker build -t ${IMG} .
+	docker build --no-cache -t ${IMG} .
 
 docker-push: ## Push docker image with the manager.
 	docker push ${IMG}
