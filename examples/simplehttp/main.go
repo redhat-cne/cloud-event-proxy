@@ -73,7 +73,7 @@ func main() {
 	// EVENT subscription and consuming
 	initResources()
 	// 1.first subscribe to all resources
-	if e := common.Subscribe(clientID, subs, nodeName, fmt.Sprintf("%s/subscription", publisherServiceName),
+	if e := common.Subscribe(clientID, subs, fmt.Sprintf("%s/subscription", publisherServiceName),
 		clientExternalEndPoint); e != nil {
 		log.Printf("error processing subscription %s", e)
 		stopHTTPServerChan <- true

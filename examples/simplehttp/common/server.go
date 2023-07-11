@@ -55,7 +55,7 @@ func StartServer(wg *sync.WaitGroup, clientAddress string, stopHTTPServerChan ch
 	fmt.Println("Server closed - Channels")
 }
 
-func getRoot(w http.ResponseWriter, r *http.Request) {
+func getRoot(w http.ResponseWriter, _ *http.Request) {
 	io.WriteString(w, "I am groot!\n")
 }
 

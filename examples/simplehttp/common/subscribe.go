@@ -19,7 +19,7 @@ func GetResources() map[string]string {
 }
 
 // Subscribe create subscription
-func Subscribe(clientID uuid.UUID, subs []pubsub.PubSub, nodeName, publisherURL, returnEndPoint string) error {
+func Subscribe(clientID uuid.UUID, subs []pubsub.PubSub, publisherURL, returnEndPoint string) error {
 	// Post it to the address that has been specified : to target URL
 	eventSubscriber := subscriber.New(clientID)
 	//Self URL
