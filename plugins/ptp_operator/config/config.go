@@ -225,7 +225,7 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPProcessOptions() {
 			TS2PhcOpts: profile.TS2PhcOpts}
 		// ts2phcOpts are empty by default
 		if profile.TS2PhcConf != nil && (profile.TS2PhcOpts == nil || *profile.TS2PhcOpts == "") {
-			l.PtpProcessOpts[*profile.Name].TS2PhcOpts = pointer.StringPtr("-m")
+			l.PtpProcessOpts[*profile.Name].TS2PhcOpts = pointer.String("-m")
 		}
 	}
 }

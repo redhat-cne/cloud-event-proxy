@@ -124,3 +124,10 @@ fmt-code: ## Run go fmt against code.
 
 vet: ## Run go vet against code.
 	go vet ./...
+
+generate-api:
+	hack/verify-codegen.sh
+	rm -rf github.com
+
+install-tools:
+	hack/install-kubebuilder-tools.sh

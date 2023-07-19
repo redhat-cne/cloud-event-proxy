@@ -50,14 +50,14 @@ func Clean(namespace string, cs *testclient.Set) error {
 	}
 
 	err = cs.NetworkPolicies(namespace).DeleteCollection(context.Background(), metav1.DeleteOptions{
-		GracePeriodSeconds: pointer.Int64Ptr(0),
+		GracePeriodSeconds: pointer.Int64(0),
 	}, metav1.ListOptions{})
 	if err != nil {
 		return err
 	}
 
 	_ = cs.Pods(namespace).DeleteCollection(context.Background(), metav1.DeleteOptions{
-		GracePeriodSeconds: pointer.Int64Ptr(0),
+		GracePeriodSeconds: pointer.Int64(0),
 	}, metav1.ListOptions{})
 
 	allServices, err := cs.Services(namespace).List(context.Background(), metav1.ListOptions{})
@@ -70,7 +70,7 @@ func Clean(namespace string, cs *testclient.Set) error {
 			continue
 		}
 		err = cs.Services(namespace).Delete(context.Background(), s.Name, metav1.DeleteOptions{
-			GracePeriodSeconds: pointer.Int64Ptr(0)})
+			GracePeriodSeconds: pointer.Int64(0)})
 		if err != nil && errors.IsNotFound(err) {
 			continue
 		}
