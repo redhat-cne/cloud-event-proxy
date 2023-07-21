@@ -139,7 +139,7 @@ func Test_StartWithAMQP(t *testing.T) {
 	log.Printf("Closing the channels")
 	close(scConfig.CloseCh) // close the channel
 	pubs := scConfig.PubSubAPI.GetPublishers()
-	assert.Equal(t, 3, len(pubs))
+	assert.Equal(t, 4, len(pubs))
 }
 
 func Test_StartWithOutAMQP(t *testing.T) {
@@ -194,9 +194,9 @@ func Test_StartWithOutAMQP(t *testing.T) {
 	log.Printf("Closing the channels")
 	close(scConfig.CloseCh) // close the channel
 	pubs := scConfig.PubSubAPI.GetPublishers()
-	assert.Equal(t, 3, len(pubs))
+	assert.Equal(t, 4, len(pubs))
 	subs := scConfig.PubSubAPI.GetSubscriptions()
-	assert.Equal(t, 3, len(subs))
+	assert.Equal(t, 4, len(subs))
 
 }
 
@@ -254,9 +254,9 @@ func Test_StartWithHTTP(t *testing.T) {
 
 	close(scConfig.CloseCh) // close the channel
 	pubs := scConfig.PubSubAPI.GetPublishers()
-	assert.Equal(t, 3, len(pubs))
+	assert.Equal(t, 4, len(pubs))
 	subs := scConfig.PubSubAPI.GetSubscriptions()
-	assert.Equal(t, 3, len(subs))
+	assert.Equal(t, 4, len(subs))
 }
 
 // ProcessInChannel will be  called if Transport is disabled

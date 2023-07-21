@@ -247,6 +247,7 @@ func initSubscribers(cType ConsumerTypeEnum) map[string]string {
 		subscribeTo[string(ptpEvent.OsClockSyncStateChange)] = string(ptpEvent.OsClockSyncState)
 		subscribeTo[string(ptpEvent.PtpClockClassChange)] = string(ptpEvent.PtpClockClass)
 		subscribeTo[string(ptpEvent.PtpStateChange)] = string(ptpEvent.PtpLockState)
+		subscribeTo[string(ptpEvent.GnssStateChange)] = string(ptpEvent.GnssSyncStatus)
 	case MOCK:
 		subscribeTo[mockResourceKey] = mockResource
 	case HW:
