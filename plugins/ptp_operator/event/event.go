@@ -15,11 +15,11 @@
 package event
 
 import (
-	log "github.com/sirupsen/logrus"
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
+	log "github.com/sirupsen/logrus"
 	"k8s.io/utils/pointer"
 )
 
@@ -144,9 +144,8 @@ func (p *PTPEventState) UpdateCurrentEventState(c ClockState) ptp.SyncState {
 			if v.State == ptp.HOLDOVER {
 				currentState = v.State
 				break
-			} else {
-				currentState = v.State
 			}
+			currentState = v.State
 		} else if currentState == "" {
 			currentState = v.State
 		}

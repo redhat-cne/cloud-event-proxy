@@ -18,7 +18,7 @@ var (
 	ts2phcConfigFileRegEx = regexp.MustCompile(`ts2phc.[0-9]*.config`)
 	// NodeName from the env
 	ptpNodeName        = ""
-	masterOffsetSource = ptp4lProcessName
+	masterOffsetSource = ""
 )
 
 const (
@@ -125,19 +125,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	if strings.Contains(output, ptpProcessStatusIdentifier) {
 		if status, e := parsePTPStatus(output, fields); e == nil {
 			if status == PtpProcessDown {
-				if masterOffsetSource == processName { // if the process is responsible to set master offset
-					if m, ok := ptpStats[master]; ok {
-						if m.Alias() != "" {
-							masterResource := fmt.Sprintf("%s/%s", m.Alias(), MasterClockType)
-							p.GenPTPEvent(profileName, m, masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
-						}
-					}
-				}
-				if s, ok := ptpStats[ClockRealTime]; ok {
-					if t, ok2 := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok2 && t.Phc2SysEnabled() {
-						p.GenPTPEvent(profileName, s, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
-					}
-				}
+				p.processDownEvent(profileName, processName, ptpStats)
 			}
 		} else {
 			log.Errorf("error in process status %s", output)
@@ -146,11 +134,11 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	}
 	switch processName {
 	case gnssProcessName:
-		p.ParseGNSSLogs(processName, configName, profileName, output, fields, ptp4lCfg, ptpStats)
+		p.ParseGNSSLogs(processName, configName, output, fields, ptp4lCfg, ptpStats)
 	case dpllProcessName:
-		p.ParseDPLLLogs(processName, configName, profileName, output, fields, ptp4lCfg, ptpStats)
+		p.ParseDPLLLogs(processName, configName, output, fields, ptpStats)
 	case gmProcessName:
-		p.ParseGMLogs(processName, configName, profileName, output, fields, ptp4lCfg, ptpStats)
+		p.ParseGMLogs(processName, configName, output, fields, ptpStats)
 	default:
 		if strings.Contains(output, " max ") { // this get generated in case -u is passed as an option to phy2sys opts
 			//TODO: ts2phc rms is validated
@@ -284,4 +272,19 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 
 	p.ParsePTP4l(processName, configName, profileName, output, fields,
 		ptpInterface, ptp4lCfg, ptpStats)
+}
+
+func (p *PTPEventManager) processDownEvent(profileName, processName string, ptpStats map[types.IFace]*stats.Stats) {
+	// if the process is responsible to set master offset
+	if masterOffsetSource == processName {
+		if ptpStats[master].Alias() != "" {
+			masterResource := fmt.Sprintf("%s/%s", ptpStats[master].Alias(), MasterClockType)
+			p.GenPTPEvent(profileName, ptpStats[master], masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
+		}
+	}
+	if s, ok := ptpStats[ClockRealTime]; ok {
+		if t, ok2 := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok2 && t.Phc2SysEnabled() {
+			p.GenPTPEvent(profileName, s, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
+		}
+	}
 }
