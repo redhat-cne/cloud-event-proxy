@@ -31,7 +31,7 @@ func Subscribe(clientID uuid.UUID, subs []pubsub.PubSub, nodeName, publisherURL,
 	ce, _ := eventSubscriber.CreateCloudEvents()
 	ce.SetSubject(channel.NEW.String())
 	ce.SetSource(returnEndPoint)
-	log.Infof("posting %s", ce.String())
+	log.Infof("posting %s for node %s", ce.String(), nodeName)
 	_, err := Post(publisherURL, *ce)
 	return err
 }

@@ -289,8 +289,8 @@ func parsePTPStatus(output string, fields []string) (int64, error) {
 }
 
 // ParseGMLogs ... parse logs for various events
-func (p *PTPEventManager) ParseGMLogs(processName, configName, profileName, output string, fields []string,
-	ptp4lCfg *ptp4lconf.PTP4lConfig, ptpStats map[types.IFace]*stats.Stats) {
+func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fields []string,
+	ptpStats map[types.IFace]*stats.Stats) {
 	//GM[1689282762]:[ts2phc.0.config] ens2f1 T-GM-STATUS s0
 	// 0        1             2           3          4    5
 	// GM  1689014436  ts2phc.0.config ens2f1 T-GM-STATUS s0
@@ -325,8 +325,8 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, profileName, outp
 }
 
 // ParseDPLLLogs ... parse logs for various events
-func (p *PTPEventManager) ParseDPLLLogs(processName, configName, profileName, output string, fields []string,
-	ptp4lCfg *ptp4lconf.PTP4lConfig, ptpStats map[types.IFace]*stats.Stats) {
+func (p *PTPEventManager) ParseDPLLLogs(processName, configName, output string, fields []string,
+	ptpStats map[types.IFace]*stats.Stats) {
 	// dpll[1689282767]:[ts2phc.0.config] ens2f1 phase_status 0 frequency_status 0 offset 0 s0
 	//dpll[1689014436]:[ts2phc.0.config] ens2f1 frequency_status 0 offset 0 phase_status 0 s0
 	// 0        1             2           3             4       5     6    7           8  9  10
@@ -392,7 +392,7 @@ logStatusLoop:
 }
 
 // ParseGNSSLogs ... parse logs for various events
-func (p *PTPEventManager) ParseGNSSLogs(processName, configName, profileName, output string, fields []string,
+func (p *PTPEventManager) ParseGNSSLogs(processName, configName, output string, fields []string,
 	ptp4lCfg *ptp4lconf.PTP4lConfig, ptpStats map[types.IFace]*stats.Stats) {
 	//gnss[1689014431]:[ts2phc.0.config] ens2f1 gnss_status 5 offset 0 s0
 	// 0        1             2           3        4       5    6    7   8
