@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redhat-cne/sdk-go/pkg/pubsub"
+
 	"github.com/redhat-cne/sdk-go/pkg/errorhandler"
 
 	"github.com/gorilla/mux"
@@ -26,7 +28,6 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"github.com/redhat-cne/sdk-go/pkg/localmetrics"
 	"github.com/redhat-cne/sdk-go/pkg/protocol"
-	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/subscriber"
 	subscriberApi "github.com/redhat-cne/sdk-go/v1/subscriber"
 	log "github.com/sirupsen/logrus"
@@ -121,9 +122,10 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 			ProcessEventFn: h.processEventFn,
 		}
 		var obj subscriber.Subscriber
+		var updatedObj *subscriber.Subscriber
 		if err = json.Unmarshal(e.Data(), &obj); err != nil {
 			out.Status = channel.FAILED
-			log.Errorf("failied to parse subscription %s", err)
+			log.Errorf("failed to parse subscription %s", err)
 		} else {
 			out.Address = obj.GetEndPointURI()
 			if obj.Action == channel.NEW {
@@ -132,28 +134,31 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 					if err = h.NewSender(obj.ClientID, obj.GetEndPointURI()); err != nil {
 						out.Status = channel.FAILED
 						log.Errorf("(1)error creating subscriber %v for address %s", err, obj.GetEndPointURI())
-					} else if _, err = h.subscriberAPI.CreateSubscription(obj.ClientID, obj); err != nil {
+					} else if updatedObj, err = h.subscriberAPI.CreateSubscription(obj.ClientID, obj); err != nil {
 						log.Errorf("failed creating subscription for %s", obj.ClientID.String())
 						out.Status = channel.FAILED
 					} else {
 						out.Status = channel.SUCCESS
+						_ = out.Data.SetData(cloudevents.ApplicationJSON, updatedObj)
 						localmetrics.UpdateSenderCreatedCount(obj.ClientID.String(), localmetrics.ACTIVE, 1)
 					}
-				} else {
+				} else { //update
 					log.Infof("sender already present,updating %s", obj.ClientID.String())
 					out.Status = channel.SUCCESS
-					if _, err = h.subscriberAPI.CreateSubscription(obj.ClientID, obj); err != nil {
+					if updatedObj, err = h.subscriberAPI.CreateSubscription(obj.ClientID, obj); err != nil {
 						log.Errorf("failed updating subscription %s", err)
 						out.Status = channel.FAILED
+					} else {
+						_ = out.Data.SetData(cloudevents.ApplicationJSON, updatedObj)
 					}
 				}
-			} else {
+			} else if obj.Action == channel.DELETE {
 				if _, ok := h.Sender[obj.ClientID]; ok {
 					log.Infof("deleting subscribers")
 					_ = h.subscriberAPI.DeleteClient(obj.ClientID)
 					h.DeleteSender(obj.ClientID)
-					out.Status = channel.SUCCESS
-					localmetrics.UpdateSenderCreatedCount(obj.ClientID.String(), localmetrics.ACTIVE, -1)
+					out.Status = channel.DELETE
+					out.ClientID = obj.ClientID
 				}
 			}
 		}
@@ -391,17 +396,7 @@ func (h *Server) HTTPProcessor(wg *sync.WaitGroup) {
 		for { //nolint:gosimple    Producer: Sender Object--->Event       Default Listener:Consumer
 			select {
 			case d := <-h.DataIn: //skips publisher object processing
-				if d.Type == channel.SUBSCRIBER { // Listener  means subscriber aka sender
-					if d.Status == channel.DELETE {
-						log.Infof("Deleting client %s", d.ClientID)
-						if dErr := h.subscriberAPI.DeleteClient(d.ClientID); dErr == nil {
-							h.DeleteSender(d.ClientID)
-							localmetrics.UpdateSenderCreatedCount(d.ClientID.String(), localmetrics.ACTIVE, -1)
-						} else {
-							log.Errorf("Failed to delete subscriber %s", d.Address)
-						}
-						continue
-					}
+				if d.Type == channel.SUBSCRIBER && (d.Status == channel.NEW || d.Status == channel.DELETE) { // Listener  means subscriber aka sender
 					// Post it to the address that has been specified : to target URL
 					subs := subscriber.New(h.clientID)
 					//Self URL
@@ -416,17 +411,15 @@ func (h *Server) HTTPProcessor(wg *sync.WaitGroup) {
 					ce, _ := subs.CreateCloudEvents()
 					ce.SetSubject(d.Status.String())
 					ce.SetSource(d.Address)
-
+					// Post it to the address that has been specified : to target URL
 					if len(h.Publishers) > 0 {
 						for _, pubURL := range h.Publishers { // if you call
 							if err := Post(fmt.Sprintf("%s/subscription", pubURL.String()), *ce); err != nil {
-								log.Errorf("(1)error creating: %v at  %s with data %s=%s", err, pubURL.String(), ce.String(), ce.Data())
-								localmetrics.UpdateSenderCreatedCount(d.ClientID.String(), localmetrics.FAILED, 1)
+								log.Errorf("(1)error %s: %v at  %s with data %s=%s", d.Status.String(), err, pubURL.String(), ce.String(), ce.Data())
 								d.Status = channel.FAILED
 								h.DataOut <- d
 							} else {
-								log.Infof("successfully created subscription for %s", d.Address)
-								localmetrics.UpdateSenderCreatedCount(d.ClientID.String(), localmetrics.ACTIVE, 1)
+								log.Infof("successfully %s subscription for %s", d.Status.String(), d.Address)
 								d.Status = channel.SUCCESS
 								h.DataOut <- d
 							}

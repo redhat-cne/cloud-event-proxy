@@ -15,6 +15,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
@@ -25,6 +27,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/redhat-cne/sdk-go/pkg/subscriber"
+	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
+
 	"github.com/redhat-cne/sdk-go/pkg/types"
 
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -33,6 +38,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/localmetrics"
+	storageClient "github.com/redhat-cne/cloud-event-proxy/pkg/storage/kubernetes"
+
 	log "github.com/sirupsen/logrus"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -45,7 +52,6 @@ import (
 	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
 	v1http "github.com/redhat-cne/sdk-go/v1/http"
-	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
 )
 
 var (
@@ -61,6 +67,8 @@ var (
 	httpEventPublisher      string
 	pluginHandler           plugins.Handler
 	amqInitTimeout          = 3 * time.Minute
+	nodeName                string
+	namespace               string
 )
 
 func main() {
@@ -84,7 +92,9 @@ func main() {
 	prometheus.Unregister(collectors.NewGoCollector())
 
 	nodeIP := os.Getenv("NODE_IP")
-	nodeName := os.Getenv("NODE_NAME")
+	nodeName = os.Getenv("NODE_NAME")
+	namespace = os.Getenv("NAME_SPACE")
+
 	transportHost = common.SanitizeTransportHost(transportHost, nodeIP, nodeName)
 	eventPublishers := updateHTTPPublishers(nodeIP, nodeName, httpEventPublisher)
 
@@ -94,7 +104,6 @@ func main() {
 	if parsedTransportHost.Err != nil {
 		log.Errorf("error parsing transport host, data will written to log %s", parsedTransportHost.Err.Error())
 	}
-
 	scConfig = &common.SCConfiguration{
 		EventInCh:     make(chan *channel.DataChan, channelBufferSize),
 		EventOutCh:    make(chan *channel.DataChan, channelBufferSize),
@@ -102,12 +111,29 @@ func main() {
 		CloseCh:       make(chan struct{}),
 		APIPort:       apiPort,
 		APIPath:       apiPath,
-		PubSubAPI:     v1pubs.GetAPIInstance(storePath),
 		StorePath:     storePath,
+		PubSubAPI:     v1pubs.GetAPIInstance(storePath),
 		BaseURL:       nil,
 		TransportHost: parsedTransportHost,
+		StorageType:   storageClient.EmptyDir,
 	}
+	/****/
 
+	// Use kubeconfig to create client config.
+	client, err := storageClient.NewClient()
+	if err != nil {
+		log.Infof("error fetching client, storage defaulted to emptyDir{} %s", err.Error())
+	} else {
+		scConfig.K8sClient = client
+	}
+	if namespace != "" && nodeName != "" && scConfig.TransportHost.Type == common.HTTP {
+		// if consumer doesn't pass namespace then this will default to empty dir
+		if e := client.InitConfigMap(scConfig.StorePath, nodeName, namespace); e != nil {
+			log.Errorf("failed to initlialize configmap, subcription will be stored in empty dir %s", e.Error())
+		} else {
+			scConfig.StorageType = storageClient.ConfigMap
+		}
+	}
 	metricServer(metricsAddr)
 	wg := sync.WaitGroup{}
 	sigCh := make(chan os.Signal, 1)
@@ -150,7 +176,7 @@ func main() {
 	}
 
 	/* Enable pub/sub services */
-	_, err := common.StartPubSubService(scConfig)
+	_, err = common.StartPubSubService(scConfig)
 	if err != nil {
 		log.Fatal("pub/sub service API failed to start.")
 	}
@@ -186,7 +212,7 @@ func metricServer(address string) {
 	}, 5*time.Second, scConfig.CloseCh)
 }
 
-// ProcessOutChannel this process the out channel;data put out by amqp
+// ProcessOutChannel this process the out channel;data put out by transport
 func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 	// Send back the acknowledgement to publisher
 	defer wg.Done()
@@ -257,15 +283,30 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 					log.Errorf("failed to receive status request to address %s", d.Address)
 					localmetrics.UpdateStatusAckCount(d.Address, localmetrics.FAILED)
 				}
-			} else if d.Type == channel.SUBSCRIBER {
-				if d.Status == channel.SUCCESS {
+			} else if d.Type == channel.SUBSCRIBER { // these data are provided by HTTP transport
+				if scConfig.StorageType != storageClient.ConfigMap {
+					continue
+				}
+				if d.Status == channel.SUCCESS && d.Data != nil {
+					var obj subscriber.Subscriber
+					if err := json.Unmarshal(d.Data.Data(), &obj); err != nil {
+						log.Infof("data is not subscriber object ignoring processing")
+						continue
+					}
 					log.Infof("subscriber processed for %s", d.Address)
+					if err := scConfig.K8sClient.UpdateConfigMap(context.Background(), []subscriber.Subscriber{obj}, nodeName, namespace); err != nil {
+						log.Errorf("failed to update subscription in configmap %s", err.Error())
+					} else {
+						log.Infof("subscriber saved in configmap %s", obj.String())
+					}
 				} else if d.Status == channel.DELETE {
-					scConfig.EventInCh <- &channel.DataChan{
-						ClientID: d.ClientID,
-						Data:     d.Data,
-						Status:   channel.DELETE,
-						Type:     channel.SUBSCRIBER,
+					var obj subscriber.Subscriber
+					obj.Action = channel.DELETE
+					obj.ClientID = d.ClientID
+					if err := scConfig.K8sClient.UpdateConfigMap(context.Background(), []subscriber.Subscriber{obj}, nodeName, namespace); err != nil {
+						log.Errorf("failed to delete subscription in configmap %s", err.Error())
+					} else {
+						log.Infof("deleted subscription %s ", obj.ClientID.String())
 					}
 				}
 			}
@@ -354,7 +395,7 @@ func enableHTTPTransport(wg *sync.WaitGroup, eventPublishers []string) bool {
 	var httpServer *v1http.HTTP
 	httpServer, err := pluginHandler.LoadHTTPPlugin(wg, scConfig, nil, nil)
 	if err != nil {
-		log.Warnf(" failied to load http plugin for tansport %s", err.Error())
+		log.Warnf("failed to load http plugin for tansport %s", err.Error())
 		scConfig.PubSubAPI.DisableTransport()
 		return false
 	}

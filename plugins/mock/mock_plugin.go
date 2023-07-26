@@ -69,7 +69,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	onCurrentStateFn := func(e v2.Event, d *channel.DataChan) error {
 		if e.Source() != "" {
 			log.Infof("setting return address to %s", e.Source())
-			d.ReturnAddress = pointer.StringPtr(e.Source())
+			d.ReturnAddress = pointer.String(e.Source())
 		}
 		log.Infof("got status check call,fire events returning to %s", *d.ReturnAddress)
 		re, mErr := createMockEvent(pub) // create a mock event
