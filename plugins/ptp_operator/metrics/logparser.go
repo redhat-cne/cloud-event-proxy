@@ -333,7 +333,7 @@ func (p *PTPEventManager) ParseDPLLLogs(processName, configName, output string, 
 	// dpll 1689014436 ts2phc.0.config ens2f1   frequency_status 0  offset 0  phase_status 0 s0
 	log.Infof("ParseDPLLLogs: %s", output)
 	if strings.Contains(output, "frequency_status") {
-		if len(fields) < 9 {
+		if len(fields) < 10 {
 			log.Errorf("DPLL Status is not in right format %s", output)
 			return
 		}
@@ -352,7 +352,8 @@ func (p *PTPEventManager) ParseDPLLLogs(processName, configName, output string, 
 	iface := pointer.String(fields[3])
 	syncState := fields[10]
 logStatusLoop:
-	for i := 4; i < 3; i = i + 2 { // the order need to be fixed in linux ptp daemon , this is workaround
+	// read 4 ,6 and 8,
+	for i := 4; i < 9; i = i + 2 { // the order need to be fixed in linux ptp daemon , this is workaround
 		switch fields[i] {
 		case "frequency_status":
 			if frequencyStatus, err = strconv.ParseInt(fields[i+1], 10, 64); err != nil {
