@@ -194,7 +194,9 @@ func (p *PTPEventState) DeleteAllMetrics() {
 		if d.Metric != nil {
 			// unregister metric
 			for _, v := range d.Metric {
-				v.metricGauge.Delete(prometheus.Labels{"process": d.Process, "iface": *d.IFace, "node": d.NodeName})
+				if v.metricGauge != nil && d.IFace != nil {
+					v.metricGauge.Delete(prometheus.Labels{"process": d.Process, "iface": *d.IFace, "node": d.NodeName})
+				}
 			}
 		}
 		delete(p.DependsOn, d.Process)
