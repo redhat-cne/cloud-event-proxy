@@ -19,7 +19,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
-	log "github.com/sirupsen/logrus"
 	"k8s.io/utils/pointer"
 )
 
@@ -92,8 +91,6 @@ func (p *PTPEventState) UpdateCurrentEventState(c ClockState) ptp.SyncState {
 			if d.Metric[k].metricGauge == nil {
 				d.Metric[k].metricGauge.With(map[string]string{"from": d.Process, "process": d.Process,
 					"node": d.NodeName, "iface": iface}).Set(float64(v))
-			} else {
-				log.Errorf("metric %s is not registered", k)
 			}
 		}
 	} else {
@@ -156,7 +153,7 @@ func (p *PTPEventState) UpdateCurrentEventState(c ClockState) ptp.SyncState {
 
 // UnRegisterMetrics ... unregister  metrics by processname
 func (p *PTPEventState) UnRegisterMetrics(processName string) {
-	//	write a functions to unregister meteric from dependson object
+	//	write a functions to unregister metric from dependence on object
 	if d, ok := p.DependsOn[processName]; ok {
 		// write loop d.Metric
 		if d.Metric != nil {
@@ -172,6 +169,9 @@ func (p *PTPEventState) UnRegisterMetrics(processName string) {
 //	write a functions to unregister meteric from dependson object
 func (p *PTPEventState) UnRegisterAllMetrics() {
 	// write loop p.DependsOn
+	if p.DependsOn == nil {
+		return
+	}
 	for _, d := range p.DependsOn {
 		// write loop d.Metric
 		if d.Metric != nil {
@@ -189,6 +189,9 @@ func (p *PTPEventState) UnRegisterAllMetrics() {
 //	write a functions to delete meteric from dependson object
 func (p *PTPEventState) DeleteAllMetrics() {
 	// write loop p.DependsOn
+	if p.DependsOn == nil {
+		return
+	}
 	for _, d := range p.DependsOn {
 		// write loop d.Metric
 		if d.Metric != nil {
