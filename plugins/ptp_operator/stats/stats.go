@@ -215,16 +215,20 @@ func (s *Stats) SetPtpDependentEventState(e event.ClockState) {
 
 // GetStateValue ... get state value
 func (s *Stats) GetStateValue(processName string) (map[string]int64, error) {
-	if s.ptpDependentEventState != nil {
-		return s.ptpDependentEventState.DependsOn[processName].Value, nil
+	if s.ptpDependentEventState != nil && s.ptpDependentEventState.DependsOn != nil {
+		if _, ok := s.ptpDependentEventState.DependsOn[processName]; ok {
+			return s.ptpDependentEventState.DependsOn[processName].Value, nil
+		}
 	}
 	return map[string]int64{}, fmt.Errorf("sync state not found %s", processName)
 }
 
-// GetStateSate ... get state
-func (s *Stats) GetStateSate(processName string) (ptp.SyncState, error) {
-	if s.ptpDependentEventState != nil {
-		return s.ptpDependentEventState.DependsOn[processName].State, nil
+// GetStateState ... get state
+func (s *Stats) GetStateState(processName string) (ptp.SyncState, error) {
+	if s.ptpDependentEventState != nil && s.ptpDependentEventState.DependsOn != nil {
+		if _, ok := s.ptpDependentEventState.DependsOn[processName]; ok {
+			return s.ptpDependentEventState.DependsOn[processName].State, nil
+		}
 	}
 	return ptp.FREERUN, fmt.Errorf("sync state not found %s", processName)
 }
@@ -242,6 +246,7 @@ func (s *Stats) String() string {
 //
 //	write a functions to delete meteric from dependson object
 func (s *Stats) DeleteAllMetrics() {
-	// write loop p.DependsOn
-	s.ptpDependentEventState.DeleteAllMetrics()
+	if s.ptpDependentEventState != nil {
+		s.ptpDependentEventState.DeleteAllMetrics()
+	}
 }

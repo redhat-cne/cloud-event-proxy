@@ -220,7 +220,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				// This identifies sync state of GM and adds ts2phc offset to verify if it has to stay in GM state or set new state
 				// based on ts2phc offset threshold : Which is unnecessary but to avoid breaking existing logic
 				// let the check happen again : GM state published by linuxptpdaemon already have checked ts2phc offset
-				if gmState, er := ptpStats[interfaceType].GetStateSate(gmProcessName); er == nil {
+				if gmState, er := ptpStats[interfaceType].GetStateState(gmProcessName); er == nil {
 					// set sync state as gm state
 					syncState = gmState
 				}

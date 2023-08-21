@@ -415,6 +415,8 @@ func (p *PTPEventManager) ParseGNSSLogs(processName, configName, output string, 
 	var gnssState int64
 	var gnssOffset float64
 	var err error
+	//                 0    1             2               3        4        5  6    7   8
+	// ParseGNSSLogs: gnss 1692639234   ts2phc.2.config  ens7f0 gnss_status 3 offset 5 s2
 	iface := pointer.String(fields[3])
 	syncState := fields[8]
 	if gnssState, err = strconv.ParseInt(fields[5], 10, 64); err != nil {
@@ -425,7 +427,7 @@ func (p *PTPEventManager) ParseGNSSLogs(processName, configName, output string, 
 
 	//openshift_ptp_offset_ns{from="gnss",iface="ens2f1",node="cnfde21.ptp.lab.eng.bos.redhat.com",process="gnss"} 0
 	if err == nil {
-		lastState, errState := ptpStats[master].GetStateSate(processName)
+		lastState, errState := ptpStats[master].GetStateState(processName)
 		pLabels := map[string]string{"from": processName, "node": ptpNodeName,
 			"process": processName, "iface": *iface}
 		PtpOffset.With(pLabels).Set(gnssOffset)

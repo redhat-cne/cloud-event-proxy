@@ -19,6 +19,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
+	log "github.com/sirupsen/logrus"
 	"k8s.io/utils/pointer"
 )
 
@@ -120,7 +121,10 @@ func (p *PTPEventState) UpdateCurrentEventState(c ClockState) ptp.SyncState {
 					}, []string{"from", "process", "node", "iface"}),
 				metricCounter: nil,
 			}
-			prometheus.MustRegister(metrics[k].metricGauge)
+			err := prometheus.Register(metrics[k].metricGauge)
+			if err != nil {
+				log.Info("failed to register metric, metric is already registered")
+			}
 			iface := ""
 			if clockState.IFace != nil {
 				iface = *clockState.IFace
@@ -199,6 +203,7 @@ func (p *PTPEventState) DeleteAllMetrics() {
 			for _, v := range d.Metric {
 				if v.metricGauge != nil && d.IFace != nil {
 					v.metricGauge.Delete(prometheus.Labels{"process": d.Process, "iface": *d.IFace, "node": d.NodeName})
+					prometheus.Unregister(v.metricGauge)
 				}
 			}
 		}
