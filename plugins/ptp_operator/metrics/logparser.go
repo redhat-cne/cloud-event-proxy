@@ -164,7 +164,7 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 	case locked:
 		clockState = ptp.LOCKED
 	default:
-		log.Errorf("%s -  failed to parse clock state output `%s` ", processName, fields[2])
+		log.Errorf("%s -  failed to parse clock state output `%s` ", processName, fields[4])
 	}
 
 	if len(fields) >= 8 {
@@ -176,6 +176,53 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 		// If there is no delay from master this mean we are out of sync
 		clockState = ptp.HOLDOVER
 		log.Warningf("no delay from master process %s out of sync", processName)
+	}
+	return
+}
+
+func extractNmeaMetrics(processName, output string) (interfaceName string, status, ptpOffset float64, clockState ptp.SyncState) {
+	// ts2phc[1699929121]:[ts2phc.0.config] ens2f0 nmea_status 0 offset 999999 s0
+	var err error
+	index := FindInLogForCfgFileIndex(output)
+	if index == -1 {
+		log.Errorf("config name is not found in log outpt")
+		return
+	}
+
+	output = strings.Replace(output, "path", "", 1)
+	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ", "phc", "", "sys", "")
+	output = replacer.Replace(output)
+
+	output = output[index:]
+	fields := strings.Fields(output)
+
+	//       0         1      2           3 4          5      6
+	// ts2phc.0.config ens2f0 nmea_status 0 offset     999999 s0
+	if len(fields) < 7 {
+		return
+	}
+
+	interfaceName = fields[1]
+	status, err = strconv.ParseFloat(fields[3], 64)
+	if err != nil {
+		log.Errorf("%s failed to parse nmea status from master output %s error %v", processName, fields[3], err)
+	}
+	ptpOffset, err = strconv.ParseFloat(fields[5], 64)
+	if err != nil {
+		log.Errorf("%s failed to parse nmea offset from master output %s error %v", processName, fields[5], err)
+	}
+
+	state := fields[6]
+
+	switch state {
+	case unLocked:
+		clockState = ptp.FREERUN
+	case clockStep:
+		clockState = ptp.FREERUN
+	case locked:
+		clockState = ptp.LOCKED
+	default:
+		log.Errorf("%s -  failed to parse clock state output `%s` ", processName, fields[6])
 	}
 	return
 }
@@ -319,7 +366,8 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 		NodeName:    ptpNodeName,
 		HelpText:    "0 = FREERUN, 1 = LOCKED, 2 = HOLDOVER",
 	}
-	SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": iface}).Set(GetSyncStateID(syncState))
+	alias := getAlias(iface)
+	SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": alias}).Set(GetSyncStateID(syncState))
 	// status metrics
 	ptpStats[master].SetPtpDependentEventState(clockState)
 }
@@ -327,13 +375,12 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 // ParseDPLLLogs ... parse logs for various events
 func (p *PTPEventManager) ParseDPLLLogs(processName, configName, output string, fields []string,
 	ptpStats map[types.IFace]*stats.Stats) {
-	// dpll[1689282767]:[ts2phc.0.config] ens2f1 phase_status 0 frequency_status 0 offset 0 s0
-	//dpll[1689014436]:[ts2phc.0.config] ens2f1 frequency_status 0 offset 0 phase_status 0 s0
-	// 0        1             2           3             4       5     6    7           8  9  10
-	// dpll 1689014436 ts2phc.0.config ens2f1   frequency_status 0  offset 0  phase_status 0 s0
+	// dpll[1700598434]:[ts2phc.0.config] ens2f0 frequency_status 3 offset 0 phase_status 3 pps_status 1 s2
+	// 0        1             2           3             4       5     6    7           8   9 10         11 12
+	// dpll 1700598434 ts2phc.0.config ens2f0   frequency_status 3  offset 0  phase_status 3 pps_status 1  s2
 	log.Infof("ParseDPLLLogs: %s", output)
 	if strings.Contains(output, "frequency_status") {
-		if len(fields) < 10 {
+		if len(fields) < 12 {
 			log.Errorf("DPLL Status is not in right format %s", output)
 			return
 		}
@@ -348,12 +395,13 @@ func (p *PTPEventManager) ParseDPLLLogs(processName, configName, output string, 
 	var phaseStatus int64
 	var frequencyStatus int64
 	var dpllOffset float64
+	var ppsStatus float64
 	var err error
 	iface := pointer.String(fields[3])
-	syncState := fields[10]
+	syncState := fields[12]
 logStatusLoop:
-	// read 4 ,6 and 8,
-	for i := 4; i < 9; i = i + 2 { // the order need to be fixed in linux ptp daemon , this is workaround
+	// read 4, 6, 8 and 10
+	for i := 4; i < 11; i = i + 2 { // the order need to be fixed in linux ptp daemon , this is workaround
 		switch fields[i] {
 		case "frequency_status":
 			if frequencyStatus, err = strconv.ParseInt(fields[i+1], 10, 64); err != nil {
@@ -371,14 +419,16 @@ logStatusLoop:
 				log.Errorf("%s failed to parse offset from the output %s error %s", processName, fields[3], err.Error())
 				break logStatusLoop
 			}
+		case "pps_status":
+			if ppsStatus, err = strconv.ParseFloat(fields[i+1], 64); err != nil {
+				log.Errorf("%s failed to parse offset from the output %s error %s", processName, fields[3], err.Error())
+				break logStatusLoop
+			}
 		}
 	}
 
 	if err == nil {
-		pLabels := map[string]string{"from": processName, "node": ptpNodeName,
-			"process": processName, "iface": *iface}
-		PtpOffset.With(pLabels).Set(dpllOffset)
-		SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": *iface}).Set(GetSyncStateID(syncState))
+		alias := getAlias(*iface)
 		ptpStats[master].SetPtpDependentEventState(event.ClockState{
 			State:       GetSyncState(syncState),
 			Offset:      pointer.Float64(dpllOffset),
@@ -389,6 +439,15 @@ logStatusLoop:
 			NodeName:    ptpNodeName,
 			HelpText:    "-1=UNKNOWN, 0=INVALID, 1=FREERUN, 2=LOCKED, 3=LOCKED_HO_ACQ, 4=HOLDOVER",
 		})
+		masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
+		interfaceType := types.IFace(master)
+		SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": alias}).Set(GetSyncStateID(syncState))
+		if ppsStatus == UNAVAILABLE {
+			p.GenPTPEvent(processName, ptpStats[interfaceType], masterResource, int64(dpllOffset), ptp.FREERUN, ptp.PtpStateChange)
+		} else {
+			UpdatePTPOffsetMetrics(processName, processName, alias, dpllOffset)
+		}
+		UpdatePpsStatusMetrics(processName, alias, ppsStatus)
 	}
 }
 
@@ -421,17 +480,20 @@ func (p *PTPEventManager) ParseGNSSLogs(processName, configName, output string, 
 	syncState := fields[8]
 	if gnssState, err = strconv.ParseInt(fields[5], 10, 64); err != nil {
 		log.Errorf("error parsing gnss state %s", processName)
-	} else if gnssOffset, err = strconv.ParseFloat(fields[7], 64); err != nil {
-		log.Errorf("%s failed to parse offset from the output %s error %v", processName, fields[3], err)
+	}
+
+	if gnssOffset, err = strconv.ParseFloat(fields[7], 64); err != nil {
+		log.Errorf("%s failed to parse offset from the output %s error %v", processName, fields[7], err)
 	}
 
 	//openshift_ptp_offset_ns{from="gnss",iface="ens2f1",node="cnfde21.ptp.lab.eng.bos.redhat.com",process="gnss"} 0
 	if err == nil {
+		alias := getAlias(*iface)
 		lastState, errState := ptpStats[master].GetStateState(processName)
 		pLabels := map[string]string{"from": processName, "node": ptpNodeName,
-			"process": processName, "iface": *iface}
+			"process": processName, "iface": alias}
 		PtpOffset.With(pLabels).Set(gnssOffset)
-		SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": *iface}).Set(GetSyncStateID(syncState))
+		SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": alias}).Set(GetSyncStateID(syncState))
 		ptpStats[master].SetPtpDependentEventState(event.ClockState{
 			State:       GetSyncState(syncState),
 			Offset:      pointer.Float64(gnssOffset),
@@ -444,14 +506,14 @@ func (p *PTPEventManager) ParseGNSSLogs(processName, configName, output string, 
 		})
 		log.Infof("%s last state %s and current state %s", processName, lastState, GetSyncState(syncState))
 		if lastState != GetSyncState(syncState) || errState != nil {
-			var alias string
+			var masterAlias string
 			if m, ok := ptpStats[master]; ok {
-				alias = m.Alias()
+				masterAlias = m.Alias()
 			}
 			if alias == "" {
-				alias, _ = ptp4lCfg.GetUnknownAlias()
+				masterAlias, _ = ptp4lCfg.GetUnknownAlias()
 			}
-			masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
+			masterResource := fmt.Sprintf("%s/%s", masterAlias, MasterClockType)
 			p.publishGNSSEvent(gnssState, gnssOffset, masterResource, ptp.GnssStateChange)
 		}
 	}
