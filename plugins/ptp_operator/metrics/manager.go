@@ -226,17 +226,18 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, sou
 }
 
 func (p *PTPEventManager) publish(data ceevent.Data, eventSource string, eventType ptp.EventType) {
+	if p.mock {
+		return
+	}
 	if pubs, ok := p.publisherTypes[eventType]; ok {
 		e, err := common.CreateEvent(pubs.PubID, string(eventType), eventSource, data)
 		if err != nil {
 			log.Errorf("failed to create ptp event, %s", err)
 			return
 		}
-		if !p.mock {
-			if err = common.PublishEventViaAPI(p.scConfig, e); err != nil {
-				log.Errorf("failed to publish ptp event %v, %s", e, err)
-				return
-			}
+		if err = common.PublishEventViaAPI(p.scConfig, e); err != nil {
+			log.Errorf("failed to publish ptp event %v, %s", e, err)
+			return
 		}
 	} else {
 		log.Errorf("failed to publish ptp event due to missing publisher for type %s", string(eventType))
@@ -283,7 +284,7 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 		case ptp.HOLDOVER:
 			// do nothing, the timeout will switch holdover to FREE-RUN
 		default: // not yet used states
-			log.Warnf("unknown %s sync state %s ,has last ptp state %s", eventResourceName, clockState, lastClockState)
+			log.Warnf("%s sync state %s, last ptp state is unknown: %s", eventResourceName, clockState, lastClockState)
 			if !isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
 				clockState = ptp.FREERUN
 			}
