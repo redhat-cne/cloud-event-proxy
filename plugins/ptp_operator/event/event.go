@@ -129,8 +129,10 @@ func (p *PTPEventState) UpdateCurrentEventState(c ClockState) ptp.SyncState {
 			if clockState.IFace != nil {
 				iface = *clockState.IFace
 			}
+			r := []rune(iface)
+			alias := string(r[:len(r)-1]) + "x"
 			metrics[k].metricGauge.With(map[string]string{"from": clockState.Process, "process": clockState.Process,
-				"node": clockState.NodeName, "iface": iface}).Set(float64(v))
+				"node": clockState.NodeName, "iface": alias}).Set(float64(v))
 		}
 		clockState.Metric = metrics
 		p.DependsOn[c.Process] = clockState
