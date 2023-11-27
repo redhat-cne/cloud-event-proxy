@@ -341,7 +341,6 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 	//GM[1689282762]:[ts2phc.0.config] ens2f1 T-GM-STATUS s0
 	// 0        1             2           3          4    5
 	// GM  1689014436  ts2phc.0.config ens2f1 T-GM-STATUS s0
-	log.Infof("ParseGMLogs: %s", output)
 	if strings.Contains(output, gmStatusIdentifier) {
 		if len(fields) < 4 {
 			log.Errorf("GM Status is not in right format %s", output)
@@ -378,7 +377,6 @@ func (p *PTPEventManager) ParseDPLLLogs(processName, configName, output string, 
 	// dpll[1700598434]:[ts2phc.0.config] ens2f0 frequency_status 3 offset 0 phase_status 3 pps_status 1 s2
 	// 0        1             2           3             4       5     6    7           8   9 10         11 12
 	// dpll 1700598434 ts2phc.0.config ens2f0   frequency_status 3  offset 0  phase_status 3 pps_status 1  s2
-	log.Infof("ParseDPLLLogs: %s", output)
 	if strings.Contains(output, "frequency_status") {
 		if len(fields) < 12 {
 			log.Errorf("DPLL Status is not in right format %s", output)
@@ -457,7 +455,6 @@ func (p *PTPEventManager) ParseGNSSLogs(processName, configName, output string, 
 	//gnss[1689014431]:[ts2phc.0.config] ens2f1 gnss_status 5 offset 0 s0
 	// 0        1             2           3        4       5    6    7   8
 	// gnss 1689014431 ts2phc.0.config ens2f1  gnss_status 5  offset 0 s0
-	log.Infof("ParseGNSSLogs: %s", output)
 	if strings.Contains(output, gnssEventIdentifier) {
 		if len(fields) < 8 {
 			log.Errorf("GNSS Status is not in right format %s", output)
@@ -504,8 +501,8 @@ func (p *PTPEventManager) ParseGNSSLogs(processName, configName, output string, 
 			NodeName:    ptpNodeName,
 			HelpText:    "0=NOFIX, 1=Dead Reckoning Only, 2=2D-FIX, 3=3D-FIX, 4=GPS+dead reckoning fix, 5=Time only fix",
 		})
-		log.Infof("%s last state %s and current state %s", processName, lastState, GetSyncState(syncState))
 		if lastState != GetSyncState(syncState) || errState != nil {
+			log.Infof("%s last state %s and current state %s", processName, lastState, GetSyncState(syncState))
 			var masterAlias string
 			if m, ok := ptpStats[master]; ok {
 				masterAlias = m.Alias()
