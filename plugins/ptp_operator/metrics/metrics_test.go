@@ -40,7 +40,7 @@ const (
 	s2     = 1.0
 	MYNODE = "mynode"
 	// SKIP skip the verification of the metric
-	SKIP    = 12345678
+	SKIP    = 101010101
 	CLEANUP = -1
 )
 
@@ -67,6 +67,7 @@ var ptpEventManager *metrics.PTPEventManager
 var scConfig *common.SCConfiguration
 var resourcePrefix = ""
 var registry *prometheus.Registry
+var ptpStats *stats.Stats
 
 // InitPubSubTypes ... initialize types of publishers for ptp operator
 func InitPubSubTypes() map[ptp.EventType]*types.EventPublisherType {
@@ -96,6 +97,7 @@ type TestCase struct {
 	process                        string
 	node                           string
 	iface                          string
+	lastSyncState                  ptp.SyncState
 	expectedPtpOffset              float64 // offset_ns
 	expectedPtpMaxOffset           float64 // max_offset_ns
 	expectedPtpFrequencyAdjustment float64 // frequency_adjustment_ns
@@ -103,6 +105,8 @@ type TestCase struct {
 	expectedSyncState              float64 // clock_state
 	expectedNmeaStatus             float64 // nmea_status
 	expectedPpsStatus              float64 // pps_status
+	expectedClockClassMetrics      float64 // clock_class
+	expectedEvent                  ptp.EventType
 }
 
 func (tc *TestCase) init() {
@@ -113,6 +117,7 @@ func (tc *TestCase) init() {
 	tc.expectedSyncState = SKIP
 	tc.expectedNmeaStatus = SKIP
 	tc.expectedPpsStatus = SKIP
+	tc.expectedEvent = ""
 }
 
 func (tc *TestCase) String() string {
@@ -122,6 +127,7 @@ func (tc *TestCase) String() string {
 	b.WriteString("process: " + tc.process + "\n")
 	b.WriteString("node: " + tc.node + "\n")
 	b.WriteString("iface: " + tc.iface + "\n")
+	b.WriteString("lastSyncState: " + string(tc.lastSyncState) + "\n")
 	return b.String()
 }
 
@@ -130,13 +136,32 @@ func (tc *TestCase) cleanupMetrics() {
 	metrics.SyncState.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
 	metrics.PpsStatus.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
 	metrics.NmeaStatus.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
+	ptpEventManager.ResetMockEvent()
+}
+
+func setLastSyncState(iface string, state ptp.SyncState) {
+	if iface != metrics.ClockRealTime {
+		iface = "master"
+	}
+	s := ptpEventManager.GetStatsForInterface(types.ConfigName(ptp4lConfig.Name), types.IFace(iface))
+	s.SetLastSyncState(state)
+}
+
+func statsAddValue(iface string, val int64) {
+	if iface != metrics.ClockRealTime {
+		iface = "master"
+	}
+	s := ptpEventManager.GetStatsForInterface(types.ConfigName(ptp4lConfig.Name), types.IFace(iface))
+	s.AddValue(val)
 }
 
 var testCases = []TestCase{
 	{
-		log:                            "dpll[1700614893]:[ts2phc.0.config] ens7f0 frequency_status 3 offset 5 phase_status 3 pps_status 1 s2",
+		log:                            "dpll[1000000100]:[ts2phc.0.config] ens7f0 frequency_status 3 offset 5 phase_status 3 pps_status 1 s2",
+		from:                           "master",
 		process:                        "dpll",
 		iface:                          "ens7fx",
+		lastSyncState:                  ptp.FREERUN,
 		expectedPtpOffset:              SKIP,
 		expectedPtpMaxOffset:           SKIP,
 		expectedPtpFrequencyAdjustment: SKIP,
@@ -144,11 +169,14 @@ var testCases = []TestCase{
 		expectedSyncState:              s2,
 		expectedNmeaStatus:             SKIP,
 		expectedPpsStatus:              1,
+		expectedClockClassMetrics:      SKIP,
 	},
 	{
-		log:                            "dpll[1700614893]:[ts2phc.0.config] ens7f0 frequency_status 3 offset 5 phase_status 3 pps_status 0 s0",
+		log:                            "dpll[1000000110]:[ts2phc.0.config] ens7f0 frequency_status 3 offset 5 phase_status 3 pps_status 0 s0",
+		from:                           "master",
 		process:                        "dpll",
 		iface:                          "ens7fx",
+		lastSyncState:                  ptp.LOCKED,
 		expectedPtpOffset:              SKIP,
 		expectedPtpMaxOffset:           SKIP,
 		expectedPtpFrequencyAdjustment: SKIP,
@@ -156,11 +184,15 @@ var testCases = []TestCase{
 		expectedSyncState:              s0,
 		expectedNmeaStatus:             SKIP,
 		expectedPpsStatus:              0,
+		expectedEvent:                  ptp.PtpStateChange,
+		expectedClockClassMetrics:      SKIP,
 	},
 	{
-		log:                            "dpll[1700614893]:[ts2phc.0.config] ens7f0 frequency_status 3 offset 7 phase_status 3 pps_status 0 s1",
+		log:                            "dpll[1000000120]:[ts2phc.0.config] ens7f0 frequency_status 3 offset 7 phase_status 3 pps_status 0 s1",
+		from:                           "master",
 		process:                        "dpll",
 		iface:                          "ens7fx",
+		lastSyncState:                  ptp.FREERUN,
 		expectedPtpOffset:              SKIP,
 		expectedPtpMaxOffset:           SKIP,
 		expectedPtpFrequencyAdjustment: SKIP,
@@ -168,12 +200,14 @@ var testCases = []TestCase{
 		expectedSyncState:              s1,
 		expectedNmeaStatus:             SKIP,
 		expectedPpsStatus:              0,
+		expectedClockClassMetrics:      SKIP,
 	},
 	{
-		log:                            "ts2phc[1699929121]:[ts2phc.0.config] ens2f0 nmea_status 0 offset 999999 s0",
-		from:                           "ts2phc",
+		log:                            "ts2phc[1000000200]:[ts2phc.0.config] ens2f0 nmea_status 0 offset 999999 s0",
+		from:                           "master",
 		process:                        "ts2phc",
 		iface:                          "ens2fx",
+		lastSyncState:                  ptp.LOCKED,
 		expectedPtpOffset:              SKIP,
 		expectedPtpMaxOffset:           SKIP,
 		expectedPtpFrequencyAdjustment: SKIP,
@@ -181,9 +215,12 @@ var testCases = []TestCase{
 		expectedSyncState:              s0,
 		expectedNmeaStatus:             0,
 		expectedPpsStatus:              SKIP,
+		expectedClockClassMetrics:      SKIP,
+		expectedEvent:                  ptp.PtpStateChange,
 	},
 	{
-		log:                            "ts2phc[1699929171]:[ts2phc.0.config] ens2fx nmea_status 1 offset 0 s2",
+		log:                            "ts2phc[1000000210]:[ts2phc.0.config] ens2fx nmea_status 1 offset 0 s2",
+		from:                           "master",
 		process:                        "ts2phc",
 		iface:                          "ens2fx",
 		expectedPtpOffset:              SKIP,
@@ -193,9 +230,10 @@ var testCases = []TestCase{
 		expectedSyncState:              s2,
 		expectedNmeaStatus:             1,
 		expectedPpsStatus:              SKIP,
+		expectedClockClassMetrics:      SKIP,
 	},
 	{
-		log:                            "ts2phc[441664.291]: [ts2phc.0.config] ens2f0 master offset          0 s2 freq      -0",
+		log:                            "ts2phc[1000000300]: [ts2phc.0.config] ens2f0 master offset          0 s2 freq      -0",
 		from:                           "master",
 		process:                        "ts2phc",
 		iface:                          "ens2fx",
@@ -206,9 +244,11 @@ var testCases = []TestCase{
 		expectedSyncState:              s2,
 		expectedNmeaStatus:             SKIP,
 		expectedPpsStatus:              SKIP,
+		expectedClockClassMetrics:      SKIP,
+		expectedEvent:                  ptp.PtpStateChange,
 	},
 	{
-		log:                            "ts2phc[441664.291]: [ts2phc.0.config] ens7f0 master offset 999 s0 freq      -0",
+		log:                            "ts2phc[1000000310]: [ts2phc.0.config] ens7f0 master offset 999 s0 freq      -0",
 		from:                           "master",
 		process:                        "ts2phc",
 		iface:                          "ens7fx",
@@ -219,9 +259,11 @@ var testCases = []TestCase{
 		expectedSyncState:              s0,
 		expectedNmeaStatus:             SKIP,
 		expectedPpsStatus:              SKIP,
+		expectedClockClassMetrics:      SKIP,
+		expectedEvent:                  ptp.PtpStateChange,
 	},
 	{
-		log:                            "GM[1699929086]:[ts2phc.0.config] ens2f0 T-GM-STATUS s0",
+		log:                            "GM[1000000400]:[ts2phc.0.config] ens2f0 T-GM-STATUS s0",
 		from:                           "master",
 		process:                        "GM",
 		iface:                          "ens2fx",
@@ -232,12 +274,14 @@ var testCases = []TestCase{
 		expectedSyncState:              s0,
 		expectedNmeaStatus:             SKIP,
 		expectedPpsStatus:              SKIP,
+		expectedClockClassMetrics:      SKIP,
 	},
 	{
-		log:                            "gnss[1689014431]:[ts2phc.0.config] ens2f1 gnss_status 3 offset 5 s2",
+		log:                            "gnss[1000000500]:[ts2phc.0.config] ens2f1 gnss_status 3 offset 5 s2",
 		from:                           "gnss",
 		process:                        "gnss",
 		iface:                          "ens2fx",
+		lastSyncState:                  ptp.FREERUN,
 		expectedPtpOffset:              5,
 		expectedPtpMaxOffset:           SKIP,
 		expectedPtpFrequencyAdjustment: SKIP,
@@ -245,6 +289,69 @@ var testCases = []TestCase{
 		expectedSyncState:              s2,
 		expectedNmeaStatus:             SKIP,
 		expectedPpsStatus:              SKIP,
+		expectedClockClassMetrics:      SKIP,
+		expectedEvent:                  ptp.GnssStateChange,
+	},
+	{
+		log:                            "ptp4l[1000000600]:[ptp4l.0.config] CLOCK_CLASS_CHANGE 248.000000",
+		process:                        "ptp4l",
+		iface:                          "master",
+		lastSyncState:                  ptp.FREERUN,
+		expectedPtpOffset:              SKIP,
+		expectedPtpMaxOffset:           SKIP,
+		expectedPtpFrequencyAdjustment: SKIP,
+		expectedPtpDelay:               SKIP,
+		expectedSyncState:              SKIP,
+		expectedNmeaStatus:             SKIP,
+		expectedPpsStatus:              SKIP,
+		expectedClockClassMetrics:      248,
+		expectedEvent:                  ptp.PtpClockClassChange,
+	},
+	{
+		log:                            "ptp4l[1000000610]:[ptp4l.0.config] CLOCK_CLASS_CHANGE 6.000000",
+		process:                        "ptp4l",
+		iface:                          "master",
+		lastSyncState:                  ptp.FREERUN,
+		expectedPtpOffset:              SKIP,
+		expectedPtpMaxOffset:           SKIP,
+		expectedPtpFrequencyAdjustment: SKIP,
+		expectedPtpDelay:               SKIP,
+		expectedSyncState:              SKIP,
+		expectedNmeaStatus:             SKIP,
+		expectedPpsStatus:              SKIP,
+		expectedClockClassMetrics:      6,
+		expectedEvent:                  ptp.PtpClockClassChange,
+	},
+	{
+		log:                            "phc2sys[1000000700]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -62 s0 freq  -78368 delay   1100",
+		from:                           "phc",
+		process:                        "phc2sys",
+		iface:                          metrics.ClockRealTime,
+		lastSyncState:                  ptp.FREERUN,
+		expectedPtpOffset:              -62,
+		expectedPtpMaxOffset:           SKIP,
+		expectedPtpFrequencyAdjustment: -78368,
+		expectedPtpDelay:               1100,
+		expectedSyncState:              s0,
+		expectedNmeaStatus:             SKIP,
+		expectedPpsStatus:              SKIP,
+		expectedClockClassMetrics:      SKIP,
+	},
+	{
+		log:                            "phc2sys[1000000710]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -62 s0 freq  -78368 delay   1100",
+		from:                           "phc",
+		process:                        "phc2sys",
+		iface:                          metrics.ClockRealTime,
+		lastSyncState:                  ptp.LOCKED,
+		expectedPtpOffset:              -62,
+		expectedPtpMaxOffset:           SKIP,
+		expectedPtpFrequencyAdjustment: -78368,
+		expectedPtpDelay:               1100,
+		expectedSyncState:              s0,
+		expectedNmeaStatus:             SKIP,
+		expectedPpsStatus:              SKIP,
+		expectedClockClassMetrics:      SKIP,
+		expectedEvent:                  ptp.OsClockSyncStateChange,
 	},
 }
 
@@ -288,9 +395,11 @@ func Test_ExtractMetrics(t *testing.T) {
 	for _, tc := range testCases {
 		tc.node = MYNODE
 		tc.cleanupMetrics()
+		setLastSyncState(tc.iface, tc.lastSyncState)
 		ptpEventManager.ExtractMetrics(tc.log)
 		if tc.expectedPtpOffset != SKIP {
 			ptpOffset := metrics.PtpOffset.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface})
+			statsAddValue(tc.iface, int64(testutil.ToFloat64(ptpOffset)))
 			assert.Equal(tc.expectedPtpOffset, testutil.ToFloat64(ptpOffset), "PtpOffset does not match\n%s", tc.String())
 		}
 		if tc.expectedPtpMaxOffset != SKIP {
@@ -317,5 +426,10 @@ func Test_ExtractMetrics(t *testing.T) {
 			nmeaStatus := metrics.NmeaStatus.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface})
 			assert.Equal(tc.expectedNmeaStatus, testutil.ToFloat64(nmeaStatus), "NmeaStatus does not match\n%s", tc.String())
 		}
+		if tc.expectedClockClassMetrics != SKIP {
+			clockClassMetrics := metrics.ClockClassMetrics.With(map[string]string{"process": tc.process, "node": tc.node})
+			assert.Equal(tc.expectedClockClassMetrics, testutil.ToFloat64(clockClassMetrics), "ClockClassMetrics does not match\n%s", tc.String())
+		}
+		assert.Equal(tc.expectedEvent, ptpEventManager.GetMockEvent(), "Expected Event does not match\n%s", tc.String())
 	}
 }

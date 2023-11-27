@@ -25,6 +25,7 @@ type PTPEventManager struct {
 	lock           sync.RWMutex
 	Stats          map[types.ConfigName]map[types.IFace]*stats.Stats
 	mock           bool
+	mockEvent      ptp.EventType
 	// PtpConfigMapUpdates holds ptp-configmap updated details
 	PtpConfigMapUpdates *ptpConfig.LinuxPTPConfigMapUpdate
 	// Ptp4lConfigInterfaces holds interfaces and its roles , after reading from ptp4l config files
@@ -120,15 +121,15 @@ func (p *PTPEventManager) GetPTPConfig(configName types.ConfigName) *ptp4lconf.P
 }
 
 // GetStatsForInterface ... get stats for interface
-func (p *PTPEventManager) GetStatsForInterface(name types.ConfigName, iface types.IFace) map[types.IFace]*stats.Stats {
+func (p *PTPEventManager) GetStatsForInterface(name types.ConfigName, iface types.IFace) *stats.Stats {
 	var found bool
 	if _, found = p.Stats[name]; !found {
 		p.Stats[name] = make(map[types.IFace]*stats.Stats)
 		p.Stats[name][iface] = stats.NewStats(string(name))
-	} else if _, found = p.Stats[name][iface]; found {
+	} else if _, found = p.Stats[name][iface]; !found {
 		p.Stats[name][iface] = stats.NewStats(string(name))
 	}
-	return p.Stats[name]
+	return p.Stats[name][iface]
 }
 
 // GetStats ... get stats
@@ -148,6 +149,11 @@ func (p *PTPEventManager) DeletePTPConfig(key types.ConfigName) {
 
 // PublishClockClassEvent ...publish events
 func (p *PTPEventManager) PublishClockClassEvent(clockClass float64, source string, eventType ptp.EventType) {
+	if p.mock {
+		p.mockEvent = eventType
+		log.Infof("PublishClockClassEvent clockClass=%f, source=%s, eventType=%s", clockClass, source, eventType)
+		return
+	}
 	data := p.GetPTPEventsData(ptp.LOCKED, int64(clockClass), source, eventType)
 	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
 	p.publish(*data, resourceAddress, eventType)
@@ -155,6 +161,11 @@ func (p *PTPEventManager) PublishClockClassEvent(clockClass float64, source stri
 
 // PublishClockClassEvent ...publish events
 func (p *PTPEventManager) publishGNSSEvent(state int64, offset float64, source string, eventType ptp.EventType) {
+	if p.mock {
+		p.mockEvent = eventType
+		log.Infof("publishGNSSEvent state=%d, offset=%f, source=%s, eventType=%s", state, offset, source, eventType)
+		return
+	}
 	var data *ceevent.Data
 	if state < 3 {
 		data = p.GetPTPEventsData(ptp.LOCKED, int64(offset), source, eventType)
@@ -219,6 +230,11 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, sou
 	if state == "" {
 		return
 	}
+	if p.mock {
+		p.mockEvent = eventType
+		log.Infof("PublishEvent state=%s, ptpOffset=%d, source=%s, eventType=%s", state, ptpOffset, source, eventType)
+		return
+	}
 	// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
 	data := p.GetPTPEventsData(state, ptpOffset, source, eventType)
 	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
@@ -226,9 +242,6 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, sou
 }
 
 func (p *PTPEventManager) publish(data ceevent.Data, eventSource string, eventType ptp.EventType) {
-	if p.mock {
-		return
-	}
 	if pubs, ok := p.publisherTypes[eventType]; ok {
 		e, err := common.CreateEvent(pubs.PubID, string(eventType), eventSource, data)
 		if err != nil {
@@ -319,4 +332,14 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 // NodeName ...
 func (p *PTPEventManager) NodeName() string {
 	return p.nodeName
+}
+
+// GetMockEvent ...
+func (p *PTPEventManager) GetMockEvent() ptp.EventType {
+	return p.mockEvent
+}
+
+// ResetMockEvent ...
+func (p *PTPEventManager) ResetMockEvent() {
+	p.mockEvent = ""
 }
