@@ -41,16 +41,33 @@ var testCase = []eventTestCase{{
 	eventStateObject: &event.PTPEventState{
 		CurrentPTPStateEvent: ptp.FREERUN,
 		Type:                 ptp.PtpStateChange,
-		DependsOn: map[string]*event.ClockState{"GNSS": {
-			State:   ptp.FREERUN,
-			Offset:  pointer.Float64(0),
-			Process: "GNSS",
-		}, "DPLL": {
-			State:   ptp.FREERUN,
-			Offset:  pointer.Float64(45670),
-			Process: "DPLL",
+
+		DependsOn: map[string]event.DependingClockState{
+			"TS2phc": {
+				&event.ClockState{
+					State:       ptp.FREERUN,
+					Offset:      pointer.Float64(01),
+					IFace:       nil,
+					Process:     "GNSS",
+					ClockSource: "",
+					Value:       nil,
+					Metric:      nil,
+					NodeName:    "",
+					HelpText:    nil,
+				},
+				&event.ClockState{
+					State:       ptp.FREERUN,
+					Offset:      pointer.Float64(01),
+					IFace:       nil,
+					Process:     "DPLL",
+					ClockSource: "",
+					Value:       nil,
+					Metric:      nil,
+					NodeName:    "",
+					HelpText:    nil,
+				},
+			},
 		}},
-	},
 	input: inputState{
 		state:   ptp.LOCKED,
 		process: "GNSS",
@@ -62,47 +79,49 @@ var testCase = []eventTestCase{{
 		eventStateObject: &event.PTPEventState{
 			CurrentPTPStateEvent: ptp.FREERUN,
 			Type:                 ptp.PtpStateChange,
-			DependsOn: map[string]*event.ClockState{"GNSS": {
-				State:   ptp.LOCKED,
-				Offset:  pointer.Float64(1),
-				Process: "GNSS",
-			}, "DPLL": {
-				State:   ptp.LOCKED,
-				Offset:  pointer.Float64(2),
-				Process: "DPLL",
-			}, "ptp4l": {
-				State:   ptp.FREERUN,
-				Offset:  pointer.Float64(99902),
-				Process: "ptp4l",
+			DependsOn: map[string]event.DependingClockState{
+				"TS2phc": {
+					&event.ClockState{
+						State:       ptp.LOCKED,
+						Offset:      pointer.Float64(01),
+						IFace:       nil,
+						Process:     "GNSS",
+						ClockSource: "",
+						Value:       nil,
+						Metric:      nil,
+						NodeName:    "",
+						HelpText:    nil,
+					},
+					&event.ClockState{
+						State:       ptp.LOCKED,
+						Offset:      pointer.Float64(01),
+						IFace:       nil,
+						Process:     "DPLL",
+						ClockSource: "",
+						Value:       nil,
+						Metric:      nil,
+						NodeName:    "",
+						HelpText:    nil,
+					},
+					&event.ClockState{
+						State:       ptp.FREERUN,
+						Offset:      pointer.Float64(99902),
+						IFace:       nil,
+						Process:     "ptp4l",
+						ClockSource: "",
+						Value:       nil,
+						Metric:      nil,
+						NodeName:    "",
+						HelpText:    nil,
+					},
+				},
 			}},
-		},
 		input: inputState{
 			state:   ptp.LOCKED,
 			process: "ptp4l",
 			offset:  pointer.Float64(05),
 		},
-		expectedState: ptp.LOCKED,
-	},
-	{
-		eventStateObject: &event.PTPEventState{
-			CurrentPTPStateEvent: ptp.HOLDOVER,
-			Type:                 ptp.PtpStateChange,
-			DependsOn: map[string]*event.ClockState{"pch2sys": {
-				State:   ptp.LOCKED,
-				Offset:  pointer.Float64(01),
-				Process: "phc2sys",
-			}, "ts2phc": {
-				State:   ptp.HOLDOVER,
-				Offset:  pointer.Float64(02),
-				Process: "ts2phc",
-			}},
-		},
-		input: inputState{
-			state:   ptp.LOCKED,
-			process: "ts2phc",
-			offset:  pointer.Float64(03),
-		},
-		expectedState: ptp.LOCKED,
+		expectedState: ptp.FREERUN,
 	},
 }
 

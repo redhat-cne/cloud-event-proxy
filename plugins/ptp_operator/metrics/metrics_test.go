@@ -371,8 +371,7 @@ func setup() {
 	stats_slave.SetProcessName("phc2sys")
 	stats_slave.SetLastSyncState("LOCKED")
 	stats_slave.SetClockClass(0)
-
-	ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)] = make(map[types.IFace]*stats.Stats)
+	ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)] = make(stats.PTPStats)
 	ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)][types.IFace("master")] = stats_master
 	ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)][types.IFace("CLOCK_REALTIME")] = stats_slave
 	ptpEventManager.PtpConfigMapUpdates = config.NewLinuxPTPConfUpdate()

@@ -108,7 +108,7 @@ docker-build: #test ## Build docker image with the manager.
 	docker build --no-cache -t ${IMG} .
 
 docker-push: ## Push docker image with the manager.
-	docker push ${IMG}
+	docker  push ${IMG}
 
 docker-build-consumer: #test ## Build docker image with the manager.
 	docker build -f ./examples/consumer.Dockerfile -t ${CONSUMER_IMG} .
