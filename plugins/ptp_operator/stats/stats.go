@@ -13,6 +13,9 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 )
 
+// PTPStats ...
+type PTPStats map[types.IFace]*Stats
+
 // Stats calculates stats  nolint:unused
 type Stats struct {
 	configName             string
@@ -206,31 +209,50 @@ func (s *Stats) SetPtpDependentEventState(e event.ClockState) {
 		s.ptpDependentEventState = &event.PTPEventState{
 			Mutex:                sync.Mutex{},
 			CurrentPTPStateEvent: "",
-			DependsOn:            map[string]*event.ClockState{},
+			DependsOn:            map[string]event.DependingClockState{},
 			Type:                 "",
 		}
 	}
 	s.ptpDependentEventState.UpdateCurrentEventState(e)
 }
 
-// GetStateValue ... get state value
-func (s *Stats) GetStateValue(processName string) (map[string]int64, error) {
-	if s.ptpDependentEventState != nil && s.ptpDependentEventState.DependsOn != nil {
-		if _, ok := s.ptpDependentEventState.DependsOn[processName]; ok {
-			return s.ptpDependentEventState.DependsOn[processName].Value, nil
-		}
-	}
-	return map[string]int64{}, fmt.Errorf("sync state not found %s", processName)
-}
-
 // GetStateState ... get state
-func (s *Stats) GetStateState(processName string) (ptp.SyncState, error) {
+func (s *Stats) GetStateState(processName string, iface *string) (ptp.SyncState, error) {
 	if s.ptpDependentEventState != nil && s.ptpDependentEventState.DependsOn != nil {
-		if _, ok := s.ptpDependentEventState.DependsOn[processName]; ok {
-			return s.ptpDependentEventState.DependsOn[processName].State, nil
+		if d, ok := s.ptpDependentEventState.DependsOn[processName]; ok {
+			if iface == nil && len(d) > 0 {
+				return d[0].State, nil
+			}
+			for _, state := range d {
+				if *state.IFace == *iface {
+					return state.State, nil
+				}
+			}
 		}
 	}
 	return ptp.FREERUN, fmt.Errorf("sync state not found %s", processName)
+}
+
+// HasProcessEnabled ... check if process is enabled
+func (s *Stats) HasProcessEnabled(processName string) bool {
+	if s.ptpDependentEventState != nil && s.ptpDependentEventState.DependsOn != nil {
+		if _, ok := s.ptpDependentEventState.DependsOn[processName]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+// GetInterfaceByIndex ... get iface
+func (s *Stats) GetInterfaceByIndex(processName string, index int) *string {
+	if s.ptpDependentEventState != nil && s.ptpDependentEventState.DependsOn != nil {
+		if d, ok := s.ptpDependentEventState.DependsOn[processName]; ok {
+			if len(d) >= index {
+				return d[index].IFace
+			}
+		}
+	}
+	return nil
 }
 
 func (s *Stats) String() string {
@@ -249,4 +271,18 @@ func (s *Stats) DeleteAllMetrics() {
 	if s.ptpDependentEventState != nil {
 		s.ptpDependentEventState.DeleteAllMetrics()
 	}
+}
+
+// CheckSource ... check key
+func (ps PTPStats) CheckSource(k types.IFace, configName, processName string) {
+	if _, found := ps[k]; !found {
+		ps[k] = NewStats(configName)
+		ps[k].SetProcessName(processName)
+	}
+}
+
+// New ...
+func (ps PTPStats) New() PTPStats {
+	ptpStats := make(map[types.IFace]*Stats)
+	return ptpStats
 }
