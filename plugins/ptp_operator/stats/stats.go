@@ -237,8 +237,10 @@ func (s *Stats) GetStateState(processName string, iface *string) (ptp.SyncState,
 
 // HasProcessEnabled ... check if process is enabled
 func (s *Stats) HasProcessEnabled(processName string) bool {
-	if _, ok := s.ptpDependentEventState.DependsOn[processName]; ok {
-		return true
+	if s.ptpDependentEventState != nil && s.ptpDependentEventState.DependsOn != nil {
+		if _, ok := s.ptpDependentEventState.DependsOn[processName]; ok {
+			return true
+		}
 	}
 	return false
 }

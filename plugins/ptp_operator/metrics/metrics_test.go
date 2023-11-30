@@ -117,6 +117,7 @@ func (tc *TestCase) init() {
 	tc.expectedSyncState = SKIP
 	tc.expectedNmeaStatus = SKIP
 	tc.expectedPpsStatus = SKIP
+	tc.expectedClockClassMetrics = SKIP
 	tc.expectedEvent = ""
 }
 
@@ -133,9 +134,13 @@ func (tc *TestCase) String() string {
 
 func (tc *TestCase) cleanupMetrics() {
 	metrics.PtpOffset.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
+	metrics.PtpMaxOffset.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
+	metrics.PtpFrequencyAdjustment.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
+	metrics.PtpDelay.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
 	metrics.SyncState.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
-	metrics.PpsStatus.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
 	metrics.NmeaStatus.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
+	metrics.PpsStatus.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
+	metrics.ClockClassMetrics.With(map[string]string{"process": tc.process, "node": tc.node}).Set(CLEANUP)
 	ptpEventManager.ResetMockEvent()
 }
 
@@ -184,7 +189,7 @@ var testCases = []TestCase{
 		expectedSyncState:              s0,
 		expectedNmeaStatus:             SKIP,
 		expectedPpsStatus:              0,
-		expectedEvent:                  ptp.PtpStateChange,
+		expectedEvent:                  "",
 		expectedClockClassMetrics:      SKIP,
 	},
 	{
@@ -216,10 +221,10 @@ var testCases = []TestCase{
 		expectedNmeaStatus:             0,
 		expectedPpsStatus:              SKIP,
 		expectedClockClassMetrics:      SKIP,
-		expectedEvent:                  ptp.PtpStateChange,
+		expectedEvent:                  "",
 	},
 	{
-		log:                            "ts2phc[1000000210]:[ts2phc.0.config] ens2fx nmea_status 1 offset 0 s2",
+		log:                            "ts2phc[1000000210]:[ts2phc.0.config] ens2f0 nmea_status 1 offset 0 s2",
 		from:                           "master",
 		process:                        "ts2phc",
 		iface:                          "ens2fx",
@@ -231,6 +236,7 @@ var testCases = []TestCase{
 		expectedNmeaStatus:             1,
 		expectedPpsStatus:              SKIP,
 		expectedClockClassMetrics:      SKIP,
+		expectedEvent:                  "",
 	},
 	{
 		log:                            "ts2phc[1000000300]: [ts2phc.0.config] ens2f0 master offset          0 s2 freq      -0",
@@ -371,9 +377,12 @@ func setup() {
 	stats_slave.SetProcessName("phc2sys")
 	stats_slave.SetLastSyncState("LOCKED")
 	stats_slave.SetClockClass(0)
+
 	ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)] = make(stats.PTPStats)
 	ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)][types.IFace("master")] = stats_master
 	ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)][types.IFace("CLOCK_REALTIME")] = stats_slave
+	ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)][types.IFace("ens2f0")] = stats_master
+	ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)][types.IFace("ens7f0")] = stats_slave
 	ptpEventManager.PtpConfigMapUpdates = config.NewLinuxPTPConfUpdate()
 
 	metrics.RegisterMetrics("mynode")
