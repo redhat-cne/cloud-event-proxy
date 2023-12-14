@@ -23,7 +23,7 @@ type PTPEventManager struct {
 	nodeName       string
 	scConfig       *common.SCConfiguration
 	lock           sync.RWMutex
-	Stats          map[types.ConfigName]map[types.IFace]*stats.Stats
+	Stats          map[types.ConfigName]stats.PTPStats
 	mock           bool
 	mockEvent      ptp.EventType
 	// PtpConfigMapUpdates holds ptp-configmap updated details
@@ -41,7 +41,7 @@ func NewPTPEventManager(resourcePrefix string, publisherTypes map[ptp.EventType]
 		nodeName:              nodeName,
 		scConfig:              config,
 		lock:                  sync.RWMutex{},
-		Stats:                 make(map[types.ConfigName]map[types.IFace]*stats.Stats),
+		Stats:                 map[types.ConfigName]stats.PTPStats{},
 		Ptp4lConfigInterfaces: make(map[types.ConfigName]*ptp4lconf.PTP4lConfig),
 		mock:                  false,
 	}
@@ -124,7 +124,7 @@ func (p *PTPEventManager) GetPTPConfig(configName types.ConfigName) *ptp4lconf.P
 func (p *PTPEventManager) GetStatsForInterface(name types.ConfigName, iface types.IFace) *stats.Stats {
 	var found bool
 	if _, found = p.Stats[name]; !found {
-		p.Stats[name] = make(map[types.IFace]*stats.Stats)
+		p.Stats[name] = make(stats.PTPStats)
 		p.Stats[name][iface] = stats.NewStats(string(name))
 	} else if _, found = p.Stats[name][iface]; !found {
 		p.Stats[name][iface] = stats.NewStats(string(name))
@@ -133,9 +133,9 @@ func (p *PTPEventManager) GetStatsForInterface(name types.ConfigName, iface type
 }
 
 // GetStats ... get stats
-func (p *PTPEventManager) GetStats(name types.ConfigName) map[types.IFace]*stats.Stats {
+func (p *PTPEventManager) GetStats(name types.ConfigName) stats.PTPStats {
 	if _, found := p.Stats[name]; !found {
-		p.Stats[name] = make(map[types.IFace]*stats.Stats)
+		p.Stats[name] = make(stats.PTPStats)
 	}
 	return p.Stats[name]
 }
