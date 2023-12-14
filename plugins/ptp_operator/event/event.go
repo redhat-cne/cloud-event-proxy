@@ -38,11 +38,14 @@ const (
 	DPLL ClockSourceType = "dpll"
 )
 
+// DependingClockState ...
+type DependingClockState []*ClockState
+
 // PTPEventState ...
 type PTPEventState struct {
 	sync.Mutex
 	CurrentPTPStateEvent ptp.SyncState
-	DependsOn            map[string]*ClockState
+	DependsOn            map[string]DependingClockState // [dpll][ens2f0]State
 	Type                 ptp.EventType
 }
 
@@ -56,7 +59,7 @@ type ClockState struct {
 	Value       map[string]int64
 	Metric      map[string]*PMetric
 	NodeName    string
-	HelpText    string
+	HelpText    map[string]string
 }
 
 // PMetric ...
@@ -66,6 +69,28 @@ type PMetric struct {
 	metricCounter *prometheus.Counter
 }
 
+func (dt *DependingClockState) hasClockState(iface string) (int, *ClockState) {
+	for index, dep := range *dt {
+		if *dep.IFace == iface {
+			return index, dep
+		}
+	}
+	return -1, nil
+}
+
+func (dt *DependingClockState) hasMetric() map[string]*PMetric {
+	for _, dep := range *dt {
+		return dep.Metric
+	}
+	return nil
+}
+func (dt *DependingClockState) hasMetricHelp() map[string]string {
+	for _, dep := range *dt {
+		return dep.HelpText
+	}
+	return nil
+}
+
 // UpdateCurrentEventState ...
 func (p *PTPEventState) UpdateCurrentEventState(c ClockState) ptp.SyncState {
 	p.Lock()
@@ -73,8 +98,15 @@ func (p *PTPEventState) UpdateCurrentEventState(c ClockState) ptp.SyncState {
 		p.Unlock()
 	}()
 	// if the current state is not locked and the new state is locked then update the current state
-	if d, ok := p.DependsOn[c.Process]; ok {
+	if dep, ok := p.DependsOn[c.Process]; ok {
+		index, d := dep.hasClockState(*c.IFace)
+		// update the clock state if found or else
+		if index == -1 {
+			d = &ClockState{}
+			dep = append(dep, d)
+		}
 		d.Offset = c.Offset
+		d.IFace = c.IFace
 		d.State = c.State
 		d.Process = c.Process
 		d.Value = c.Value
@@ -83,13 +115,17 @@ func (p *PTPEventState) UpdateCurrentEventState(c ClockState) ptp.SyncState {
 		if c.Offset != nil {
 			d.Offset = pointer.Float64(*c.Offset)
 		}
-		p.DependsOn[c.Process] = d
+
 		for k, v := range c.Value {
 			iface := ""
 			if d.IFace != nil {
 				iface = *d.IFace
 			}
-			if d.Metric[k].metricGauge == nil {
+			if d.Metric == nil {
+				d.Metric = dep.hasMetric()
+				d.HelpText = dep.hasMetricHelp()
+			}
+			if d.Metric[k].metricGauge != nil {
 				d.Metric[k].metricGauge.With(map[string]string{"from": d.Process, "process": d.Process,
 					"node": d.NodeName, "iface": iface}).Set(float64(v))
 			}
@@ -117,13 +153,18 @@ func (p *PTPEventState) UpdateCurrentEventState(c ClockState) ptp.SyncState {
 						Namespace: ptpNamespace,
 						Subsystem: ptpSubsystem,
 						Name:      k,
-						Help:      c.HelpText,
+						Help: func() string {
+							if h, ok2 := c.HelpText[k]; ok2 {
+								return h
+							}
+							return ""
+						}(),
 					}, []string{"from", "process", "node", "iface"}),
 				metricCounter: nil,
 			}
 			err := prometheus.Register(metrics[k].metricGauge)
 			if err != nil {
-				log.Info("failed to register metric, metric is already registered")
+				log.Info("ignore, metric is already registered")
 			}
 			iface := ""
 			if clockState.IFace != nil {
@@ -135,7 +176,7 @@ func (p *PTPEventState) UpdateCurrentEventState(c ClockState) ptp.SyncState {
 				"node": clockState.NodeName, "iface": alias}).Set(float64(v))
 		}
 		clockState.Metric = metrics
-		p.DependsOn[c.Process] = clockState
+		p.DependsOn[c.Process] = []*ClockState{clockState}
 	}
 
 	// if all locked then its locked
@@ -143,14 +184,16 @@ func (p *PTPEventState) UpdateCurrentEventState(c ClockState) ptp.SyncState {
 	// if  anyone FREERUN then freerun
 	var currentState ptp.SyncState
 	for _, v := range p.DependsOn {
-		if v.State != ptp.LOCKED {
-			if v.State == ptp.HOLDOVER {
-				currentState = v.State
-				break
+		for _, dd := range v {
+			if dd.State != ptp.LOCKED {
+				if dd.State == ptp.HOLDOVER {
+					currentState = dd.State
+					break
+				}
+				currentState = dd.State
+			} else if currentState == "" {
+				currentState = dd.State
 			}
-			currentState = v.State
-		} else if currentState == "" {
-			currentState = v.State
 		}
 	}
 	p.CurrentPTPStateEvent = currentState
@@ -162,9 +205,11 @@ func (p *PTPEventState) UnRegisterMetrics(processName string) {
 	//	write a functions to unregister metric from dependence on object
 	if d, ok := p.DependsOn[processName]; ok {
 		// write loop d.Metric
-		if d.Metric != nil {
-			for _, v := range d.Metric {
-				prometheus.Unregister(v.metricGauge)
+		for _, dd := range d {
+			if dd.Metric != nil {
+				for _, v := range dd.Metric {
+					prometheus.Unregister(v.metricGauge)
+				}
 			}
 		}
 	}
@@ -180,11 +225,13 @@ func (p *PTPEventState) UnRegisterAllMetrics() {
 	}
 	for _, d := range p.DependsOn {
 		// write loop d.Metric
-		if d.Metric != nil {
-			// unregister metric
-			for _, v := range d.Metric {
-				prometheus.Unregister(v.metricGauge)
-				delete(p.DependsOn, d.Process)
+		for _, dd := range d {
+			if dd.Metric != nil {
+				// unregister metric
+				for _, v := range dd.Metric {
+					prometheus.Unregister(v.metricGauge)
+					delete(p.DependsOn, dd.Process)
+				}
 			}
 		}
 	}
@@ -200,15 +247,17 @@ func (p *PTPEventState) DeleteAllMetrics() {
 	}
 	for _, d := range p.DependsOn {
 		// write loop d.Metric
-		if d.Metric != nil {
-			// unregister metric
-			for _, v := range d.Metric {
-				if v.metricGauge != nil && d.IFace != nil {
-					v.metricGauge.Delete(prometheus.Labels{"process": d.Process, "iface": *d.IFace, "node": d.NodeName})
-					prometheus.Unregister(v.metricGauge)
+		for _, dd := range d {
+			if dd.Metric != nil {
+				// unregister metric
+				for _, v := range dd.Metric {
+					if v.metricGauge != nil && dd.IFace != nil {
+						v.metricGauge.Delete(prometheus.Labels{"process": dd.Process, "iface": *dd.IFace, "node": dd.NodeName})
+						prometheus.Unregister(v.metricGauge)
+					}
 				}
 			}
+			delete(p.DependsOn, dd.Process)
 		}
-		delete(p.DependsOn, d.Process)
 	}
 }
