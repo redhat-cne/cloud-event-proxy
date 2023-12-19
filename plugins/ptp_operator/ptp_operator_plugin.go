@@ -54,6 +54,7 @@ const (
 	phc2sysProcessName = "phc2sys"
 	ptp4lProcessName   = "ptp4l"
 	ts2PhcProcessName  = "ts2phc"
+	gnssProcessName    = "gnss"
 	// ClockRealTime is the slave
 	ClockRealTime = "CLOCK_REALTIME"
 	// MasterClockType is the slave sync slave clock to master
@@ -188,6 +189,8 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 			eventType = ptp.OsClockSyncStateChange
 		} else if strings.Contains(e.Source(), string(ptp.PtpClockClass)) {
 			eventType = ptp.PtpClockClassChange
+		} else if strings.Contains(e.Source(), string(ptp.GnssSyncStatus)) {
+			eventType = ptp.GnssStateChange
 		} else {
 			log.Warnf("could not find any events for requested resource type %s", e.Source())
 			return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
@@ -210,11 +213,11 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 
 		for _, ptpInterfaces := range eventManager.Stats {
 			for ptpInterface, s := range ptpInterfaces {
+				if s.Alias() != "" {
+					ptpInterface = ptpTypes.IFace(fmt.Sprintf("%s/%s", s.Alias(), ptpMetrics.MasterClockType))
+				}
 				switch ptpInterface {
 				case ptpMetrics.MasterClockType:
-					if s.Alias() != "" {
-						ptpInterface = ptpTypes.IFace(fmt.Sprintf("%s/%s", s.Alias(), ptpMetrics.MasterClockType))
-					}
 					switch eventType {
 					case ptp.PtpStateChange:
 						// if its master stats then replace with slave interface(masked) +X
@@ -227,6 +230,14 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 					if eventType == ptp.OsClockSyncStateChange {
 						data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType))
 					}
+				default:
+					switch eventType {
+					case ptp.GnssStateChange:
+						if s.HasProcessEnabled(gnssProcessName) { //gnss is with the master
+							ptpInterface = ptpTypes.IFace(fmt.Sprintf("%s/%s", s.Alias(), ptpMetrics.MasterClockType))
+							data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType))
+						}
+					}
 				}
 			}
 		}
@@ -235,7 +246,8 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 		} else {
 			data = eventManager.GetPTPEventsData(ptp.FREERUN, 0, "event-not-found", eventType)
 			d.Data = eventManager.GetPTPCloudEvents(*data, eventType)
-			return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
+			log.Errorf("could not find any events for requested resource type %s", e.Source())
+			return nil
 		}
 		return nil
 	}
@@ -355,7 +367,16 @@ func processPtp4lConfigFileUpdates() {
 						ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), ptp4lProcessName, s.Alias())
 					} else {
 						ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), ts2PhcProcessName, s.Alias())
-						ptpStats[MasterClockType].DeleteAllMetrics()
+						for _, p := range ptpStats {
+							p.DeleteAllMetrics()
+							if p.PtpDependentEventState() != nil {
+								if p.HasProcessEnabled(gnssProcessName) {
+									masterResource := fmt.Sprintf("%s/%s", p.Alias(), MasterClockType)
+									eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, masterResource, ptp.GnssStateChange)
+								}
+								p.DeleteAllMetrics()
+							}
+						}
 					}
 
 					masterResource := fmt.Sprintf("%s/%s", s.Alias(), MasterClockType)

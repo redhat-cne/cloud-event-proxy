@@ -257,6 +257,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 					// right now we are not managing os clock state based on GM state
 					p.GenPTPEvent(profileName, ptpStats[ClockRealTime], interfaceName, int64(ptpOffset), syncState, ptp.OsClockSyncStateChange)
 				}
+				ptpStats[ClockRealTime].SetAlias(ptpStats[master].Alias())
 				// continue to update metrics regardless and stick to last sync state
 				UpdateSyncStateMetrics(processName, interfaceName, ptpStats[ClockRealTime].LastSyncState())
 				UpdatePTPMetrics(offsetSource, processName, interfaceName, ptpOffset, float64(ptpStats[ClockRealTime].MaxAbs()), frequencyAdjustment, delay)

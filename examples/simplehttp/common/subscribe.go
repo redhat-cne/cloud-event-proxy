@@ -15,6 +15,7 @@ func GetResources() map[string]string {
 	subscribeTo[string(ptpEvent.OsClockSyncStateChange)] = string(ptpEvent.OsClockSyncState)
 	subscribeTo[string(ptpEvent.PtpClockClassChange)] = string(ptpEvent.PtpClockClass)
 	subscribeTo[string(ptpEvent.PtpStateChange)] = string(ptpEvent.PtpLockState)
+	subscribeTo[string(ptpEvent.GnssStateChange)] = string(ptpEvent.GnssSyncStatus)
 	return subscribeTo
 }
 
