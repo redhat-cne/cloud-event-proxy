@@ -261,6 +261,18 @@ func (s *Stats) String() string {
 	b.WriteString("  processName: " + s.processName + "\n")
 	b.WriteString("  aliasName: " + s.aliasName + "\n")
 	b.WriteString("  offsetSource: " + s.offsetSource + "\n")
+	b.WriteString("--------------------------------\n")
+	if s.PtpDependentEventState() != nil && s.ptpDependentEventState.DependsOn != nil {
+		for pp, p := range s.ptpDependentEventState.DependsOn {
+			b.WriteString("Depends on process: " + pp + "\n")
+			b.WriteString("--------------------------------\n")
+			for _, pd := range p {
+				b.WriteString("  interface: " + *pd.IFace + "\n")
+				b.WriteString("  state: " + string(pd.State) + "\n")
+			}
+		}
+	}
+
 	return b.String()
 }
 

@@ -15,6 +15,6 @@ metadata:
   name: "event-consumer-external"
 subsets:
   - addresses:
-      - ip: 10.22.18.119  #change this to your laptop ip address
+      - ip: 10.22.9.235  #change this to your laptop ip address
     ports:
       - port: 27017

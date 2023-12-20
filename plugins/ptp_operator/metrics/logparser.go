@@ -372,6 +372,7 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 	// status metrics
 	ptpStats[masterType].SetPtpDependentEventState(clockState)
 	ptpStats[masterType].SetLastSyncState(clockState.State)
+	ptpStats[masterType].SetAlias(alias)
 
 	// If GM is locked/Freerun/Holdover then ptp state change event
 	masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
