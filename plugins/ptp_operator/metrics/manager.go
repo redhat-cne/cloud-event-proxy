@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -342,4 +343,20 @@ func (p *PTPEventManager) GetMockEvent() ptp.EventType {
 // ResetMockEvent ...
 func (p *PTPEventManager) ResetMockEvent() {
 	p.mockEvent = ""
+}
+
+// PrintStats .... for debug
+func (p *PTPEventManager) PrintStats() string {
+	b := strings.Builder{}
+	index := 0
+	for cfgname, s := range p.Stats {
+		b.WriteString(string(rune(index)) + ") cfgName: " + string(cfgname) + "\n")
+		for iface, ss := range s {
+			b.WriteString("interface: " + string(iface) + "\n")
+			b.WriteString("-------------------------------\n")
+			b.WriteString("stats: " + ss.String() + "\n")
+		}
+		index++
+	}
+	return b.String()
 }
