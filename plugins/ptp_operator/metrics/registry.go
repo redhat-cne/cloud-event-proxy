@@ -66,15 +66,6 @@ var (
 			Help:      "0 = UNAVAILABLE, 1 = AVAILABLE",
 		}, []string{"process", "node", "iface"})
 
-	// PpsStatus metrics to show current pps status
-	PpsStatus = prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Namespace: ptpNamespace,
-			Subsystem: ptpSubsystem,
-			Name:      "pps_status",
-			Help:      "0 = UNAVAILABLE, 1 = AVAILABLE",
-		}, []string{"process", "node", "iface"})
-
 	// Threshold metrics to show current ptp threshold
 	Threshold = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -132,7 +123,6 @@ func RegisterMetrics(nodeName string) {
 		prometheus.MustRegister(PtpDelay)
 		prometheus.MustRegister(SyncState)
 		prometheus.MustRegister(NmeaStatus)
-		prometheus.MustRegister(PpsStatus)
 		prometheus.MustRegister(Threshold)
 		prometheus.MustRegister(InterfaceRole)
 		prometheus.MustRegister(ClockClassMetrics)
@@ -214,12 +204,6 @@ func UpdateSyncStateMetrics(process, iface string, state ptp.SyncState) {
 // UpdateNmeaStatusMetrics ... update nmea status metrics
 func UpdateNmeaStatusMetrics(process, iface string, status float64) {
 	NmeaStatus.With(prometheus.Labels{
-		"process": process, "node": ptpNodeName, "iface": iface}).Set(status)
-}
-
-// UpdatePpsStatusMetrics ... update pps status metrics
-func UpdatePpsStatusMetrics(process, iface string, status float64) {
-	PpsStatus.With(prometheus.Labels{
 		"process": process, "node": ptpNodeName, "iface": iface}).Set(status)
 }
 

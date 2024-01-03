@@ -17,6 +17,6 @@ func TestStats_SetPtpDependentEventState(t *testing.T) {
 		State:   ptp.FREERUN,
 		Offset:  pointer.Float64(0),
 		Process: metrics.GNSS,
-	})
+	}, nil, nil)
 	assert.Equal(t, ptp.FREERUN, s.PtpDependentEventState().CurrentPTPStateEvent)
 }
