@@ -361,7 +361,7 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 		State:       GetSyncState(syncState),
 		IFace:       pointer.String(iface),
 		Process:     processName,
-		ClockSource: gmProcessName,
+		ClockSource: event.GM,
 		Value:       nil,
 		Metric:      nil,
 		NodeName:    ptpNodeName,
@@ -370,7 +370,7 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 
 	SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": alias}).Set(GetSyncStateID(syncState))
 	// status metrics
-	ptpStats[masterType].SetPtpDependentEventState(clockState)
+	ptpStats[masterType].SetPtpDependentEventState(clockState, ptpStats.HasMetrics(processName), ptpStats.HasMetricHelp(processName))
 	ptpStats[masterType].SetLastSyncState(clockState.State)
 	ptpStats[masterType].SetAlias(alias)
 
@@ -444,17 +444,16 @@ logStatusLoop:
 			IFace:   iface,
 			Value: map[string]int64{"frequency_status": frequencyStatus, "phase_status": int64(phaseStatus),
 				"pps_status": int64(ppsStatus)},
-			ClockSource: DPLL,
+			ClockSource: event.DPLL,
 			NodeName:    ptpNodeName,
 			HelpText: map[string]string{
 				"frequency_status": "-1=UNKNOWN, 0=INVALID, 1=FREERUN, 2=LOCKED, 3=LOCKED_HO_ACQ, 4=HOLDOVER",
 				"phase_status":     "-1=UNKNOWN, 0=INVALID, 1=FREERUN, 2=LOCKED, 3=LOCKED_HO_ACQ, 4=HOLDOVER",
 				"pps_status":       "0=UNAVAILABLE, 1=AVAILABLE",
 			},
-		})
+		}, ptpStats.HasMetrics(processName), ptpStats.HasMetricHelp(processName))
 		SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": alias}).Set(GetSyncStateID(syncState))
 		UpdatePTPOffsetMetrics(processName, processName, alias, dpllOffset)
-		UpdatePpsStatusMetrics(processName, alias, ppsStatus)
 	} else {
 		log.Errorf("error parsing dpll %s", err.Error())
 	}
@@ -507,10 +506,10 @@ func (p *PTPEventManager) ParseGNSSLogs(processName, configName, output string, 
 			Process:     processName,
 			IFace:       iface,
 			Value:       map[string]int64{"gnss_status": gnssState},
-			ClockSource: GNSS,
+			ClockSource: event.GNSS,
 			NodeName:    ptpNodeName,
 			HelpText:    map[string]string{"gnss_status": "0=NOFIX, 1=Dead Reckoning Only, 2=2D-FIX, 3=3D-FIX, 4=GPS+dead reckoning fix, 5=Time only fix"},
-		})
+		}, ptpStats.HasMetrics(processName), ptpStats.HasMetricHelp(processName))
 		// reduce noise ; if state changed then send events
 		if lastState != GetSyncState(syncState) || errState != nil {
 			log.Infof("%s last state %s and current state %s", processName, lastState, GetSyncState(syncState))

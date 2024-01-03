@@ -139,7 +139,6 @@ func (tc *TestCase) cleanupMetrics() {
 	metrics.PtpDelay.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
 	metrics.SyncState.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
 	metrics.NmeaStatus.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
-	metrics.PpsStatus.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
 	metrics.ClockClassMetrics.With(map[string]string{"process": tc.process, "node": tc.node}).Set(CLEANUP)
 	ptpEventManager.ResetMockEvent()
 }
@@ -425,10 +424,6 @@ func Test_ExtractMetrics(t *testing.T) {
 		if tc.expectedSyncState != SKIP {
 			clockState := metrics.SyncState.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface})
 			assert.Equal(tc.expectedSyncState, testutil.ToFloat64(clockState), "SyncState does not match\n%s", tc.String())
-		}
-		if tc.expectedPpsStatus != SKIP {
-			ppsStatus := metrics.PpsStatus.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface})
-			assert.Equal(tc.expectedPpsStatus, testutil.ToFloat64(ppsStatus), "PpsStatus does not match\n%s", tc.String())
 		}
 		if tc.expectedNmeaStatus != SKIP {
 			nmeaStatus := metrics.NmeaStatus.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface})

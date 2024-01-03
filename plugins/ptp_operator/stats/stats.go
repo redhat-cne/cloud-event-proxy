@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/event"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
 
@@ -35,6 +37,7 @@ type Stats struct {
 	clackClass             int64
 	role                   types.PtpPortRole
 	ptpDependentEventState *event.PTPEventState
+	configDeleted          bool
 }
 
 // AddValue ...add value
@@ -204,7 +207,7 @@ func (s *Stats) GetCurrentDependentEventState() ptp.SyncState {
 }
 
 // SetPtpDependentEventState ... set ptp dependent event state
-func (s *Stats) SetPtpDependentEventState(e event.ClockState) {
+func (s *Stats) SetPtpDependentEventState(e event.ClockState, metrics map[string]*event.PMetric, help map[string]string) {
 	if s.ptpDependentEventState == nil {
 		s.ptpDependentEventState = &event.PTPEventState{
 			Mutex:                sync.Mutex{},
@@ -213,7 +216,9 @@ func (s *Stats) SetPtpDependentEventState(e event.ClockState) {
 			Type:                 "",
 		}
 	}
-	s.ptpDependentEventState.UpdateCurrentEventState(e)
+	if !s.configDeleted {
+		s.ptpDependentEventState.UpdateCurrentEventState(e, metrics, help)
+	}
 }
 
 // GetStateState ... get state
@@ -279,9 +284,9 @@ func (s *Stats) String() string {
 // DeleteAllMetrics ...  delete all metrics
 //
 //	write a functions to delete meteric from dependson object
-func (s *Stats) DeleteAllMetrics() {
+func (s *Stats) DeleteAllMetrics(m []*prometheus.GaugeVec) {
 	if s.ptpDependentEventState != nil {
-		s.ptpDependentEventState.DeleteAllMetrics()
+		s.ptpDependentEventState.DeleteAllMetrics(m)
 	}
 }
 
@@ -297,4 +302,43 @@ func (ps PTPStats) CheckSource(k types.IFace, configName, processName string) {
 func (ps PTPStats) New() PTPStats {
 	ptpStats := make(map[types.IFace]*Stats)
 	return ptpStats
+}
+
+// SetConfigAsDeleted ...
+func (ps PTPStats) SetConfigAsDeleted(state bool) {
+	for _, p := range ps {
+		p.configDeleted = state
+	}
+}
+
+// HasMetrics ...
+func (ps PTPStats) HasMetrics(process string) map[string]*event.PMetric {
+	for _, s := range ps {
+		if s.ptpDependentEventState != nil && s.ptpDependentEventState.DependsOn != nil {
+			for p, d := range s.ptpDependentEventState.DependsOn { // [processname]Clockstate
+				if p == process {
+					for _, c := range d {
+						return c.Metric
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// HasMetricHelp ...
+func (ps PTPStats) HasMetricHelp(process string) map[string]string {
+	for _, s := range ps {
+		if s.ptpDependentEventState != nil && s.ptpDependentEventState.DependsOn != nil {
+			for p, d := range s.ptpDependentEventState.DependsOn { // [processname]Clockstate
+				if p == process {
+					for _, c := range d {
+						return c.HelpText
+					}
+				}
+			}
+		}
+	}
+	return nil
 }
