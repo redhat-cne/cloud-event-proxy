@@ -25,6 +25,10 @@ import (
 	"testing"
 )
 
+var (
+	depObject = &event.PTPEventState{DependsOn: map[string]event.DependingClockState{}}
+)
+
 type inputState struct {
 	state   ptp.SyncState
 	process string
@@ -37,6 +41,73 @@ type eventTestCase struct {
 	input            inputState
 }
 
+type ClockStateTestCase struct {
+	expectedCount    int
+	eventStateObject *event.PTPEventState
+	input            event.ClockState
+}
+
+var clockStateTestCase = []ClockStateTestCase{{
+	eventStateObject: depObject,
+	input: event.ClockState{
+		State:       ptp.FREERUN,
+		Offset:      pointer.Float64(01),
+		IFace:       pointer.String("ens01"),
+		Process:     "dpll",
+		Value:       map[string]int64{"frequency_status": 2, "phase_status": 3, "pps_status": 1},
+		ClockSource: event.DPLL,
+		NodeName:    "test",
+		HelpText: map[string]string{
+			"frequency_status": "-1=UNKNOWN, 0=INVALID, 1=FREERUN, 2=LOCKED, 3=LOCKED_HO_ACQ, 4=HOLDOVER",
+			"phase_status":     "-1=UNKNOWN, 0=INVALID, 1=FREERUN, 2=LOCKED, 3=LOCKED_HO_ACQ, 4=HOLDOVER",
+			"pps_status":       "0=UNAVAILABLE, 1=AVAILABLE",
+		},
+	},
+	expectedCount: 1,
+},
+	{eventStateObject: depObject,
+		input: event.ClockState{
+			State:       ptp.FREERUN,
+			Offset:      pointer.Float64(01),
+			IFace:       pointer.String("ens02"),
+			Process:     "dpll",
+			Value:       map[string]int64{"frequency_status": 2, "phase_status": 3, "pps_status": 1},
+			ClockSource: event.DPLL,
+			NodeName:    "test",
+			HelpText: map[string]string{
+				"frequency_status": "-1=UNKNOWN, 0=INVALID, 1=FREERUN, 2=LOCKED, 3=LOCKED_HO_ACQ, 4=HOLDOVER",
+				"phase_status":     "-1=UNKNOWN, 0=INVALID, 1=FREERUN, 2=LOCKED, 3=LOCKED_HO_ACQ, 4=HOLDOVER",
+				"pps_status":       "0=UNAVAILABLE, 1=AVAILABLE",
+			},
+		},
+		expectedCount: 2,
+	},
+	{eventStateObject: depObject,
+		input: event.ClockState{
+			State:       ptp.FREERUN,
+			Offset:      pointer.Float64(01),
+			IFace:       pointer.String("ens01"),
+			Process:     "GM",
+			Value:       nil,
+			Metric:      nil,
+			ClockSource: event.GM,
+			NodeName:    "test",
+		},
+		expectedCount: 1,
+	},
+	{eventStateObject: depObject,
+		input: event.ClockState{
+			State:       ptp.FREERUN,
+			Offset:      pointer.Float64(01),
+			IFace:       pointer.String("ens01"),
+			Process:     "gnss",
+			Value:       map[string]int64{"gnss_status": 3},
+			ClockSource: event.GNSS,
+			HelpText:    map[string]string{"gnss_status": "0=NOFIX, 1=Dead Reckoning Only, 2=2D-FIX, 3=3D-FIX, 4=GPS+dead reckoning fix, 5=Time only fix"},
+			NodeName:    "test",
+		},
+		expectedCount: 1,
+	}}
 var testCase = []eventTestCase{{
 	eventStateObject: &event.PTPEventState{
 		CurrentPTPStateEvent: ptp.FREERUN,
@@ -131,7 +202,14 @@ func Test_UpdateEventState(t *testing.T) {
 			State:   tc.input.state,
 			Offset:  tc.input.offset,
 			Process: tc.input.process,
-		})
+		}, nil, nil)
 		assert.Equal(t, tc.expectedState, cSTate)
+	}
+}
+
+func TestPTPEventState_UpdateCurrentEventState(t *testing.T) {
+	for _, tc := range clockStateTestCase {
+		tc.eventStateObject.UpdateCurrentEventState(tc.input, nil, nil)
+		assert.Equal(t, tc.expectedCount, len(tc.eventStateObject.DependsOn[tc.input.Process]))
 	}
 }
