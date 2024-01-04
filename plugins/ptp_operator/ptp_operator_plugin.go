@@ -343,6 +343,7 @@ func processPtp4lConfigFileUpdates() {
 				// delete metrics, ptp4l config is removed
 				ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
 				ptpStats := eventManager.GetStats(ptpConfigFileName)
+				ptpStats.SetConfigAsDeleted(true)
 				// clean up
 				if ptpConfig, ok := eventManager.Ptp4lConfigInterfaces[ptpConfigFileName]; ok {
 					for _, ptpInterface := range ptpConfig.Interfaces {
@@ -363,22 +364,29 @@ func processPtp4lConfigFileUpdates() {
 					eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, ClockRealTime, ptp.OsClockSyncStateChange)
 				}
 				if s, found := ptpStats[MasterClockType]; found {
-					if s.OffsetSource() == ptp4lProcessName {
+					if s.ProcessName() == ptp4lProcessName {
 						ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), ptp4lProcessName, s.Alias())
 					} else {
 						ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), ts2PhcProcessName, s.Alias())
 						for _, p := range ptpStats {
-							p.DeleteAllMetrics()
 							if p.PtpDependentEventState() != nil {
 								if p.HasProcessEnabled(gnssProcessName) {
+									if ptpMetrics.NmeaStatus != nil {
+										ptpMetrics.NmeaStatus.Delete(prometheus.Labels{
+											"process": ts2PhcProcessName, "node": eventManager.NodeName(), "iface": p.Alias()})
+									}
 									masterResource := fmt.Sprintf("%s/%s", p.Alias(), MasterClockType)
 									eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, masterResource, ptp.GnssStateChange)
 								}
-								p.DeleteAllMetrics()
 							}
+							if ptpMetrics.ClockClassMetrics != nil {
+								ptpMetrics.ClockClassMetrics.Delete(prometheus.Labels{
+									"process": ptp4lProcessName, "node": eventManager.NodeName()})
+							}
+							ptpMetrics.DeletedPTPMetrics(MasterClockType, ts2PhcProcessName, p.Alias())
+							p.DeleteAllMetrics([]*prometheus.GaugeVec{ptpMetrics.PtpOffset, ptpMetrics.SyncState})
 						}
 					}
-
 					masterResource := fmt.Sprintf("%s/%s", s.Alias(), MasterClockType)
 					eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, masterResource, ptp.PtpStateChange)
 				}
