@@ -351,7 +351,7 @@ func processPtp4lConfigFileUpdates() {
 					eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, ClockRealTime, ptp.OsClockSyncStateChange)
 				}
 				if s, found := ptpStats[MasterClockType]; found {
-					if s.OffsetSource() == ptp4lProcessName {
+					if s.ProcessName() == ptp4lProcessName {
 						ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), ptp4lProcessName, s.Alias())
 					} else {
 						ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), ts2PhcProcessName, s.Alias())
