@@ -171,18 +171,12 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		} else if strings.Contains(output, "nmea_status") &&
 			processName == ts2phcProcessName {
 			// ts2phc[1699929121]:[ts2phc.0.config] ens2f0 nmea_status 0 offset 999999 s0
-			interfaceName, status, ptpOffset, syncState := extractNmeaMetrics(processName, output)
+			interfaceName, status, _, _ := extractNmeaMetrics(processName, output)
 
-			offsetSource := master
-			interfaceType := types.IFace(interfaceName)
 			// ts2phc return actual interface name unlike ptp4l
 			ptpInterface = ptp4lconf.PTPInterface{Name: interfaceName}
-
 			alias := getAlias(interfaceName)
-			ptpStats[interfaceType].SetAlias(alias)
-			// no event for nmeas status , change in GM will manage  ptp events
-			UpdatePTPOffsetMetrics(offsetSource, processName, alias, ptpOffset)
-			UpdateSyncStateMetrics(processName, alias, syncState)
+			// no event for nmeas status , change in GM will manage ptp events and sync states
 			UpdateNmeaStatusMetrics(processName, alias, status)
 		} else if strings.Contains(output, " offset ") &&
 			(processName != gnssProcessName && processName != dpllProcessName && processName != gmProcessName) {
