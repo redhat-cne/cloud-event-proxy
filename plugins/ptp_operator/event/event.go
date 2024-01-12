@@ -198,7 +198,6 @@ func (p *PTPEventState) UpdateCurrentEventState(c ClockState, metrics map[string
 		clockState.Metric = metrics
 		p.DependsOn[clockState.Process] = []*ClockState{clockState}
 	}
-	log.Infof("depends on end %s", p.PrintDependsOn())
 	// if all locked then its locked
 	// if anyone HOLDOVER then holdover
 	// if  anyone FREERUN then freerun
