@@ -21,17 +21,14 @@ var gmStatusIdentifier = "T-GM-STATUS"
 
 // ParsePTP4l ... parse ptp4l for various events
 func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, output string, fields []string,
-	ptpInterface ptp4lconf.PTPInterface, ptp4lCfg *ptp4lconf.PTP4lConfig, ptpStats map[types.IFace]*stats.Stats) {
+	ptpInterface ptp4lconf.PTPInterface, ptp4lCfg *ptp4lconf.PTP4lConfig, ptpStats stats.PTPStats) {
 	var err error
 	if strings.Contains(output, classChangeIdentifier) {
 		if len(fields) < 5 {
 			log.Errorf("clock class not in right format %s", output)
 			return
 		}
-		if _, found := ptpStats[master]; !found {
-			ptpStats[master] = stats.NewStats(configName)
-			ptpStats[master].SetProcessName(ptp4lProcessName)
-		}
+		ptpStats.CheckSource(master, configName, ptp4lProcessName)
 		// ptp4l 1646672953  ptp4l.0.config  CLOCK_CLASS_CHANGE 165.000000
 		var clockClass float64
 		clockClass, err = strconv.ParseFloat(fields[4], 64)
@@ -68,14 +65,8 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 
 		if role == types.SLAVE || masterOffsetSource == ts2phcProcessName {
 			// initialize
-			if _, found := ptpStats[ClockRealTime]; !found {
-				ptpStats[ClockRealTime] = stats.NewStats(configName)
-				ptpStats[ClockRealTime].SetProcessName(phc2sysProcessName)
-			}
-			if _, found := ptpStats[master]; !found {
-				ptpStats[master] = stats.NewStats(configName)
-				ptpStats[master].SetProcessName(masterOffsetSource)
-			}
+			ptpStats.CheckSource(ClockRealTime, configName, phc2sysProcessName)
+			ptpStats.CheckSource(master, configName, masterOffsetSource)
 			ptpStats[master].SetRole(role)
 		}
 

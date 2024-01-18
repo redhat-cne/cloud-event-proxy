@@ -57,6 +57,15 @@ var (
 			Help:      "0 = FREERUN, 1 = LOCKED, 2 = HOLDOVER",
 		}, []string{"process", "node", "iface"})
 
+	// NmeaStatus metrics to show current nmea status
+	NmeaStatus = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: ptpNamespace,
+			Subsystem: ptpSubsystem,
+			Name:      "nmea_status",
+			Help:      "0 = UNAVAILABLE, 1 = AVAILABLE",
+		}, []string{"process", "node", "iface"})
+
 	// Threshold metrics to show current ptp threshold
 	Threshold = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -72,7 +81,7 @@ var (
 			Namespace: ptpNamespace,
 			Subsystem: ptpSubsystem,
 			Name:      "interface_role",
-			Help:      "0 = PASSIVE, 1 = SLAVE, 2 = MASTER, 3 = FAULTY, 4 =  UNKNOWN, 5 = LISTENING",
+			Help:      "0 = PASSIVE, 1 = SLAVE, 2 = MASTER, 3 = FAULTY, 4 = UNKNOWN, 5 = LISTENING",
 		}, []string{"process", "node", "iface"})
 
 	// ClockClassMetrics metrics to show current clock class for the node
@@ -81,7 +90,7 @@ var (
 			Namespace: ptpNamespace,
 			Subsystem: ptpSubsystem,
 			Name:      "clock_class",
-			Help:      "",
+			Help:      "6 = Locked, 7 = PRC unlocked in-spec, 52/187 = PRC unlocked out-of-spec, 248 = Default, 255 = Slave Only Clock",
 		}, []string{"process", "node"})
 
 	// ProcessStatus  ... update process status
@@ -113,6 +122,7 @@ func RegisterMetrics(nodeName string) {
 		prometheus.MustRegister(PtpFrequencyAdjustment)
 		prometheus.MustRegister(PtpDelay)
 		prometheus.MustRegister(SyncState)
+		prometheus.MustRegister(NmeaStatus)
 		prometheus.MustRegister(Threshold)
 		prometheus.MustRegister(InterfaceRole)
 		prometheus.MustRegister(ClockClassMetrics)
@@ -140,6 +150,12 @@ func UpdatePTPMetrics(metricsType, process, eventResourceName string, offset, ma
 
 	PtpDelay.With(prometheus.Labels{"from": metricsType,
 		"process": process, "node": ptpNodeName, "iface": eventResourceName}).Set(delay)
+}
+
+// UpdatePTPOffsetMetrics ... update ptp offset metrics
+func UpdatePTPOffsetMetrics(metricsType, process, eventResourceName string, offset float64) {
+	PtpOffset.With(prometheus.Labels{"from": metricsType,
+		"process": process, "node": ptpNodeName, "iface": eventResourceName}).Set(offset)
 }
 
 // DeletedPTPMetrics ... update metrics for deleted ptp config
@@ -178,11 +194,17 @@ func UpdateSyncStateMetrics(process, iface string, state ptp.SyncState) {
 	}
 	// prevent reporting wrong metrics
 	if iface == master && process == phc2sysProcessName {
-		log.Errorf("wrong meterics are processed, ignoring interface %s with process %s", iface, process)
+		log.Errorf("wrong metrics are processed, ignoring interface %s with process %s", iface, process)
 		return
 	}
 	SyncState.With(prometheus.Labels{
 		"process": process, "node": ptpNodeName, "iface": iface}).Set(clockState)
+}
+
+// UpdateNmeaStatusMetrics ... update nmea status metrics
+func UpdateNmeaStatusMetrics(process, iface string, status float64) {
+	NmeaStatus.With(prometheus.Labels{
+		"process": process, "node": ptpNodeName, "iface": iface}).Set(status)
 }
 
 // UpdateInterfaceRoleMetrics ... update interface role metrics

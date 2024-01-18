@@ -48,6 +48,7 @@ func initResources() {
 			Resource: fmt.Sprintf(resourcePrefix, nodeName, resource),
 		})
 	}
+	fmt.Println(subs)
 }
 
 func main() {
@@ -106,7 +107,9 @@ loop:
 	<-cancelChan
 	log.Println("handling exit")
 	callGetCurrentState()
-	common.DeleteSubscription(fmt.Sprintf("%s/subscription", publisherServiceName), clientID)
+	if err := common.DeleteSubscription(fmt.Sprintf("%s/subscription", publisherServiceName), clientID); err != nil {
+		log.Println(err.Error())
+	}
 	stopHTTPServerChan <- true
 	wg.Wait()
 }
@@ -134,7 +137,7 @@ func help() {
 	fmt.Println("linuxptp-daemon-xmjcr           3/3     Running   0          13h")
 	fmt.Println("")
 	fmt.Println("Run following command to set port forwarding")
-	fmt.Println("oc -n openshift-ptp port-forward linuxptp-daemon-xmjcr 9043:9043 --address='0.0.0.0'")
+	fmt.Println("oc -n openshift-ptp port-forward ds/linuxptp-daemon 9043:9043 --address='0.0.0.0'")
 	fmt.Println("----------------------------------------------------------------")
 	fmt.Println("2. Setup endpoint for k8s to access service running externally in laptop")
 	fmt.Println("edit the file to update your laptop ipaddress")
