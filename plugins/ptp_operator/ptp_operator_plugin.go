@@ -211,13 +211,13 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 			return data
 		}
 
-		for _, ptpInterfaces := range eventManager.Stats {
-			for ptpInterface, s := range ptpInterfaces {
-				if s.Alias() != "" {
-					ptpInterface = ptpTypes.IFace(fmt.Sprintf("%s/%s", s.Alias(), ptpMetrics.MasterClockType))
-				}
+		for _, ptpStats := range eventManager.Stats { // configname->PTPStats
+			for ptpInterface, s := range ptpStats { // iface->stats
 				switch ptpInterface {
 				case ptpMetrics.MasterClockType:
+					if s.Alias() != "" {
+						ptpInterface = ptpTypes.IFace(fmt.Sprintf("%s/%s", s.Alias(), ptpMetrics.MasterClockType))
+					}
 					switch eventType {
 					case ptp.PtpStateChange:
 						// if its master stats then replace with slave interface(masked) +X
