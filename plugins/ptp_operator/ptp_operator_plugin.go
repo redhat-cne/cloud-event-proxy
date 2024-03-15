@@ -108,7 +108,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 
 	// watch and monitor ptp4l config file creation and deletion
 	// create a ptpConfigDir directory watcher for config changes
-	notifyConfigDirUpdates = make(chan *ptp4lconf.PtpConfigUpdate)
+	notifyConfigDirUpdates = make(chan *ptp4lconf.PtpConfigUpdate, 20) // max 20 profiles since all files will be deleted in reapply
 	fileWatcher, err = ptp4lconf.NewPtp4lConfigWatcher(ptpConfigDir, notifyConfigDirUpdates)
 	if err != nil {
 		log.Errorf("cannot monitor ptp4l configuation folder at %s : %s", ptpConfigDir, err)
@@ -117,6 +117,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	// process ptp4l conf file updates under /var/run/ptp4l.X.conf
 	go processPtp4lConfigFileUpdates()
 
+	// Reading configmap on any updates to configmap
 	// get threshold data on change of ptp config
 	// update node profile when configmap changes
 	go func() {
@@ -124,7 +125,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 			select {
 			case <-eventManager.PtpConfigMapUpdates.UpdateCh:
 				log.Infof("updating ptp profile changes %d", len(eventManager.PtpConfigMapUpdates.NodeProfiles))
-				// clean up
+				// clean up when no profiles found in configmap
 				if len(eventManager.PtpConfigMapUpdates.NodeProfiles) == 0 {
 					log.Infof("Zero Profile to update: cleaning up threshold")
 					eventManager.PtpConfigMapUpdates.DeleteAllPTPThreshold()
@@ -133,10 +134,27 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 					}
 					// delete all metrics related to process
 					ptpMetrics.DeleteProcessStatusMetricsForConfig(nodeName, "", "")
+					// delete all metrics related to ptp ha if haProfile is deleted
+					if eventManager.PtpConfigMapUpdates.PtpSettings != nil {
+						for _, ptpSettings := range eventManager.PtpConfigMapUpdates.PtpSettings {
+							if ptpSettings != nil {
+								if haProfile, ok := ptpSettings["haProfiles"]; ok {
+									profiles := strings.Split(haProfile, "")
+									for _, p := range profiles {
+										ptpMetrics.DeletePTPHaMetrics(strings.TrimSpace(p))
+									}
+								}
+							}
+						}
+					}
 				} else {
-					// updates
+					// updates found in configmap
 					eventManager.PtpConfigMapUpdates.UpdatePTPProcessOptions()
 					eventManager.PtpConfigMapUpdates.UpdatePTPThreshold()
+					eventManager.PtpConfigMapUpdates.UpdatePTPSetting()
+					// if profile 1 is removed for ha then remove those metrics
+					// if hasProfile is not found then we need to remove all metrics for HA
+					// this is done by file watcher
 					for key, np := range eventManager.PtpConfigMapUpdates.EventThreshold {
 						ptpMetrics.Threshold.With(prometheus.Labels{
 							"threshold": "MinOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MinOffsetThreshold))
@@ -254,6 +272,7 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 }
 
 // update interface and threshold details when ptpConfig change found
+// these are updated when config file is created or deleted under /var/run folder
 func processPtp4lConfigFileUpdates() {
 	for {
 		select {
@@ -268,14 +287,19 @@ func processPtp4lConfigFileUpdates() {
 				ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
 				// read all interface names from the config
 				newInterfaces := ptpConfigEvent.GetAllInterface()
+				ptp4lConfig := eventManager.GetPTPConfig(ptpConfigFileName)
 
-				if _, ok := eventManager.Ptp4lConfigInterfaces[ptpConfigFileName]; !ok { // config file name is the key here
-					eventManager.Ptp4lConfigInterfaces[ptpConfigFileName] = nil
+				if ptp4lConfig.Profile == "" {
+					ptp4lConfig.Profile = *ptpConfigEvent.Profile
+					eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
 				}
+
 				// loop through to find if any interface changed
 				if eventManager.Ptp4lConfigInterfaces[ptpConfigFileName] != nil &&
 					HasEqualInterface(newInterfaces, eventManager.Ptp4lConfigInterfaces[ptpConfigFileName].Interfaces) {
 					log.Infof("skipped update,interface not changed in ptl4lconfig")
+					// add to eventManager
+					eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
 					continue
 				}
 
@@ -288,8 +312,7 @@ func processPtp4lConfigFileUpdates() {
 					}
 					return false
 				}
-				// update ptp4lConfig
-				ptp4lConfig := eventManager.GetPTPConfig(ptpConfigFileName)
+
 				if ptp4lConfig != nil {
 					for _, ptpInterface := range ptp4lConfig.Interfaces {
 						if !isExists(ptpInterface.Name) {
@@ -306,13 +329,13 @@ func processPtp4lConfigFileUpdates() {
 					if p, e := ptp4lConfig.ByInterface(*ptpInterface); e == nil && p.PortID == index+1 { // maintain role
 						role = p.Role
 					} // else new config order is not same
-					ptpInterface := &ptp4lconf.PTPInterface{
+					ptpIFace := &ptp4lconf.PTPInterface{
 						Name:     *ptpInterface,
 						PortID:   index + 1,
 						PortName: fmt.Sprintf("%s%d", "port ", index+1),
 						Role:     role,
 					}
-					ptpInterfaces = append(ptpInterfaces, ptpInterface)
+					ptpInterfaces = append(ptpInterfaces, ptpIFace)
 				}
 				// updated ptp4lConfig is ready
 				ptp4lConfig = &ptp4lconf.PTP4lConfig{
@@ -339,13 +362,24 @@ func processPtp4lConfigFileUpdates() {
 							strings.Replace(cName, ptp4lProcessName, ts2PhcProcessName, 1), ts2PhcProcessName)
 					}
 				}
-			case true: // ptp4l.X.conf is deleted
+			case true: // ptp4l.X.conf is deleted ; how to prevent updates happening at same time
 				// delete metrics, ptp4l config is removed
+				// get config fileName
 				ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
+				ptp4lConfig := eventManager.GetPTPConfig(ptpConfigFileName)
+				log.Infof("deleting config %s with profile %s\n", *ptpConfigEvent.Name, ptp4lConfig.Profile)
+				eventManager.PtpConfigMapUpdates.UpdateDeleteConfigInProcess(true)
 				ptpStats := eventManager.GetStats(ptpConfigFileName)
+				// to avoid new one getting created , make a copy of this stats
 				ptpStats.SetConfigAsDeleted(true)
+				// there is a possibility of new config with same name is  created immediately after the delete of the old config.
+				// time="2024-03-19T19:40:16Z" level=info msg="config removed file: /var/run/phc2sys.2.config"
+				// time="2024-03-19T19:40:16Z" level=info msg="updating ptp config changes for phc2sys.2.config"
+
 				// clean up
 				if ptpConfig, ok := eventManager.Ptp4lConfigInterfaces[ptpConfigFileName]; ok {
+					//clean up any ha metrics
+					ptpMetrics.DeletePTPHaMetrics(ptpConfig.Profile)
 					for _, ptpInterface := range ptpConfig.Interfaces {
 						ptpMetrics.DeleteInterfaceRoleMetrics(ptp4lProcessName, ptpInterface.Name)
 					}
@@ -356,6 +390,7 @@ func processPtp4lConfigFileUpdates() {
 					ptpMetrics.DeleteThresholdMetrics(ptpConfig.Profile)
 					eventManager.PtpConfigMapUpdates.DeletePTPThreshold(ptpConfig.Profile)
 				}
+
 				//  offset related metrics are reported only for clock realtime and master
 				// if ptp4l config is deleted ,  remove any metrics reported by it config
 				// for dual nic, keep the CLOCK_REALTIME,if master interface not in same config
@@ -395,6 +430,7 @@ func processPtp4lConfigFileUpdates() {
 				// clean up process metrics
 				ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), string(ptpConfigFileName), ptp4lProcessName, phc2sysProcessName)
 				ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), strings.Replace(string(ptpConfigFileName), ptp4lProcessName, ts2PhcProcessName, 1), ts2PhcProcessName)
+				eventManager.PtpConfigMapUpdates.UpdateDeleteConfigInProcess(false)
 			}
 		case <-config.CloseCh:
 			fileWatcher.Close()

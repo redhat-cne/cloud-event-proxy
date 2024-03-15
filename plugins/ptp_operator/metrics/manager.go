@@ -29,7 +29,7 @@ type PTPEventManager struct {
 	mockEvent      ptp.EventType
 	// PtpConfigMapUpdates holds ptp-configmap updated details
 	PtpConfigMapUpdates *ptpConfig.LinuxPTPConfigMapUpdate
-	// Ptp4lConfigInterfaces holds interfaces and its roles , after reading from ptp4l config files
+	// Ptp4lConfigInterfaces holds interfaces and its roles, after reading from ptp4l config files
 	Ptp4lConfigInterfaces map[types.ConfigName]*ptp4lconf.PTP4lConfig
 }
 
@@ -114,10 +114,30 @@ func (p *PTPEventManager) GetPTPConfig(configName types.ConfigName) *ptp4lconf.P
 		return p.Ptp4lConfigInterfaces[configName]
 	}
 	pc := &ptp4lconf.PTP4lConfig{
-		Name: string(configName),
+		Name:    string(configName),
+		Profile: "",
 	}
 	pc.Interfaces = []*ptp4lconf.PTPInterface{}
 	p.AddPTPConfig(configName, pc)
+	return pc
+}
+
+// GetPTPConfigDeepCopy  ... Add PtpConfigUpdate obj
+func (p *PTPEventManager) GetPTPConfigDeepCopy(configName types.ConfigName) *ptp4lconf.PTP4lConfig {
+	if _, ok := p.Ptp4lConfigInterfaces[configName]; ok && p.Ptp4lConfigInterfaces[configName] != nil {
+		pc := &ptp4lconf.PTP4lConfig{
+			Name:       p.Ptp4lConfigInterfaces[configName].Name,
+			Profile:    p.Ptp4lConfigInterfaces[configName].Profile,
+			Interfaces: []*ptp4lconf.PTPInterface{},
+		}
+		pc.Interfaces = append(pc.Interfaces, p.Ptp4lConfigInterfaces[configName].Interfaces...)
+		return pc
+	}
+	pc := &ptp4lconf.PTP4lConfig{
+		Name:    string(configName),
+		Profile: "",
+	}
+
 	return pc
 }
 
@@ -359,4 +379,16 @@ func (p *PTPEventManager) PrintStats() string {
 		index++
 	}
 	return b.String()
+}
+
+func (p *PTPEventManager) hasHAProfile(name string) bool {
+	// Check if PtpSettings exist, if so proceed with confidence
+	if p.PtpConfigMapUpdates.PtpSettings != nil {
+		if settings, ok := p.PtpConfigMapUpdates.PtpSettings[name]; ok {
+			if settings != nil && settings["haProfiles"] != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
