@@ -42,7 +42,6 @@ $(KUSTOMIZE): $(LOCALBIN)
 	fi
 	test -s $(LOCALBIN)/kustomize || { curl -Ss $(KUSTOMIZE_INSTALL_SCRIPT) | bash -s -- $(subst v,,$(KUSTOMIZE_VERSION)) $(LOCALBIN); }
 
-
 deps-update:
 	go get github.com/redhat-cne/sdk-go@$(branch) && \
 	go get github.com/redhat-cne/rest-api@$(branch) && \

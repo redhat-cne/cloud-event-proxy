@@ -370,10 +370,7 @@ func (p *API) SubscriberMarkedForDelete(clientID uuid.UUID) bool {
 
 // deleteAllFromFile deletes  publisher and subscriptionOne information from the file system
 func deleteAllFromFile(filePath string) error {
-	if err := os.Remove(filePath); err != nil {
-		return err
-	}
-	return nil
+	return os.Remove(filePath)
 }
 
 // DeleteFromFile is used to delete subscriptionOne from the file system
@@ -404,10 +401,7 @@ func deleteFromFile(sub pubsub.PubSub, filePath string) error {
 		log.Errorf("error deleting sub %v", err)
 		return err
 	}
-	if err := os.WriteFile(filePath, newBytes, 0666); err != nil {
-		return err
-	}
-	return nil
+	return os.WriteFile(filePath, newBytes, 0666)
 }
 
 // loadFromFile is used to read subscriptionOne/publisher from the file system
@@ -475,10 +469,7 @@ func writeToFile(subscriberClient subscriber.Subscriber, filePath string) error 
 		return err
 	}
 	log.Infof("persisting following contents %s to a file %s\n", string(newBytes), filePath)
-	if err := os.WriteFile(filePath, newBytes, 0666); err != nil {
-		return err
-	}
-	return nil
+	return os.WriteFile(filePath, newBytes, 0666)
 }
 
 func hasDir(path string) {

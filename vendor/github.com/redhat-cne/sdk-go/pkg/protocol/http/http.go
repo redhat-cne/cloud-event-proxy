@@ -604,7 +604,7 @@ func (h *Server) SendTo(wg *sync.WaitGroup, clientID uuid.UUID, clientAddress, r
 }
 
 // NewClient ...
-func (h *Server) NewClient(host string, connOption []httpP.Option) (httpClient.Client, error) {
+func (h *Server) NewClient(host string, _ []httpP.Option) (httpClient.Client, error) {
 	//--
 	c, err2 := cloudevents.NewClientHTTP(cloudevents.WithTarget(host))
 	if err2 != nil {
