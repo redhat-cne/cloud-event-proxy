@@ -1,0 +1,1 @@
+[{"name":"profileHA","ptp4lOpts":"","phc2sysOpts":"-a -r -m -n 24 -N 8 -R 16","ptpSettings":{"haProfiles":"profile1,profile2"},"ptpClockThreshold":{"holdOverTimeout":30,"maxOffsetThreshold":100,"minOffsetThreshold":-100}}]

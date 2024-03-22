@@ -192,8 +192,7 @@ func extractNmeaMetrics(processName, output string) (interfaceName string, statu
 		return
 	}
 
-	output = strings.Replace(output, "path", "", 1)
-	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ", "phc", "", "sys", "")
+	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
 	output = replacer.Replace(output)
 
 	output = output[index:]
@@ -309,6 +308,19 @@ func FindInLogForCfgFileIndex(out string) int {
 	matchTS2Phc := ts2phcConfigFileRegEx.FindStringIndex(out)
 	if len(matchTS2Phc) == 2 {
 		return matchTS2Phc[0]
+	}
+	matchPhc2Sys := phc2SysConfigFileRegEx.FindStringIndex(out)
+	if len(matchPhc2Sys) == 2 {
+		return matchPhc2Sys[0]
+	}
+	return -1
+}
+
+// FindInPhc2SysLogForCfgFileIndex ... find config name from the log
+func FindInPhc2SysLogForCfgFileIndex(out string) int {
+	matchPhc2Sys := phc2SysConfigFileRegEx.FindStringIndex(out)
+	if len(matchPhc2Sys) == 2 {
+		return matchPhc2Sys[0]
 	}
 	return -1
 }
@@ -517,6 +529,36 @@ func (p *PTPEventManager) ParseGNSSLogs(processName, configName, output string, 
 			p.publishGNSSEvent(gnssState, gnssOffset, masterResource, ptp.GnssStateChange)
 		}
 	}
+}
+
+// extractPTPHaMetrics ... parse logs for ptp ha
+func extractPTPHaMetrics(processName, output string) (profile string, state int64, err error) {
+	// phc2sys[1710435400]:[phc2sys.2.config] ptp_ha_profile profile1 state 1
+	index := FindInPhc2SysLogForCfgFileIndex(output)
+	state = -1
+	if index == -1 {
+		log.Errorf("config name is not found in log outpt %s", output)
+		return
+	}
+
+	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
+	output = replacer.Replace(output)
+
+	output = output[index:]
+	fields := strings.Fields(output)
+
+	//       0                   1          2      3   4
+	// phc2sys.2.config  ptp_ha_profile profile1 state 1
+	if len(fields) < 5 {
+		return
+	}
+
+	profile = fields[2]
+	state, err = strconv.ParseInt(fields[4], 0, 64)
+	if err != nil {
+		log.Errorf("%s failed to parse ptp-ha state from the log %s error %v", processName, fields[4], err)
+	}
+	return
 }
 
 // GetSyncState ... get state id for metrics

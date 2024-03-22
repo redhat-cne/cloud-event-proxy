@@ -58,6 +58,7 @@ type PtpProfile struct {
 	TS2PhcOpts        *string            `json:"ts2PhcOpts,omitempty"`
 	Ptp4lConf         *string            `json:"ptp4lConf,omitempty"`
 	TS2PhcConf        *string            `json:"ts2PhcConf,omitempty"`
+	PtpSettings       map[string]string  `json:"ptpSettings,omitempty"`
 	Interfaces        []*string
 }
 
@@ -137,6 +138,8 @@ type LinuxPTPConfigMapUpdate struct {
 	intervalUpdate         int
 	EventThreshold         map[string]*PtpClockThreshold
 	PtpProcessOpts         map[string]*PtpProcessOpts
+	PtpSettings            map[string]map[string]string
+	DeleteConfigInProcess  bool
 }
 
 // NewLinuxPTPConfUpdate -- profile updater
@@ -148,6 +151,7 @@ func NewLinuxPTPConfUpdate() *LinuxPTPConfigMapUpdate {
 		intervalUpdate: DefaultUpdateInterval,
 		EventThreshold: make(map[string]*PtpClockThreshold),
 		PtpProcessOpts: make(map[string]*PtpProcessOpts),
+		PtpSettings:    make(map[string]map[string]string),
 	}
 
 	if os.Getenv("PTP_PROFILE_PATH") != "" {
@@ -171,7 +175,7 @@ func (p *PtpProfile) GetInterface() (interfaces []*string) {
 		singleInterface = *p.Interface
 		interfaces = append(interfaces, &singleInterface)
 	}
-	if p.Ptp4lConf != nil {
+	if p.Ptp4lConf != nil && *p.Ptp4lConf != "" {
 		matches := sectionHead.FindAllStringSubmatch(*p.Ptp4lConf, -1)
 		for _, v := range matches {
 			if v[1] != ignorePtp4lSection && v[1] != singleInterface && !ptpConfigFileRegEx.MatchString(v[1]) {
@@ -202,6 +206,13 @@ func (l *LinuxPTPConfigMapUpdate) DeleteAllPTPThreshold() {
 	}
 }
 
+// UpdateDeleteConfigInProcess ... if config file is deleted delay config update reads
+func (l *LinuxPTPConfigMapUpdate) UpdateDeleteConfigInProcess(delete bool) {
+	l.lock.Lock()
+	l.DeleteConfigInProcess = delete
+	l.lock.Unlock()
+}
+
 func closeHoldover(t *PtpClockThreshold) {
 	defer func() {
 		if err := recover(); err != nil {
@@ -227,6 +238,8 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPProcessOptions() {
 		if profile.TS2PhcConf != nil && (profile.TS2PhcOpts == nil || *profile.TS2PhcOpts == "") {
 			l.PtpProcessOpts[*profile.Name].TS2PhcOpts = pointer.String("-m")
 		}
+
+		l.PtpSettings[*profile.Name] = profile.PtpSettings
 	}
 }
 
@@ -263,8 +276,16 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 			MinOffsetThreshold: minOffsetTh,
 			Close:              make(chan struct{}),
 		}
+
 		log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
 			*profile.Name, holdOverTh, maxOffsetTh, minOffsetTh)
+	}
+}
+
+// UpdatePTPSetting ... ptp settings
+func (l *LinuxPTPConfigMapUpdate) UpdatePTPSetting() {
+	for _, profile := range l.NodeProfiles {
+		l.PtpSettings[*profile.Name] = profile.PtpSettings
 	}
 }
 
@@ -273,7 +294,7 @@ func (l *LinuxPTPConfigMapUpdate) UpdateConfig(nodeProfilesJSON []byte) error {
 	if bytes.Equal(l.appliedNodeProfileJSON, nodeProfilesJSON) {
 		return nil
 	}
-	log.Info("updating PROFILE")
+	log.Info("updating profile")
 	if nodeProfiles, ok := tryToLoadConfig(nodeProfilesJSON); ok {
 		log.Info("load ptp profiles")
 		l.appliedNodeProfileJSON = nodeProfilesJSON
@@ -298,10 +319,8 @@ func (l *LinuxPTPConfigMapUpdate) UpdateConfig(nodeProfilesJSON []byte) error {
 		l.appliedNodeProfileJSON = nodeProfilesJSON
 		l.NodeProfiles = nodeProfiles
 		l.UpdateCh <- true
-
 		return nil
 	}
-
 	return fmt.Errorf("unable to load profile config")
 }
 
@@ -313,7 +332,6 @@ func tryToLoadConfig(nodeProfilesJSON []byte) ([]PtpProfile, bool) {
 		log.Errorf("error reading nodeprofile %s", err)
 		return nil, false
 	}
-
 	return ptpConfig, true
 }
 
@@ -346,6 +364,10 @@ func (l *LinuxPTPConfigMapUpdate) WatchConfigMapUpdate(nodeName string, closeCh 
 
 func (l *LinuxPTPConfigMapUpdate) updatePtpConfig(nodeName string) {
 	nodeProfile := filepath.Join(l.profilePath, nodeName)
+	if l.DeleteConfigInProcess {
+		log.Infof("delete action on config was detetcted; delaying updating ptpconfig")
+		return // wait until delete is completed
+	}
 	if _, err := os.Stat(nodeProfile); err != nil {
 		if os.IsNotExist(err) {
 			log.Infof("ptp profile %s doesn't exist for node: %v , error %s", nodeProfile, nodeName, err.Error())

@@ -9,10 +9,11 @@ import (
 )
 
 var (
-	profile0 = "profile0"
-	profile1 = "profile1"
-	inface0  = "ens5f0"
-	inface1  = "ens5f1"
+	profile0  = "profile0"
+	profile1  = "profile1"
+	profileHa = "profileHA"
+	inface0   = "ens5f0"
+	inface1   = "ens5f1"
 )
 
 // StrPtr returns a pointer to a string value. This is useful within expressions where the value is a literal.
@@ -104,6 +105,23 @@ func Test_Config(t *testing.T) {
 			nodeName:    "none",
 			len:         0,
 		},
+		"ptpha": {
+			wantProfile: []*ptpConfig.PtpProfile{{
+				Name:        &profileHa,
+				Interface:   nil,
+				Ptp4lOpts:   nil,
+				Phc2sysOpts: StrPtr("-a -r -m -n 24 -N 8 -R 16"),
+				PtpClockThreshold: &ptpConfig.PtpClockThreshold{
+					HoldOverTimeout:    30,
+					MaxOffsetThreshold: 100,
+					MinOffsetThreshold: -100,
+					Close:              make(chan struct{}),
+				},
+			}},
+			profilePath: "../_testprofile",
+			nodeName:    "ptpha",
+			len:         1,
+		},
 	}
 
 	closeCh := make(chan struct{})
@@ -127,6 +145,15 @@ func Test_Config(t *testing.T) {
 			} else if tc.nodeName == "none" {
 				assert.Equal(t, []ptpConfig.PtpProfile{}, ptpUpdate.NodeProfiles)
 				assert.Equal(t, []ptpConfig.PtpProfile{}, ptpUpdate.NodeProfiles)
+			} else if tc.nodeName == "haPTP" {
+				for i, p := range ptpUpdate.NodeProfiles {
+					tc.wantProfile[i].PtpClockThreshold.Close = p.PtpClockThreshold.Close
+					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, p.PtpClockThreshold)
+					tc.wantProfile[i].PtpClockThreshold.Close = ptpUpdate.EventThreshold[*p.Name].Close
+					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, ptpUpdate.EventThreshold[*p.Name])
+					assert.Equal(t, *tc.wantProfile[i].Name, *p.Name)
+					assert.Equal(t, tc.wantProfile[i].PtpSettings["haProfiles"], p.PtpSettings["haProfiles"])
+				}
 			} else {
 				for i, p := range ptpUpdate.NodeProfiles {
 					tc.wantProfile[i].PtpClockThreshold.Close = p.PtpClockThreshold.Close

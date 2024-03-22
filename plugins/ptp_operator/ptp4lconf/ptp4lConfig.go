@@ -27,10 +27,11 @@ import (
 )
 
 var (
-	ptpConfigFileRegEx = regexp.MustCompile(`ptp4l.[0-9]*.config`)
-	sectionHead        = regexp.MustCompile(`\[([^\[\]]*)\]`)
-	profileRegEx       = regexp.MustCompile(`profile: \s*([\w-_]+)`)
-	fileNameRegEx      = regexp.MustCompile("([^/]+$)")
+	ptpConfigFileRegEx        = regexp.MustCompile(`ptp4l.[0-9]*.config`)
+	ptpPhc2sysConfigFileRegEx = regexp.MustCompile(`phc2sys.[0-9]*.config`)
+	sectionHead               = regexp.MustCompile(`\[([^\[\]]*)\]`)
+	profileRegEx              = regexp.MustCompile(`profile: \s*([\w-_]+)`)
+	fileNameRegEx             = regexp.MustCompile("([^/]+$)")
 )
 
 const (
@@ -193,21 +194,21 @@ func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpd
 					continue
 				}
 				if event.Op&fsnotify.Write == fsnotify.Write {
-					if checkIfPtP4lConf(event.Name) {
+					if checkIfPtP4lConf(event.Name) || checkIfPhc2SysConf(event.Name) {
 						if ptpConfig, configErr := readConfig(event.Name); configErr == nil {
 							log.Infof("sending ptpconfig changes for %s", *ptpConfig.Name)
 							updatedConfig <- ptpConfig
 						}
 					}
 				} else if event.Op&fsnotify.Remove == fsnotify.Remove {
-					if checkIfPtP4lConf(event.Name) {
+					if checkIfPtP4lConf(event.Name) || checkIfPhc2SysConf(event.Name) {
 						fName := filename(event.Name)
 						ptpConfig := &PtpConfigUpdate{
 							Name:      &fName,
 							Ptp4lConf: nil,
 							Removed:   true,
 						}
-						log.Println("config removed file:", event.Name)
+						log.Infof("config removed file:%s", event.Name)
 						updatedConfig <- ptpConfig
 					}
 				}
@@ -231,7 +232,7 @@ func readAllConfig(dir string) []*PtpConfigUpdate {
 		log.Errorf("error reading all config fils %s", fileErr)
 	}
 	for _, file := range files {
-		if checkIfPtP4lConf(file.Name()) {
+		if checkIfPtP4lConf(file.Name()) || checkIfPhc2SysConf(file.Name()) {
 			if p, err := readConfig(filepath.Join(dir, file.Name())); err == nil {
 				ptpConfigs = append(ptpConfigs, p)
 			}
@@ -262,6 +263,9 @@ func filename(path string) string {
 
 func checkIfPtP4lConf(filename string) bool {
 	return ptpConfigFileRegEx.MatchString(filename)
+}
+func checkIfPhc2SysConf(filename string) bool {
+	return ptpPhc2sysConfigFileRegEx.MatchString(filename)
 }
 
 // GetPTPProfileName  ... get profile name from ptpconfig

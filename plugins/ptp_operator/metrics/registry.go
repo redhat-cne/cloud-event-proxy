@@ -110,6 +110,14 @@ var (
 			Name:      "process_restart_count",
 			Help:      "",
 		}, []string{"process", "node", "config"})
+	// PTPHAMetrics metrics to show current ha profiles
+	PTPHAMetrics = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: ptpNamespace,
+			Subsystem: ptpSubsystem,
+			Name:      "ha_profile_status",
+			Help:      "0 = INACTIVE 1 = ACTIVE",
+		}, []string{"process", "node", "profile"})
 )
 
 var registerMetrics sync.Once
@@ -128,6 +136,7 @@ func RegisterMetrics(nodeName string) {
 		prometheus.MustRegister(ClockClassMetrics)
 		prometheus.MustRegister(ProcessStatus)
 		prometheus.MustRegister(ProcessReStartCount)
+		prometheus.MustRegister(PTPHAMetrics)
 
 		// Including these stats kills performance when Prometheus polls with multiple targets
 		prometheus.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
@@ -207,6 +216,12 @@ func UpdateNmeaStatusMetrics(process, iface string, status float64) {
 		"process": process, "node": ptpNodeName, "iface": iface}).Set(status)
 }
 
+// UpdatePTPHaMetrics ... update ptp ha  status metrics
+func UpdatePTPHaMetrics(profile string, status int64) {
+	PTPHAMetrics.With(prometheus.Labels{
+		"process": phc2sysProcessName, "node": ptpNodeName, "profile": profile}).Set(float64(status))
+}
+
 // UpdateInterfaceRoleMetrics ... update interface role metrics
 func UpdateInterfaceRoleMetrics(process, ptpInterface string, role types.PtpPortRole) {
 	InterfaceRole.With(prometheus.Labels{
@@ -220,6 +235,12 @@ func DeleteInterfaceRoleMetrics(process, ptpInterface string) {
 	} else {
 		InterfaceRole.Delete(prometheus.Labels{"iface": ptpInterface, "node": ptpNodeName})
 	}
+}
+
+// DeletePTPHaMetrics ... delete ptp ha metrics
+func DeletePTPHaMetrics(profile string) {
+	PTPHAMetrics.Delete(prometheus.Labels{
+		"process": phc2sysProcessName, "node": ptpNodeName, "profile": profile})
 }
 
 // UpdateProcessStatusMetrics  -- update process status metrics

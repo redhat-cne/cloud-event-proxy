@@ -116,6 +116,18 @@ docker-build-consumer: #test ## Build docker image with the manager.
 docker-push-consumer: ## Push docker image with the manager.
 	docker push ${CONSUMER_IMG}
 
+podman-build: #test ## Build docker image with the manager.
+	podman build --no-cache -t ${IMG} .
+
+podman-push: ## Push docker image with the manager.
+	podman push ${IMG}
+
+podman-build-consumer: #test ## Build docker image with the manager.
+	podman build -f ./examples/consumer.Dockerfile -t ${CONSUMER_IMG} .
+
+podman-push-consumer: ## Push docker image with the manager.
+	podman push ${CONSUMER_IMG}
+
 fmt: ## Go fmt your code
 	hack/gofmt.sh
 
