@@ -205,7 +205,7 @@ func (s *Server) getPublisherByID(w http.ResponseWriter, r *http.Request) {
 	}
 	respondWithJSON(w, http.StatusOK, pub)
 }
-func (s *Server) getSubscriptions(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getSubscriptions(w http.ResponseWriter, _ *http.Request) {
 	b, err := s.pubSubAPI.GetSubscriptionsFromFile()
 	if err != nil {
 		respondWithError(w, "error loading subscriber data")
@@ -214,7 +214,7 @@ func (s *Server) getSubscriptions(w http.ResponseWriter, r *http.Request) {
 	respondWithByte(w, http.StatusOK, b)
 }
 
-func (s *Server) getPublishers(w http.ResponseWriter, r *http.Request) {
+func (s *Server) getPublishers(w http.ResponseWriter, _ *http.Request) {
 	b, err := s.pubSubAPI.GetPublishersFromFile()
 	if err != nil {
 		respondWithError(w, "error loading publishers data")
@@ -259,7 +259,7 @@ func (s *Server) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 	respondWithMessage(w, http.StatusOK, "OK")
 }
 
-func (s *Server) deleteAllSubscriptions(w http.ResponseWriter, r *http.Request) {
+func (s *Server) deleteAllSubscriptions(w http.ResponseWriter, _ *http.Request) {
 	size := len(s.pubSubAPI.GetSubscriptions())
 	if err := s.pubSubAPI.DeleteAllSubscriptions(); err != nil {
 		respondWithError(w, err.Error())
@@ -274,7 +274,7 @@ func (s *Server) deleteAllSubscriptions(w http.ResponseWriter, r *http.Request) 
 	respondWithMessage(w, http.StatusOK, "deleted all subscriptions")
 }
 
-func (s *Server) deleteAllPublishers(w http.ResponseWriter, r *http.Request) {
+func (s *Server) deleteAllPublishers(w http.ResponseWriter, _ *http.Request) {
 	size := len(s.pubSubAPI.GetPublishers())
 
 	if err := s.pubSubAPI.DeleteAllPublishers(); err != nil {
@@ -449,7 +449,7 @@ func (s *Server) logEvent(w http.ResponseWriter, r *http.Request) {
 	respondWithMessage(w, http.StatusAccepted, "Event published to log")
 }
 
-func dummy(w http.ResponseWriter, r *http.Request) {
+func dummy(w http.ResponseWriter, _ *http.Request) {
 	respondWithMessage(w, http.StatusNoContent, "dummy test")
 }
 

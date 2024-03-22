@@ -1,5 +1,5 @@
 # Used by quay.io to trigger developer builds
-FROM quay.io/redhat-cne/openshift-origin-release:golang-1.19-openshift-4.14 AS builder
+FROM quay.io/redhat-cne/openshift-origin-release:golang-1.21-openshift-4.16 AS builder
 
 ENV GO111MODULE=off
 ENV CGO_ENABLED=1
@@ -12,7 +12,7 @@ COPY . .
 
 RUN hack/build-go.sh
 
-FROM quay.io/redhat-cne/openshift-origin-release:base-4.14 AS bin
+FROM quay.io/redhat-cne/openshift-origin-release:base-rhel9-4.16 AS bin
 COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/build/cloud-event-proxy /
 COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/plugins/*.so /plugins/
 

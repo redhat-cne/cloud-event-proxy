@@ -1,75 +1,14 @@
 # Snyk (https://snyk.io) policy file, patches or ignores known vulnerabilities.
-version: v1.25.0
-# ignores vulnerabilities until expiry date; change duration by modifying expiry date
-ignore:
-  76780acf-c885-40d5-9c3f-1659829dc049:
-    - '*':
-        reason: Temporarily ignoring Medium and Low severity issues
-        expires: 2024-02-15T00:00:00.000Z
-        created: 2023-12-15T18:34:15.718Z
-  5ffe1650-9842-4907-847a-bd4582176257:
-    - '*':
-        reason: Temporarily ignoring Medium and Low severity issues
-        expires: 2024-02-15T00:00:00.000Z
-        created: 2023-12-15T18:35:15.977Z
-  5668f7bb-2e54-4d7f-a4d8-9add5c5d36cd:
-    - '*':
-        reason: Temporarily ignoring Medium and Low severity issues
-        expires: 2024-02-15T00:00:00.000Z
-        created: 2023-12-15T18:36:04.518Z
-  06b7f857-4a35-4403-ac56-0827b5d41cb9:
-    - '*':
-        reason: Temporarily ignoring Medium and Low severity issues
-        expires: 2024-02-15T00:00:00.000Z
-        created: 2023-12-15T18:37:49.055Z
-  0389841c-e4cf-48e6-85ad-ad6e05a3f4cf:
-    - '*':
-        reason: Temporarily ignoring Medium and Low severity issues
-        expires: 2024-02-15T00:00:00.000Z
-        created: 2023-12-15T19:32:07.971Z
-  5022b4a4-24ed-451c-a1d8-e293339dae4b:
-    - '*':
-        reason: Temporarily ignoring Medium and Low severity issues
-        expires: 2024-02-15T00:00:00.000Z
-        created: 2023-12-15T19:32:56.962Z
-  df415ae1-6e30-46a3-b44c-767fa405f364:
-    - '*':
-        reason: Temporarily ignoring Medium and Low severity issues
-        expires: 2024-02-15T00:00:00.000Z
-        created: 2023-12-15T19:33:31.209Z
-  1f568caa-5a74-434e-9b7f-46dc863b8968:
-    - '*':
-        reason: Temporarily ignoring Medium and Low severity issues
-        expires: 2024-02-15T00:00:00.000Z
-        created: 2023-12-15T19:35:48.240Z
-  710cfa1d-03db-4017-a6d4-b6efd843fdbc:
-    - '*':
-        reason: Temporarily ignoring Medium and Low severity issues
-        expires: 2024-02-15T00:00:00.000Z
-        created: 2023-12-15T19:39:32.595Z
-  39341452-8aeb-41d6-8f9f-b540c64cc9ed:
-    - '*':
-        reason: Temporarily ignoring Medium and Low severity issues
-        expires: 2024-02-15T00:00:00.000Z
-        created: 2023-12-15T19:40:03.549Z
-  2cc1e672-cea4-48d4-bd85-2c5b381a29ec:
-    - '*':
-        reason: Temporarily ignoring Medium and Low severity issues
-        expires: 2024-02-15T00:00:00.000Z
-        created: 2023-12-15T19:40:32.251Z
-  42acaf34-76ab-4a3d-9e3c-9e2007662e4b:
-    - '*':
-        reason: Temporarily ignoring Medium and Low severity issues
-        expires: 2024-02-15T00:00:00.000Z
-        created: 2023-12-15T19:43:49.959Z
-  5864f446-c5ab-4d50-90ab-31c680528aaa:
-    - '*':
-        reason: Temporarily ignoring Medium and Low severity issues
-        expires: 2024-02-15T00:00:00.000Z
-        created: 2023-12-15T19:44:18.885Z
-  24d6a867-167d-4c9a-9662-dce6da524e44:
-    - '*':
-        reason: Temporarily ignoring Medium and Low severity issues
-        expires: 2024-02-15T00:00:00.000Z
-        created: 2023-12-15T19:44:46.090Z
+# References:
+# https://docs.snyk.io/scan-applications/snyk-code/using-snyk-code-from-the-cli/excluding-directories-and-files-from-the-snyk-code-cli-test
+# https://docs.snyk.io/snyk-cli/commands/ignore
+exclude:
+  global:
+    # - "vendor/**" # ProdSec encourages not to ignore the entire vendor/* directories
+    - "unpacked_remote_sources/cachito-gomod-with-deps/app/vendor/**"
+    - "**/*_test.go"
+    - "test/**" # test code only
+    - "vendor/github.com/onsi/ginkgo/**" # test code only
+    - hack # scripts only
+    - bin # this binary folder is not in git repo. Exclude this when run snyk locally.
 patch: {}

@@ -295,16 +295,11 @@ func (p *API) GetSubscriptionsFromFile() ([]byte, error) {
 
 // deleteAllFromFile deletes  publisher and subscription information from the file system
 func deleteAllFromFile(filePath string) error {
-	//open file
-	if err := os.WriteFile(filePath, []byte{}, 0666); err != nil {
-		return err
-	}
-	return nil
+	return os.WriteFile(filePath, []byte{}, 0666)
 }
 
 // DeleteFromFile is used to delete subscription from the file system
 func deleteFromFile(sub pubsub.PubSub, filePath string) error {
-	//open file
 	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
 		return err
@@ -336,10 +331,7 @@ func deleteFromFile(sub pubsub.PubSub, filePath string) error {
 		log.Errorf("error deleting sub %v", err)
 		return err
 	}
-	if err := os.WriteFile(filePath, newBytes, 0666); err != nil {
-		return err
-	}
-	return nil
+	return os.WriteFile(filePath, newBytes, 0666)
 }
 
 // loadFromFile is used to read subscription/publisher from the file system
@@ -386,8 +378,5 @@ func writeToFile(sub pubsub.PubSub, filePath string) error {
 		return err
 	}
 	log.Infof("persisting following contents %s to a file %s\n", string(newBytes), filePath)
-	if err := os.WriteFile(filePath, newBytes, 0666); err != nil {
-		return err
-	}
-	return nil
+	return os.WriteFile(filePath, newBytes, 0666)
 }
