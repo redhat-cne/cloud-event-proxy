@@ -130,7 +130,7 @@ func Test_Config(t *testing.T) {
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 			ptpUpdate := ptpConfig.NewLinuxPTPConfUpdate()
-			go ptpUpdate.WatchConfigMapUpdate(tc.nodeName, closeCh)
+			go ptpUpdate.WatchConfigMapUpdate(tc.nodeName, closeCh, true)
 			<-ptpUpdate.UpdateCh
 			ptpUpdate.UpdatePTPThreshold()
 			assert.Equal(t, tc.len, len(ptpUpdate.NodeProfiles))

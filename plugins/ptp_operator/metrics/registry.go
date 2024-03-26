@@ -181,7 +181,7 @@ func DeletedPTPMetrics(clockType, processName, eventResourceName string) {
 		"process": processName, "node": ptpNodeName, "iface": eventResourceName})
 }
 
-// DeleteThresholdMetrics .. delete threshold metrics
+// DeleteThresholdMetrics ... delete threshold metrics
 func DeleteThresholdMetrics(profile string) {
 	Threshold.Delete(prometheus.Labels{
 		"threshold": "MinOffsetThreshold", "node": ptpNodeName, "profile": profile})
