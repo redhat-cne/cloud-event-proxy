@@ -111,6 +111,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	profileName := ptp4lCfg.Profile
 
 	if !p.validLogToProcess(profileName, processName, len(ptp4lCfg.Interfaces)) {
+		log.Infof("skipped parsing %s", output)
 		return
 	}
 
@@ -335,7 +336,7 @@ func (p *PTPEventManager) processDownEvent(profileName, processName string, ptpS
 
 func (p *PTPEventManager) validLogToProcess(profileName, processName string, iFaceSize int) bool {
 	if profileName == "" {
-		log.Errorf("ptp4l config does not have profile name, aborting. ")
+		log.Info("ptp4l config does not have profile name, skipping. ")
 		return false
 	}
 	if !p.hasHAProfile(profileName) && profileName != "" && iFaceSize == 0 { //TODO: Use PMC to update port and roles

@@ -22,6 +22,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"k8s.io/utils/pointer"
 
@@ -104,8 +105,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	// create socket listener
 	go listenToSocket(wg)
 	// watch for ptp any config updates
-	go eventManager.PtpConfigMapUpdates.WatchConfigMapUpdate(nodeName, configuration.CloseCh)
-
+	go eventManager.PtpConfigMapUpdates.WatchConfigMapUpdate(nodeName, configuration.CloseCh, false)
 	// watch and monitor ptp4l config file creation and deletion
 	// create a ptpConfigDir directory watcher for config changes
 	notifyConfigDirUpdates = make(chan *ptp4lconf.PtpConfigUpdate, 20) // max 20 profiles since all files will be deleted in reapply
@@ -114,6 +114,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		log.Errorf("cannot monitor ptp4l configuation folder at %s : %s", ptpConfigDir, err)
 		return err
 	}
+
 	// process ptp4l conf file updates under /var/run/ptp4l.X.conf
 	go processPtp4lConfigFileUpdates()
 
@@ -271,9 +272,19 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 	}
 }
 
-// update interface and threshold details when ptpConfig change found
-// these are updated when config file is created or deleted under /var/run folder
+// update interface details  and threshold details when ptpConfig change found.
+// These are updated when config file is created or deleted under /var/run folder
+// by  linuxptp-daemon.
+// issue to resolve: linuxptp-daemon-container will read ptpconfig and update ptpConfigMap
+// the updates are incremental and file creation happens when  ptpConfigMap is updated
+// NOTE: there is delay between configmap updates and file creation
+// FIRST ptpConfigMap created and then the daemon ticker when starting the process
+// creates the files or deletes the  file when process is stopped
+// This routine tries to rely on file creation to detect ptp config updates
+// and on file creation call ptpConfig updates
+// on file deletion reset to read fresh ptpconfig updates
 func processPtp4lConfigFileUpdates() {
+	fileModified := false
 	for {
 		select {
 		case ptpConfigEvent := <-notifyConfigDirUpdates:
@@ -362,13 +373,24 @@ func processPtp4lConfigFileUpdates() {
 							strings.Replace(cName, ptp4lProcessName, ts2PhcProcessName, 1), ts2PhcProcessName)
 					}
 				}
+				for key, np := range eventManager.PtpConfigMapUpdates.EventThreshold {
+					ptpMetrics.Threshold.With(prometheus.Labels{
+						"threshold": "MinOffsetThreshold", "node": eventManager.NodeName(), "profile": key}).Set(float64(np.MinOffsetThreshold))
+					ptpMetrics.Threshold.With(prometheus.Labels{
+						"threshold": "MaxOffsetThreshold", "node": eventManager.NodeName(), "profile": key}).Set(float64(np.MaxOffsetThreshold))
+					ptpMetrics.Threshold.With(prometheus.Labels{
+						"threshold": "HoldOverTimeout", "node": eventManager.NodeName(), "profile": key}).Set(float64(np.HoldOverTimeout))
+				}
 			case true: // ptp4l.X.conf is deleted ; how to prevent updates happening at same time
 				// delete metrics, ptp4l config is removed
 				// get config fileName
+				fileModified = true
+				eventManager.PtpConfigMapUpdates.FileWatcherUpdateInProgress(true)
+				log.Infof("delete ptp config %s at %s", *ptpConfigEvent.Name, time.Now())
 				ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
 				ptp4lConfig := eventManager.GetPTPConfig(ptpConfigFileName)
 				log.Infof("deleting config %s with profile %s\n", *ptpConfigEvent.Name, ptp4lConfig.Profile)
-				eventManager.PtpConfigMapUpdates.UpdateDeleteConfigInProcess(true)
+
 				ptpStats := eventManager.GetStats(ptpConfigFileName)
 				// to avoid new one getting created , make a copy of this stats
 				ptpStats.SetConfigAsDeleted(true)
@@ -430,11 +452,18 @@ func processPtp4lConfigFileUpdates() {
 				// clean up process metrics
 				ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), string(ptpConfigFileName), ptp4lProcessName, phc2sysProcessName)
 				ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), strings.Replace(string(ptpConfigFileName), ptp4lProcessName, ts2PhcProcessName, 1), ts2PhcProcessName)
-				eventManager.PtpConfigMapUpdates.UpdateDeleteConfigInProcess(false)
 			}
 		case <-config.CloseCh:
 			fileWatcher.Close()
 			return
+		default:
+			// decision maker before ptpConfig map updates can be processes
+			if fileModified {
+				eventManager.PtpConfigMapUpdates.FileWatcherUpdateInProgress(false)
+				eventManager.PtpConfigMapUpdates.SetAppliedNodeProfileJSON([]byte{}) // reset ptpconfig dataset and update again
+				eventManager.PtpConfigMapUpdates.PushPtpConfigMapChanges(eventManager.NodeName())
+				fileModified = false
+			}
 		}
 	}
 }
