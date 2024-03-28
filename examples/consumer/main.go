@@ -43,6 +43,9 @@ type ConsumerTypeEnum string
 
 var consumerType ConsumerTypeEnum
 
+// PublisherHealthOk ... check if publisher is oka assuming nly one publisher available
+var PublisherHealthOk bool
+
 const (
 	// PTP consumer
 	PTP ConsumerTypeEnum = "PTP"
@@ -55,12 +58,15 @@ const (
 )
 
 var (
-	apiAddr         = "localhost:8089"
-	apiPath         = "/api/ocloudNotifications/v1/"
-	localAPIAddr    = "localhost:8989"
-	resourcePrefix  = "/cluster/node/%s%s"
-	mockResource    = "/mock"
-	mockResourceKey = "mock"
+	apiAddr            = "localhost:8089"
+	apiPath            = "/api/ocloudNotifications/v1/"
+	localAPIAddr       = "localhost:8989"
+	resourcePrefix     = "/cluster/node/%s%s"
+	mockResource       = "/mock"
+	mockResourceKey    = "mock"
+	httpEventPublisher string
+	eventPublishers    = make(map[string]bool)
+	subs               []*pubsub.PubSub
 )
 
 func main() {
@@ -68,8 +74,10 @@ func main() {
 	flag.StringVar(&localAPIAddr, "local-api-addr", "localhost:8989", "The address the local api binds to .")
 	flag.StringVar(&apiPath, "api-path", "/api/ocloudNotifications/v1/", "The rest api path.")
 	flag.StringVar(&apiAddr, "api-addr", "localhost:8089", "The address the framework api endpoint binds to.")
+	flag.StringVar(&httpEventPublisher, "http-event-publishers", "", "Comma separated address of the publishers available.")
 	flag.Parse()
 
+	nodeIP := os.Getenv("NODE_IP")
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
 		log.Error("cannot find NODE_NAME environment variable,setting to default `mock` node")
@@ -90,7 +98,7 @@ func main() {
 	go server() // spin local api
 	time.Sleep(5 * time.Second)
 
-	// check sidecar api health
+	// check consumer sidecar api health
 	healthURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
 		Path: fmt.Sprintf("%s%s", apiPath, "health")}}
@@ -99,60 +107,91 @@ RETRY:
 		goto RETRY
 	}
 
-	var subs []*pubsub.PubSub
 	for _, resource := range subscribeTo {
 		subs = append(subs, &pubsub.PubSub{
 			ID:       getUUID(fmt.Sprintf(resourcePrefix, nodeName, resource)).String(),
 			Resource: fmt.Sprintf(resourcePrefix, nodeName, resource),
 		})
 	}
-	// if AMQ enabled the subscription will create an AMQ listener client
-	// IF HTTP enabled, the subscription will post a subscription  requested to all
-	// publishers that are defined in http-event-publisher variable
-	for _, s := range subs {
-		su, e := createSubscription(s.Resource)
-		if e != nil {
-			log.Errorf("failed to create a subscription object %v", e)
-		} else {
-			log.Infof("created subscription: %s", su.String())
-			s.URILocation = su.URILocation
-			s.ID = su.ID
-		}
-	}
+
+	updateHTTPPublishers(nodeIP, nodeName, httpEventPublisher)
 
 	// ping  for status every n secs
-	// uncomment only if you enable AMQ
-	if enableStatusCheck {
-		wg.Add(1)
-		go func() {
-			time.Sleep(5 * time.Second)
-			defer wg.Done()
-			for _, s := range subs {
-				go getCurrentState(s.Resource)
-			}
-			for range time.Tick(StatusCheckInterval * time.Second) {
-				for _, s := range subs {
-					go getCurrentState(s.Resource)
+	// no amq support
+	wg.Add(1)
+	go func() { // in this example there will be only one publisher
+		defer wg.Done()
+		for range time.Tick(StatusCheckInterval * time.Second) {
+			for p, currenStatus := range eventPublishers {
+				newStatus := publisherHealthCheck(p)
+				PublisherHealthOk = newStatus
+				eventPublishers[p] = newStatus
+				if newStatus && !currenStatus {
+					log.Info("subscribing to events")
+					subscribeToEvents()
+				} else if !newStatus && currenStatus {
+					deleteAllSubscriptions()
+					log.Info("delete subscription.")
 				}
 			}
-		}()
-	}
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if enableStatusCheck {
+			time.Sleep(5 * time.Second)
+			if PublisherHealthOk {
+				for _, s := range subs {
+					getCurrentState(s.Resource)
+				}
+			}
+			for range time.Tick(StatusCheckInterval * time.Second) {
+				if PublisherHealthOk {
+					for _, s := range subs {
+						getCurrentState(s.Resource)
+					}
+				} else {
+					log.Info("skipping since publisher not available ")
+				}
+			}
+		}
+	}()
+
 	log.Info("waiting for events")
 	wg.Wait()
 	deleteAllSubscriptions()
 	time.Sleep(3 * time.Second)
 }
 
-func deleteAllSubscriptions() int {
-	var status int
+func deleteAllSubscriptions() {
 	deleteURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
 		Path: fmt.Sprintf("%s%s", apiPath, "subscriptions")}}
 	rc := restclient.New()
-	status = rc.Delete(deleteURL)
-	return status
+	rc.Delete(deleteURL)
 }
 
+func subscribeToEvents() {
+	// if AMQ enabled the subscription will create an AMQ listener client
+	// IF HTTP enabled, the subscription will post a subscription  requested to all
+	// publishers that are defined in http-event-publisher variable
+	for _, status := range eventPublishers {
+		if status {
+			for _, s := range subs {
+				su, e := createSubscription(s.Resource)
+				if e != nil {
+					log.Errorf("failed to create a subscription object %v", e)
+				} else {
+					log.Infof("created subscription: %s", su.String())
+					s.URILocation = su.URILocation
+					s.ID = su.ID
+				}
+			}
+		}
+	}
+}
 func createSubscription(resourceAddress string) (sub pubsub.PubSub, err error) {
 	var status int
 	subURL := &types.URI{URL: url.URL{Scheme: "http",
@@ -185,11 +224,11 @@ func getCurrentState(resource string) {
 		Host: apiAddr,
 		Path: fmt.Sprintf("%s%s", apiPath, fmt.Sprintf("%s/CurrentState", resource[1:]))}}
 	rc := restclient.New()
-	status, event := rc.Get(url)
+	status, cloudEvent := rc.Get(url)
 	if status != http.StatusOK {
-		log.Errorf("CurrentState:error %d from url %s, %s", status, url.String(), event)
+		log.Errorf("CurrentState:error %d from url %s, %s", status, url.String(), cloudEvent)
 	} else {
-		log.Debugf("Got CurrentState: %s ", event)
+		log.Debugf("Got CurrentState: %s ", cloudEvent)
 	}
 }
 
@@ -197,7 +236,10 @@ func getCurrentState(resource string) {
 func server() {
 	http.HandleFunc("/event", getEvent)
 	http.HandleFunc("/ack/event", ackEvent)
-	http.ListenAndServe(localAPIAddr, nil)
+	err := http.ListenAndServe(localAPIAddr, nil)
+	if err != nil {
+		log.Errorf("error creating event server %s", err)
+	}
 }
 
 func getEvent(w http.ResponseWriter, req *http.Request) {
@@ -266,4 +308,28 @@ func getUUID(s string) uuid.UUID {
 	var namespace = uuid.NameSpaceURL
 	var url = []byte(s)
 	return uuid.NewMD5(namespace, url)
+}
+
+func publisherHealthCheck(apiAddr string) bool {
+	// check consumer sidecar api health
+	healthURL := &types.URI{URL: url.URL{Scheme: "http",
+		Host: apiAddr,
+		Path: "health"}}
+	ok, _ := common.APIHealthCheck(healthURL, 2*time.Second)
+	return ok
+}
+
+func updateHTTPPublishers(nodeIP, nodeName string, addr ...string) {
+	for _, s := range addr {
+		if s == "" {
+			continue
+		}
+		publisherServiceName := common.SanitizeTransportHost(s, nodeIP, nodeName)
+		healthStatusOk := publisherHealthCheck(publisherServiceName)
+		if healthStatusOk {
+			log.Info("healthy publisher;subscribing to events")
+		}
+		eventPublishers[publisherServiceName] = healthStatusOk
+		log.Infof("publisher endpoint updated from %s to %s healthStatusOk %t", s, publisherServiceName, healthStatusOk)
+	}
 }
