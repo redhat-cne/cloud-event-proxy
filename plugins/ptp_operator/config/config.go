@@ -140,6 +140,7 @@ type LinuxPTPConfigMapUpdate struct {
 	PtpProcessOpts              map[string]*PtpProcessOpts
 	PtpSettings                 map[string]map[string]string
 	fileWatcherUpdateInProgress bool
+	HAProfile                   string
 }
 
 // AppliedNodeProfileJSON ....
@@ -299,8 +300,16 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 
 // UpdatePTPSetting ... ptp settings
 func (l *LinuxPTPConfigMapUpdate) UpdatePTPSetting() {
+	l.HAProfile = ""
 	for _, profile := range l.NodeProfiles {
 		l.PtpSettings[*profile.Name] = profile.PtpSettings
+		if profile.PtpSettings != nil {
+			for _, ptpSettings := range profile.PtpSettings {
+				if ptpSettings == "haProfiles" {
+					l.HAProfile = *profile.Name // there can be only one profile
+				}
+			}
+		}
 	}
 }
 

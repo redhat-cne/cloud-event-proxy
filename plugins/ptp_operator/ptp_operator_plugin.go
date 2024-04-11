@@ -135,16 +135,9 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 					// delete all metrics related to process
 					ptpMetrics.DeleteProcessStatusMetricsForConfig(nodeName, "", "")
 					// delete all metrics related to ptp ha if haProfile is deleted
-					if eventManager.PtpConfigMapUpdates.PtpSettings != nil {
-						for _, ptpSettings := range eventManager.PtpConfigMapUpdates.PtpSettings {
-							if ptpSettings != nil {
-								if haProfile, ok := ptpSettings["haProfiles"]; ok {
-									profiles := strings.Split(haProfile, "")
-									for _, p := range profiles {
-										ptpMetrics.DeletePTPHaMetrics(strings.TrimSpace(p))
-									}
-								}
-							}
+					if haProfiles := eventManager.HAProfiles(); len(haProfiles) > 0 {
+						for _, p := range haProfiles {
+							ptpMetrics.DeletePTPHAMetrics(strings.TrimSpace(p))
 						}
 					}
 				} else {
@@ -396,11 +389,13 @@ func processPtp4lConfigFileUpdates() {
 				// there is a possibility of new config with same name is  created immediately after the delete of the old config.
 				// time="2024-03-19T19:40:16Z" level=info msg="config removed file: /var/run/phc2sys.2.config"
 				// time="2024-03-19T19:40:16Z" level=info msg="updating ptp config changes for phc2sys.2.config"
-
+				if eventManager.PtpConfigMapUpdates.HAProfile == ptp4lConfig.Profile {
+					eventManager.PtpConfigMapUpdates.HAProfile = "" // clear profile
+				}
 				// clean up
 				if ptpConfig, ok := eventManager.Ptp4lConfigInterfaces[ptpConfigFileName]; ok {
 					//clean up any ha metrics
-					ptpMetrics.DeletePTPHaMetrics(ptpConfig.Profile)
+					ptpMetrics.DeletePTPHAMetrics(ptpConfig.Profile)
 					for _, ptpInterface := range ptpConfig.Interfaces {
 						ptpMetrics.DeleteInterfaceRoleMetrics(ptp4lProcessName, ptpInterface.Name)
 					}
