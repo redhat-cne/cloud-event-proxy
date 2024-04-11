@@ -76,12 +76,15 @@ func main() {
 	flag.StringVar(&apiAddr, "api-addr", "localhost:8089", "The address the framework api endpoint binds to.")
 	flag.StringVar(&httpEventPublisher, "http-event-publishers", "", "Comma separated address of the publishers available.")
 	flag.Parse()
-
 	nodeIP := os.Getenv("NODE_IP")
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
 		log.Error("cannot find NODE_NAME environment variable,setting to default `mock` node")
 		nodeName = mockResourceKey
+	}
+	if httpEventPublisher == "" {
+		//TODO Mature this to an error check in release-4.17
+		log.Warning("http-event-publishers argument not passed, setting to default ''")
 	}
 
 	enableStatusCheck := common.GetBoolEnv("ENABLE_STATUS_CHECK")
