@@ -422,12 +422,11 @@ RETRY:
 		if th.URI != nil {
 			s = th.URI.String()
 			th.URI.Path = path.Join(th.URI.Path, "health")
-			if ok, _ := common.HTTPTransportHealthCheck(th.URI, 2*time.Second); ok {
-				log.Infof("Registering publisher %s", s)
-				httpServer.RegisterPublishers(types.ParseURI(s))
-			} else {
-				log.Errorf("health check failed, skipping registration for %s", s)
+			if ok, _ := common.HTTPTransportHealthCheck(th.URI, 2*time.Second); !ok {
+				log.Warningf("health check failed for transport %s", s)
 			}
+			log.Infof("Registering publisher %s", s)
+			httpServer.RegisterPublishers(types.ParseURI(s))
 		} else {
 			log.Errorf("failed to parse publisher url %s", s)
 		}
