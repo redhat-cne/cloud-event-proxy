@@ -381,14 +381,26 @@ func (p *PTPEventManager) PrintStats() string {
 	return b.String()
 }
 
-func (p *PTPEventManager) hasHAProfile(name string) bool {
+// IsHAProfile ... if profile for ha found pass
+func (p *PTPEventManager) IsHAProfile(name string) bool {
+	// Check if PtpSettings exist, if so proceed with confidence
+	return p.PtpConfigMapUpdates.HAProfile == name
+}
+
+// HAProfiles ... if profile for ha found pass the settings
+func (p *PTPEventManager) HAProfiles() (profiles []string) {
 	// Check if PtpSettings exist, if so proceed with confidence
 	if p.PtpConfigMapUpdates.PtpSettings != nil {
-		if settings, ok := p.PtpConfigMapUpdates.PtpSettings[name]; ok {
-			if settings != nil && settings["haProfiles"] != "" {
-				return true
+		p.lock.RLock()
+		defer p.lock.RUnlock()
+		for _, ptpSettings := range p.PtpConfigMapUpdates.PtpSettings {
+			if ptpSettings != nil {
+				if haProfile, ok := ptpSettings["haProfiles"]; ok {
+					profiles = strings.Split(haProfile, "")
+					return
+				}
 			}
 		}
 	}
-	return false
+	return
 }

@@ -237,8 +237,8 @@ func DeleteInterfaceRoleMetrics(process, ptpInterface string) {
 	}
 }
 
-// DeletePTPHaMetrics ... delete ptp ha metrics
-func DeletePTPHaMetrics(profile string) {
+// DeletePTPHAMetrics ... delete ptp ha metrics
+func DeletePTPHAMetrics(profile string) {
 	PTPHAMetrics.Delete(prometheus.Labels{
 		"process": phc2sysProcessName, "node": ptpNodeName, "profile": profile})
 }

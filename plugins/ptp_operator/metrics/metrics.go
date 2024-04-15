@@ -89,7 +89,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	// make sure configName is found in logs
 	index := FindInLogForCfgFileIndex(output)
 	if index == -1 {
-		log.Errorf("config name is not found in log outpt")
+		log.Errorf("config name is not found in log output %s", output)
 		return
 	}
 
@@ -100,7 +100,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 
 	processName := fields[processNameIndex]
 	configName := fields[configNameIndex]
-	// if  is has ts2phc then it will replace it with ptp4l
+	// if log is having ts2phc then it will replace it with ptp4l
 	configName = strings.Replace(configName, ts2phcProcessName, ptp4lProcessName, 1)
 	ptp4lCfg := p.GetPTPConfig(types.ConfigName(configName))
 
@@ -339,7 +339,8 @@ func (p *PTPEventManager) validLogToProcess(profileName, processName string, iFa
 		log.Info("ptp4l config does not have profile name, skipping. ")
 		return false
 	}
-	if !p.hasHAProfile(profileName) && profileName != "" && iFaceSize == 0 { //TODO: Use PMC to update port and roles
+	// phc2sys config for HA will not have any interface defined
+	if iFaceSize == 0 && profileName != "" && !p.IsHAProfile(profileName) { //TODO: Use PMC to update port and roles
 		log.Errorf("file watcher have not picked the files yet or ptp4l doesn't have config for %s by process %s", profileName, processName)
 		return false
 	}

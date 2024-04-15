@@ -34,12 +34,11 @@ func extractSummaryMetrics(processName, output string) (iface string, ptpOffset,
 	if indx < 0 {
 		return
 	}
-
 	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
 	output = replacer.Replace(output)
 	indx = FindInLogForCfgFileIndex(output)
 	if indx == -1 {
-		log.Errorf("config name is not found in log outpt")
+		log.Errorf("config name is not found in log output %s", output)
 		return
 	}
 	output = output[indx:]
@@ -109,7 +108,7 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 	// ptp4l 5196819.100 ptp4l.0.config master offset   -2162130 s2 freq +22451884 path delay    374976
 	index := FindInLogForCfgFileIndex(output)
 	if index == -1 {
-		log.Errorf("config name is not found in log outpt")
+		log.Errorf("config name is not found in log output %s", output)
 		return
 	}
 
@@ -188,7 +187,7 @@ func extractNmeaMetrics(processName, output string) (interfaceName string, statu
 	var err error
 	index := FindInLogForCfgFileIndex(output)
 	if index == -1 {
-		log.Errorf("config name is not found in log outpt")
+		log.Errorf("config name is not found in log output %s", output)
 		return
 	}
 
@@ -301,15 +300,21 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 
 // FindInLogForCfgFileIndex ... find config name from the log
 func FindInLogForCfgFileIndex(out string) int {
-	matchPtp4l := ptpConfigFileRegEx.FindStringIndex(out)
-	if len(matchPtp4l) == 2 {
+	if matchPtp4l := ptpConfigFileRegEx.FindStringIndex(out); len(matchPtp4l) == 2 {
 		return matchPtp4l[0]
 	}
-	matchTS2Phc := ts2phcConfigFileRegEx.FindStringIndex(out)
-	if len(matchTS2Phc) == 2 {
-		return matchTS2Phc[0]
+	if matchTS2Phc := FindInTS2PhcLogForCfgFileIndex(out); matchTS2Phc > -1 {
+		return matchTS2Phc
 	}
-	matchPhc2Sys := phc2SysConfigFileRegEx.FindStringIndex(out)
+	if matchPhc2Sys := FindInPhc2SysLogForCfgFileIndex(out); matchPhc2Sys > -1 {
+		return matchPhc2Sys
+	}
+	return -1
+}
+
+// FindInTS2PhcLogForCfgFileIndex ... find config name from the log
+func FindInTS2PhcLogForCfgFileIndex(out string) int {
+	matchPhc2Sys := ts2phcConfigFileRegEx.FindStringIndex(out)
 	if len(matchPhc2Sys) == 2 {
 		return matchPhc2Sys[0]
 	}
@@ -537,7 +542,7 @@ func extractPTPHaMetrics(processName, output string) (profile string, state int6
 	index := FindInPhc2SysLogForCfgFileIndex(output)
 	state = -1
 	if index == -1 {
-		log.Errorf("config name is not found in log outpt %s", output)
+		log.Errorf("config name is not found in log output %s", output)
 		return
 	}
 
