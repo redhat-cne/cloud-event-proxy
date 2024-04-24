@@ -58,6 +58,7 @@ type PtpProfile struct {
 	TS2PhcOpts        *string            `json:"ts2PhcOpts,omitempty"`
 	Ptp4lConf         *string            `json:"ptp4lConf,omitempty"`
 	TS2PhcConf        *string            `json:"ts2PhcConf,omitempty"`
+	PtpSettings       map[string]string  `json:"ptpSettings,omitempty"`
 	Interfaces        []*string
 }
 
@@ -129,14 +130,26 @@ func (pt *PtpClockThreshold) SafeClose() (justClosed bool) {
 
 // LinuxPTPConfigMapUpdate for ptp-conf update
 type LinuxPTPConfigMapUpdate struct {
-	lock                   sync.RWMutex
-	UpdateCh               chan bool
-	NodeProfiles           []PtpProfile
-	appliedNodeProfileJSON []byte
-	profilePath            string
-	intervalUpdate         int
-	EventThreshold         map[string]*PtpClockThreshold
-	PtpProcessOpts         map[string]*PtpProcessOpts
+	lock                        sync.RWMutex
+	UpdateCh                    chan bool
+	NodeProfiles                []PtpProfile
+	appliedNodeProfileJSON      []byte
+	profilePath                 string
+	intervalUpdate              int
+	EventThreshold              map[string]*PtpClockThreshold
+	PtpProcessOpts              map[string]*PtpProcessOpts
+	PtpSettings                 map[string]map[string]string
+	fileWatcherUpdateInProgress bool
+}
+
+// AppliedNodeProfileJSON ....
+func (l *LinuxPTPConfigMapUpdate) AppliedNodeProfileJSON() []byte {
+	return l.appliedNodeProfileJSON
+}
+
+// SetAppliedNodeProfileJSON ...
+func (l *LinuxPTPConfigMapUpdate) SetAppliedNodeProfileJSON(appliedNodeProfileJSON []byte) {
+	l.appliedNodeProfileJSON = appliedNodeProfileJSON
 }
 
 // NewLinuxPTPConfUpdate -- profile updater
@@ -148,6 +161,7 @@ func NewLinuxPTPConfUpdate() *LinuxPTPConfigMapUpdate {
 		intervalUpdate: DefaultUpdateInterval,
 		EventThreshold: make(map[string]*PtpClockThreshold),
 		PtpProcessOpts: make(map[string]*PtpProcessOpts),
+		PtpSettings:    make(map[string]map[string]string),
 	}
 
 	if os.Getenv("PTP_PROFILE_PATH") != "" {
@@ -171,7 +185,7 @@ func (p *PtpProfile) GetInterface() (interfaces []*string) {
 		singleInterface = *p.Interface
 		interfaces = append(interfaces, &singleInterface)
 	}
-	if p.Ptp4lConf != nil {
+	if p.Ptp4lConf != nil && *p.Ptp4lConf != "" {
 		matches := sectionHead.FindAllStringSubmatch(*p.Ptp4lConf, -1)
 		for _, v := range matches {
 			if v[1] != ignorePtp4lSection && v[1] != singleInterface && !ptpConfigFileRegEx.MatchString(v[1]) {
@@ -202,6 +216,18 @@ func (l *LinuxPTPConfigMapUpdate) DeleteAllPTPThreshold() {
 	}
 }
 
+// FileWatcherUpdateInProgress ... if config file watcher delay config update reads
+func (l *LinuxPTPConfigMapUpdate) FileWatcherUpdateInProgress(inProgress bool) {
+	l.lock.Lock()
+	l.fileWatcherUpdateInProgress = inProgress
+	l.lock.Unlock()
+}
+
+// IsFileWatcherUpdateInProgress ... if config file watcher delay config update reads
+func (l *LinuxPTPConfigMapUpdate) IsFileWatcherUpdateInProgress() bool {
+	return l.fileWatcherUpdateInProgress
+}
+
 func closeHoldover(t *PtpClockThreshold) {
 	defer func() {
 		if err := recover(); err != nil {
@@ -227,6 +253,8 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPProcessOptions() {
 		if profile.TS2PhcConf != nil && (profile.TS2PhcOpts == nil || *profile.TS2PhcOpts == "") {
 			l.PtpProcessOpts[*profile.Name].TS2PhcOpts = pointer.String("-m")
 		}
+
+		l.PtpSettings[*profile.Name] = profile.PtpSettings
 	}
 }
 
@@ -263,17 +291,25 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 			MinOffsetThreshold: minOffsetTh,
 			Close:              make(chan struct{}),
 		}
+
 		log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
 			*profile.Name, holdOverTh, maxOffsetTh, minOffsetTh)
 	}
 }
 
-// UpdateConfig ... update profile
-func (l *LinuxPTPConfigMapUpdate) UpdateConfig(nodeProfilesJSON []byte) error {
-	if bytes.Equal(l.appliedNodeProfileJSON, nodeProfilesJSON) {
-		return nil
+// UpdatePTPSetting ... ptp settings
+func (l *LinuxPTPConfigMapUpdate) UpdatePTPSetting() {
+	for _, profile := range l.NodeProfiles {
+		l.PtpSettings[*profile.Name] = profile.PtpSettings
 	}
-	log.Info("updating PROFILE")
+}
+
+// UpdateConfig ... update profile
+func (l *LinuxPTPConfigMapUpdate) UpdateConfig(nodeProfilesJSON []byte) (bool, error) {
+	if bytes.Equal(l.appliedNodeProfileJSON, nodeProfilesJSON) {
+		return true, nil
+	}
+	log.Info("updating profile")
 	if nodeProfiles, ok := tryToLoadConfig(nodeProfilesJSON); ok {
 		log.Info("load ptp profiles")
 		l.appliedNodeProfileJSON = nodeProfilesJSON
@@ -284,7 +320,7 @@ func (l *LinuxPTPConfigMapUpdate) UpdateConfig(nodeProfilesJSON []byte) error {
 			l.NodeProfiles[index].PtpClockThreshold = np.PtpClockThreshold
 		}
 		l.UpdateCh <- true
-		return nil
+		return true, nil
 	}
 
 	if nodeProfiles, ok := tryToLoadOldConfig(nodeProfilesJSON); ok {
@@ -292,17 +328,15 @@ func (l *LinuxPTPConfigMapUpdate) UpdateConfig(nodeProfilesJSON []byte) error {
 		// '{"name":null,"interface":null}'
 		if nodeProfiles[0].Name == nil || nodeProfiles[0].Interface == nil {
 			log.Infof("Skip no profile %+v", nodeProfiles[0])
-			return nil
+			return false, nil
 		}
 		log.Info("load profiles using old method")
 		l.appliedNodeProfileJSON = nodeProfilesJSON
 		l.NodeProfiles = nodeProfiles
 		l.UpdateCh <- true
-
-		return nil
+		return true, nil
 	}
-
-	return fmt.Errorf("unable to load profile config")
+	return false, fmt.Errorf("unable to load profile config")
 }
 
 // Try to load the multiple policy config
@@ -313,7 +347,6 @@ func tryToLoadConfig(nodeProfilesJSON []byte) ([]PtpProfile, bool) {
 		log.Errorf("error reading nodeprofile %s", err)
 		return nil, false
 	}
-
 	return ptpConfig, true
 }
 
@@ -329,14 +362,18 @@ func tryToLoadOldConfig(nodeProfilesJSON []byte) ([]PtpProfile, bool) {
 }
 
 // WatchConfigMapUpdate watch for ptp config update
-func (l *LinuxPTPConfigMapUpdate) WatchConfigMapUpdate(nodeName string, closeCh chan struct{}) {
-	l.updatePtpConfig(nodeName)
+func (l *LinuxPTPConfigMapUpdate) WatchConfigMapUpdate(nodeName string, closeCh chan struct{}, keepAlive bool) {
+	if l.updatePtpConfig(nodeName) && !keepAlive {
+		return // close the watcher after first update
+	}
 	tickerPull := time.NewTicker(time.Duration(l.intervalUpdate) * time.Second)
 	defer tickerPull.Stop()
 	for {
 		select {
 		case <-tickerPull.C:
-			l.updatePtpConfig(nodeName)
+			if l.updatePtpConfig(nodeName) && !keepAlive {
+				return // close the watcher after first update
+			}
 		case <-closeCh:
 			log.Info("signal received, shutting down")
 			return
@@ -344,8 +381,17 @@ func (l *LinuxPTPConfigMapUpdate) WatchConfigMapUpdate(nodeName string, closeCh 
 	}
 }
 
-func (l *LinuxPTPConfigMapUpdate) updatePtpConfig(nodeName string) {
+// PushPtpConfigMapChanges  ... push configMap updates
+func (l *LinuxPTPConfigMapUpdate) PushPtpConfigMapChanges(nodeName string) {
+	l.updatePtpConfig(nodeName)
+}
+
+func (l *LinuxPTPConfigMapUpdate) updatePtpConfig(nodeName string) (updated bool) {
 	nodeProfile := filepath.Join(l.profilePath, nodeName)
+	if l.IsFileWatcherUpdateInProgress() {
+		log.Infof("delete action on config was detetcted; delaying updating ptpconfig")
+		return // wait until delete is completed
+	}
 	if _, err := os.Stat(nodeProfile); err != nil {
 		if os.IsNotExist(err) {
 			log.Infof("ptp profile %s doesn't exist for node: %v , error %s", nodeProfile, nodeName, err.Error())
@@ -360,10 +406,11 @@ func (l *LinuxPTPConfigMapUpdate) updatePtpConfig(nodeName string) {
 		log.Errorf("error reading node profile: %v", nodeProfile)
 		return
 	}
-	err = l.UpdateConfig(nodeProfilesJSON)
+	updated, err = l.UpdateConfig(nodeProfilesJSON)
 	if err != nil {
 		log.Errorf("error updating the node configuration using the profiles loaded: %v", err)
 	}
+	return
 }
 
 // GetDefaultThreshold ... get default threshold

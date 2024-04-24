@@ -131,6 +131,13 @@ func (s *Stats) reset() { //nolint:unused
 	s.sumSqr = 0
 	s.aliasName = ""
 	s.role = types.UNKNOWN
+	s.frequencyAdjustment = 0
+	s.delay = 0
+	s.clackClass = 0
+	s.configDeleted = false
+	s.processName = ""
+	s.lastOffset = 0
+	s.offsetSource = ""
 }
 
 // NewStats ... create new stats
@@ -308,6 +315,13 @@ func (ps PTPStats) New() PTPStats {
 func (ps PTPStats) SetConfigAsDeleted(state bool) {
 	for _, p := range ps {
 		p.configDeleted = state
+	}
+}
+
+// Reset ...all values to empty
+func (ps PTPStats) Reset() {
+	for _, p := range ps {
+		p.reset()
 	}
 }
 
