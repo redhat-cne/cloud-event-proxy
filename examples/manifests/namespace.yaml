@@ -9,3 +9,5 @@ metadata:
     pod-security.kubernetes.io/warn: "privileged"
     name: cloud-events
     openshift.io/cluster-monitoring: "true"
+  annotations:
+    workload.openshift.io/allowed: management
