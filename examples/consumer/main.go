@@ -116,7 +116,7 @@ RETRY:
 
 	updateHTTPPublishers(nodeIP, nodeName, httpEventPublisher)
 
-	// ping  for status every n secs
+	// ping for status every n secs
 	// no amq support
 	wg.Add(1)
 	go func() { // in this example there will be only one publisher
@@ -325,11 +325,12 @@ func updateHTTPPublishers(nodeIP, nodeName string, addr ...string) {
 			continue
 		}
 		publisherServiceName := common.SanitizeTransportHost(s, nodeIP, nodeName)
-		healthStatusOk := publisherHealthCheck(publisherServiceName)
-		if healthStatusOk {
-			log.Info("healthy publisher;subscribing to events")
+		PublisherHealthOk = publisherHealthCheck(publisherServiceName)
+		eventPublishers[publisherServiceName] = PublisherHealthOk
+		if PublisherHealthOk {
+			log.Info("healthy publisher; subscribing to events")
+			subscribeToEvents()
 		}
-		eventPublishers[publisherServiceName] = healthStatusOk
-		log.Infof("publisher endpoint updated from %s to %s healthStatusOk %t", s, publisherServiceName, healthStatusOk)
+		log.Infof("publisher endpoint updated from %s to %s healthStatusOk %t", s, publisherServiceName, PublisherHealthOk)
 	}
 }

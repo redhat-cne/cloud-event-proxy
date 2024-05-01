@@ -50,10 +50,12 @@ spec:
       containers:
         - name: cloud-event-consumer
           image: "$CONSUMER_IMG"
+          imagePullPolicy: Always
           args:
             - "--local-api-addr=127.0.0.1:9089"
             - "--api-path=/api/ocloudNotifications/v1/"
             - "--api-addr=127.0.0.1:9095"
+            - "--http-event-publishers=$http_event_publishers"
           env:
             - name: NODE_NAME
               valueFrom:
