@@ -355,12 +355,10 @@ func APIHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
 		if response != nil && response.StatusCode == http.StatusOK {
 			_ = response.Body.Close()
 			log.Info("rest service returned healthy status")
-			time.Sleep(delay)
 			err = nil
 			ok = true
 			return
 		}
-		response.Body.Close()
 	}
 	if err != nil {
 		err = fmt.Errorf("error connecting to rest api %s", err.Error())
@@ -380,14 +378,12 @@ func HTTPTransportHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err
 			continue
 		}
 		if response != nil && response.StatusCode == http.StatusOK {
-			response.Body.Close()
+			_ = response.Body.Close()
 			log.Info("http transport returned healthy status")
-			time.Sleep(delay)
 			err = nil
 			ok = true
 			return
 		}
-		response.Body.Close()
 	}
 	if err != nil {
 		err = fmt.Errorf("error connecting to http transport %s", err.Error())
