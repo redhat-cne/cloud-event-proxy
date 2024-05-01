@@ -31,8 +31,6 @@ var _ = ginkgo.Describe("validation", func() {
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 			_, err = testclient.Client.Namespaces().Get(context.Background(), testutils.NamespaceConsumerTesting, metav1.GetOptions{})
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
-			_, err = testclient.Client.Namespaces().Get(context.Background(), testutils.NamespaceAMQTesting, metav1.GetOptions{})
-			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 		})
 
 		ginkgo.It("should have the event producer deployment in running state", func() {
@@ -60,25 +58,11 @@ var _ = ginkgo.Describe("validation", func() {
 			gomega.Expect(len(pods.Items)).To(gomega.BeNumerically(">", 0), "consumer is not deployed in the cluster")
 			gomega.Expect(pods.Items[0].Status.Phase).To(gomega.Equal(corev1.PodRunning))
 		})
-
-		ginkgo.It("should have the amq deployment in running state", func() {
-			deploy, err := testclient.Client.Deployments(testutils.NamespaceAMQTesting).Get(context.Background(), testutils.AMQDeploymentName, metav1.GetOptions{})
-			gomega.Expect(err).ToNot(gomega.HaveOccurred())
-			gomega.Expect(deploy.Status.Replicas).To(gomega.Equal(deploy.Status.ReadyReplicas))
-
-			pods, err := testclient.Client.Pods(testutils.NamespaceAMQTesting).List(context.Background(), metav1.ListOptions{
-				LabelSelector: "app=amq-router"})
-			gomega.Expect(err).ToNot(gomega.HaveOccurred())
-			gomega.Expect(pods.Items[0].Status.Phase).To(gomega.Equal(corev1.PodRunning))
-
-		})
-
 	})
 
 	ginkgo.Describe("[e2e]", func() {
 		producerPod := corev1.Pod{}
 		consumerPod := corev1.Pod{}
-		routerPod := corev1.Pod{}
 
 		ginkgo.BeforeEach(func() {
 			producerPods, err := testclient.Client.Pods(testutils.NamespaceProducerTesting).List(context.Background(), metav1.ListOptions{
@@ -92,20 +76,6 @@ var _ = ginkgo.Describe("validation", func() {
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 			gomega.Expect(len(consumerPods.Items)).To(gomega.BeNumerically(">", 0), "consumer is not deployed on cluster")
 			consumerPod = consumerPods.Items[0]
-
-			amqPods, err := testclient.Client.Pods(testutils.NamespaceAMQTesting).List(context.Background(), metav1.ListOptions{
-				LabelSelector: "app=amq-router"})
-			gomega.Expect(err).ToNot(gomega.HaveOccurred())
-			gomega.Expect(len(amqPods.Items)).To(gomega.BeNumerically(">", 0), "amq router is not deployed on cluster")
-			routerPod = amqPods.Items[0]
-
-		})
-
-		ginkgo.Context("cloud amq router validation", func() {
-			ginkgo.It("Should check for amq router", func() {
-				ginkgo.By("Checking container is present")
-				gomega.Expect(len(routerPod.Spec.Containers)).To(gomega.BeNumerically("==", 1), "amq router is not deployed on cluster")
-			})
 		})
 
 		ginkgo.Context("cloud event producer validation", func() {
