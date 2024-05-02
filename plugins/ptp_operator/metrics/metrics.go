@@ -102,18 +102,15 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	// if  is has ts2phc then it will replace it with ptp4l
 	configName = strings.Replace(configName, ts2phcProcessName, ptp4lProcessName, 1)
 	ptp4lCfg := p.GetPTPConfig(types.ConfigName(configName))
+
 	// ptp stats goes by config either ptp4l ot pch2sys
 	// master (slave) interface can be configured in ptp4l but  offset provided by ts2phc
 
 	ptpStats := p.GetStats(types.ConfigName(configName))
 	profileName := ptp4lCfg.Profile
 
-	if len(ptp4lCfg.Interfaces) == 0 { //TODO: Use PMC to update port and roles
-		log.Errorf("file watcher have not picked the files yet or ptp4l doesn't have config")
-		return
-	}
-	if profileName == "" {
-		log.Errorf("ptp4l config does not have profile name, aborting. ")
+	if !p.validLogToProcess(profileName, processName, len(ptp4lCfg.Interfaces)) {
+		log.Infof("skipped parsing %s", output)
 		return
 	}
 
@@ -319,6 +316,18 @@ func (p *PTPEventManager) processDownEvent(profileName, processName string, ptpS
 			p.GenPTPEvent(profileName, s, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
 		}
 	}
+}
+
+func (p *PTPEventManager) validLogToProcess(profileName, processName string, iFaceSize int) bool {
+	if profileName == "" {
+		log.Info("ptp4l config does not have profile name, skipping. ")
+		return false
+	}
+	if iFaceSize == 0 { //TODO: Use PMC to update port and roles
+		log.Errorf("file watcher have not picked the files yet or ptp4l doesn't have config for %s by process %s", profileName, processName)
+		return false
+	}
+	return true
 }
 
 func getAlias(iface string) string {

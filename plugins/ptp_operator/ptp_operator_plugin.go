@@ -22,6 +22,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"k8s.io/utils/pointer"
 
@@ -104,19 +105,20 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 	// create socket listener
 	go listenToSocket(wg)
 	// watch for ptp any config updates
-	go eventManager.PtpConfigMapUpdates.WatchConfigMapUpdate(nodeName, configuration.CloseCh)
-
+	go eventManager.PtpConfigMapUpdates.WatchConfigMapUpdate(nodeName, configuration.CloseCh, false)
 	// watch and monitor ptp4l config file creation and deletion
 	// create a ptpConfigDir directory watcher for config changes
-	notifyConfigDirUpdates = make(chan *ptp4lconf.PtpConfigUpdate)
+	notifyConfigDirUpdates = make(chan *ptp4lconf.PtpConfigUpdate, 20) // max 20 profiles since all files will be deleted in reapply
 	fileWatcher, err = ptp4lconf.NewPtp4lConfigWatcher(ptpConfigDir, notifyConfigDirUpdates)
 	if err != nil {
 		log.Errorf("cannot monitor ptp4l configuation folder at %s : %s", ptpConfigDir, err)
 		return err
 	}
+
 	// process ptp4l conf file updates under /var/run/ptp4l.X.conf
 	go processPtp4lConfigFileUpdates()
 
+	// Reading configmap on any updates to configmap
 	// get threshold data on change of ptp config
 	// update node profile when configmap changes
 	go func() {
@@ -124,7 +126,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 			select {
 			case <-eventManager.PtpConfigMapUpdates.UpdateCh:
 				log.Infof("updating ptp profile changes %d", len(eventManager.PtpConfigMapUpdates.NodeProfiles))
-				// clean up
+				// clean up when no profiles found in configmap
 				if len(eventManager.PtpConfigMapUpdates.NodeProfiles) == 0 {
 					log.Infof("Zero Profile to update: cleaning up threshold")
 					eventManager.PtpConfigMapUpdates.DeleteAllPTPThreshold()
@@ -134,9 +136,10 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 					// delete all metrics related to process
 					ptpMetrics.DeleteProcessStatusMetricsForConfig(nodeName, "", "")
 				} else {
-					// updates
+					// updates found in configmap
 					eventManager.PtpConfigMapUpdates.UpdatePTPProcessOptions()
 					eventManager.PtpConfigMapUpdates.UpdatePTPThreshold()
+					eventManager.PtpConfigMapUpdates.UpdatePTPSetting()
 					for key, np := range eventManager.PtpConfigMapUpdates.EventThreshold {
 						ptpMetrics.Threshold.With(prometheus.Labels{
 							"threshold": "MinOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MinOffsetThreshold))
@@ -253,8 +256,19 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 	}
 }
 
-// update interface and threshold details when ptpConfig change found
+// update interface details and threshold details when ptpConfig change found.
+// These are updated when config file is created or deleted under /var/run folder
+// by linuxptp-daemon.
+// issue to resolve: linuxptp-daemon-container will read ptpconfig and update ptpConfigMap
+// the updates are incremental and file creation happens when ptpConfigMap is updated
+// NOTE: there is delay between configmap updates and file creation
+// FIRST ptpConfigMap created and then the daemon ticker when starting the process
+// creates the files or deletes the file when process is stopped
+// This routine tries to rely on file creation to detect ptp config updates
+// and on file creation call ptpConfig updates
+// on file deletion reset to read fresh ptpconfig updates
 func processPtp4lConfigFileUpdates() {
+	fileModified := false
 	for {
 		select {
 		case ptpConfigEvent := <-notifyConfigDirUpdates:
@@ -268,14 +282,19 @@ func processPtp4lConfigFileUpdates() {
 				ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
 				// read all interface names from the config
 				newInterfaces := ptpConfigEvent.GetAllInterface()
+				ptp4lConfig := eventManager.GetPTPConfig(ptpConfigFileName)
 
-				if _, ok := eventManager.Ptp4lConfigInterfaces[ptpConfigFileName]; !ok { // config file name is the key here
-					eventManager.Ptp4lConfigInterfaces[ptpConfigFileName] = nil
+				if ptp4lConfig.Profile == "" {
+					ptp4lConfig.Profile = *ptpConfigEvent.Profile
+					eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
 				}
+
 				// loop through to find if any interface changed
 				if eventManager.Ptp4lConfigInterfaces[ptpConfigFileName] != nil &&
 					HasEqualInterface(newInterfaces, eventManager.Ptp4lConfigInterfaces[ptpConfigFileName].Interfaces) {
 					log.Infof("skipped update,interface not changed in ptl4lconfig")
+					// add to eventManager
+					eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
 					continue
 				}
 
@@ -288,8 +307,7 @@ func processPtp4lConfigFileUpdates() {
 					}
 					return false
 				}
-				// update ptp4lConfig
-				ptp4lConfig := eventManager.GetPTPConfig(ptpConfigFileName)
+
 				if ptp4lConfig != nil {
 					for _, ptpInterface := range ptp4lConfig.Interfaces {
 						if !isExists(ptpInterface.Name) {
@@ -306,13 +324,13 @@ func processPtp4lConfigFileUpdates() {
 					if p, e := ptp4lConfig.ByInterface(*ptpInterface); e == nil && p.PortID == index+1 { // maintain role
 						role = p.Role
 					} // else new config order is not same
-					ptpInterface := &ptp4lconf.PTPInterface{
+					ptpIFace := &ptp4lconf.PTPInterface{
 						Name:     *ptpInterface,
 						PortID:   index + 1,
 						PortName: fmt.Sprintf("%s%d", "port ", index+1),
 						Role:     role,
 					}
-					ptpInterfaces = append(ptpInterfaces, ptpInterface)
+					ptpInterfaces = append(ptpInterfaces, ptpIFace)
 				}
 				// updated ptp4lConfig is ready
 				ptp4lConfig = &ptp4lconf.PTP4lConfig{
@@ -339,10 +357,26 @@ func processPtp4lConfigFileUpdates() {
 							strings.Replace(cName, ptp4lProcessName, ts2PhcProcessName, 1), ts2PhcProcessName)
 					}
 				}
-			case true: // ptp4l.X.conf is deleted
+				for key, np := range eventManager.PtpConfigMapUpdates.EventThreshold {
+					ptpMetrics.Threshold.With(prometheus.Labels{
+						"threshold": "MinOffsetThreshold", "node": eventManager.NodeName(), "profile": key}).Set(float64(np.MinOffsetThreshold))
+					ptpMetrics.Threshold.With(prometheus.Labels{
+						"threshold": "MaxOffsetThreshold", "node": eventManager.NodeName(), "profile": key}).Set(float64(np.MaxOffsetThreshold))
+					ptpMetrics.Threshold.With(prometheus.Labels{
+						"threshold": "HoldOverTimeout", "node": eventManager.NodeName(), "profile": key}).Set(float64(np.HoldOverTimeout))
+				}
+			case true: // ptp4l.X.conf is deleted ; how to prevent updates happening at same time
 				// delete metrics, ptp4l config is removed
+				// get config fileName
+				fileModified = true
+				eventManager.PtpConfigMapUpdates.FileWatcherUpdateInProgress(true)
+				log.Infof("delete ptp config %s at %s", *ptpConfigEvent.Name, time.Now())
 				ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
+				ptp4lConfig := eventManager.GetPTPConfig(ptpConfigFileName)
+				log.Infof("deleting config %s with profile %s\n", *ptpConfigEvent.Name, ptp4lConfig.Profile)
+
 				ptpStats := eventManager.GetStats(ptpConfigFileName)
+				// to avoid new one getting created , make a copy of this stats
 				ptpStats.SetConfigAsDeleted(true)
 				// clean up
 				if ptpConfig, ok := eventManager.Ptp4lConfigInterfaces[ptpConfigFileName]; ok {
@@ -356,6 +390,7 @@ func processPtp4lConfigFileUpdates() {
 					ptpMetrics.DeleteThresholdMetrics(ptpConfig.Profile)
 					eventManager.PtpConfigMapUpdates.DeletePTPThreshold(ptpConfig.Profile)
 				}
+
 				//  offset related metrics are reported only for clock realtime and master
 				// if ptp4l config is deleted ,  remove any metrics reported by it config
 				// for dual nic, keep the CLOCK_REALTIME,if master interface not in same config
@@ -399,6 +434,14 @@ func processPtp4lConfigFileUpdates() {
 		case <-config.CloseCh:
 			fileWatcher.Close()
 			return
+		default:
+			// decision maker before ptpConfig map updates can be processes
+			if fileModified {
+				eventManager.PtpConfigMapUpdates.FileWatcherUpdateInProgress(false)
+				eventManager.PtpConfigMapUpdates.SetAppliedNodeProfileJSON([]byte{}) // reset ptpconfig dataset and update again
+				eventManager.PtpConfigMapUpdates.PushPtpConfigMapChanges(eventManager.NodeName())
+				fileModified = false
+			}
 		}
 	}
 }

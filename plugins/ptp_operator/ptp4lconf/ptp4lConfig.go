@@ -207,7 +207,7 @@ func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpd
 							Ptp4lConf: nil,
 							Removed:   true,
 						}
-						log.Println("config removed file:", event.Name)
+						log.Infof("config removed file:%s", event.Name)
 						updatedConfig <- ptpConfig
 					}
 				}
