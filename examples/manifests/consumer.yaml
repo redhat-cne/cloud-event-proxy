@@ -60,7 +60,7 @@ spec:
             - name: metrics-port
               containerPort: 9091
         - name: kube-rbac-proxy
-          image: quay.io/coreos/kube-rbac-proxy:v0.5.0
+          image: quay.io/openshift/origin-kube-rbac-proxy:4.16
           args:
             - --logtostderr
             - --secure-listen-address=:8443
