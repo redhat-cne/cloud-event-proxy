@@ -245,8 +245,18 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 					switch eventType {
 					case ptp.GnssStateChange:
 						if s.HasProcessEnabled(gnssProcessName) { //gnss is with the master
+							gpsFixState, offset, syncState, _ := s.GetDependsOnValueState(gnssProcessName, nil, "gnss_status")
+							offsetInt := int64(offset)
+							state := eventManager.GetGPSFixState(gpsFixState, syncState)
 							ptpInterface = ptpTypes.IFace(fmt.Sprintf("%s/%s", s.Alias(), ptpMetrics.MasterClockType))
-							data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType))
+							data = processDataFn(data, eventManager.GetPTPEventsData(state, offsetInt, string(ptpInterface), eventType))
+							// add gps fix data to data model
+							data.Values = append(data.Values, event.DataValue{
+								Resource:  fmt.Sprintf("%s/%s", data.Values[0].GetResource(), "gpsFix"),
+								DataType:  event.METRIC,
+								ValueType: event.DECIMAL,
+								Value:     gpsFixState,
+							})
 						}
 					}
 				}

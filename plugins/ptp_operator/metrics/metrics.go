@@ -71,6 +71,11 @@ const (
 	UNAVAILABLE float64 = 0
 	// AVAILABLE Nmea and Pps status
 	AVAILABLE float64 = 1
+
+	gnssStatus      = "gnss_status"
+	frequencyStatus = "frequency_status"
+	phaseStatus     = "phase_status"
+	ppsStatus       = "pps_status"
 )
 
 // ExtractMetrics ... extract metrics from ptp logs.
