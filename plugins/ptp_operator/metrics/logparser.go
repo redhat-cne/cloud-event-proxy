@@ -406,7 +406,7 @@ func (p *PTPEventManager) ParseDPLLLogs(processName, configName, output string, 
 	// dpll[1700598434]:[ts2phc.0.config] ens2f0 frequency_status 3 offset 0 phase_status 3 pps_status 1 s2
 	// 0        1             2           3             4       5     6    7           8   9 10         11 12
 	// dpll 1700598434 ts2phc.0.config ens2f0   frequency_status 3  offset 0  phase_status 3 pps_status 1  s2
-	if strings.Contains(output, "frequency_status") {
+	if strings.Contains(output, frequencyStatus) {
 		if len(fields) < 12 {
 			log.Errorf("DPLL Status is not in right format %s", output)
 			return
@@ -414,10 +414,10 @@ func (p *PTPEventManager) ParseDPLLLogs(processName, configName, output string, 
 	} else {
 		return
 	}
-	var phaseStatus float64
-	var frequencyStatus int64
+	var phaseStatusValue float64
+	var frequencyStatusValue int64
 	var dpllOffset float64
-	var ppsStatus float64
+	var ppsStatusValue float64
 	var err error
 	iface := pointer.String(fields[3])
 	syncState := fields[12]
@@ -428,24 +428,24 @@ logStatusLoop:
 	// read 4, 6, 8 and 10
 	for i := 4; i < 11; i = i + 2 { // the order need to be fixed in linux ptp daemon , this is workaround
 		switch fields[i] {
-		case "frequency_status":
-			if frequencyStatus, err = strconv.ParseInt(fields[i+1], 10, 64); err != nil {
-				log.Error("error parsing frequencyStatus")
+		case frequencyStatus:
+			if frequencyStatusValue, err = strconv.ParseInt(fields[i+1], 10, 64); err != nil {
+				log.Error("error parsing frequency_status")
 				break logStatusLoop
 			}
-		case "phase_status":
-			if phaseStatus, err = strconv.ParseFloat(fields[i+1], 64); err != nil {
-				log.Error("error parsing phaseStatus")
+		case phaseStatus:
+			if phaseStatusValue, err = strconv.ParseFloat(fields[i+1], 64); err != nil {
+				log.Error("error parsing phase_status")
 				// exit from loop if error
 				break logStatusLoop
 			}
-		case "offset":
+		case offset:
 			if dpllOffset, err = strconv.ParseFloat(fields[i+1], 64); err != nil {
 				log.Errorf("%s failed to parse offset from the output %s error %s", processName, fields[3], err.Error())
 				break logStatusLoop
 			}
-		case "pps_status":
-			if ppsStatus, err = strconv.ParseFloat(fields[i+1], 64); err != nil {
+		case ppsStatus:
+			if ppsStatusValue, err = strconv.ParseFloat(fields[i+1], 64); err != nil {
 				log.Errorf("%s failed to parse offset from the output %s error %s", processName, fields[3], err.Error())
 				break logStatusLoop
 			}
@@ -459,14 +459,14 @@ logStatusLoop:
 			Offset:  pointer.Float64(dpllOffset),
 			Process: dpllProcessName,
 			IFace:   iface,
-			Value: map[string]int64{"frequency_status": frequencyStatus, "phase_status": int64(phaseStatus),
-				"pps_status": int64(ppsStatus)},
+			Value: map[string]int64{frequencyStatus: frequencyStatusValue, phaseStatus: int64(phaseStatusValue),
+				ppsStatus: int64(ppsStatusValue)},
 			ClockSource: event.DPLL,
 			NodeName:    ptpNodeName,
 			HelpText: map[string]string{
-				"frequency_status": "-1=UNKNOWN, 0=INVALID, 1=FREERUN, 2=LOCKED, 3=LOCKED_HO_ACQ, 4=HOLDOVER",
-				"phase_status":     "-1=UNKNOWN, 0=INVALID, 1=FREERUN, 2=LOCKED, 3=LOCKED_HO_ACQ, 4=HOLDOVER",
-				"pps_status":       "0=UNAVAILABLE, 1=AVAILABLE",
+				frequencyStatus: "-1=UNKNOWN, 0=INVALID, 1=FREERUN, 2=LOCKED, 3=LOCKED_HO_ACQ, 4=HOLDOVER",
+				phaseStatus:     "-1=UNKNOWN, 0=INVALID, 1=FREERUN, 2=LOCKED, 3=LOCKED_HO_ACQ, 4=HOLDOVER",
+				ppsStatus:       "0=UNAVAILABLE, 1=AVAILABLE",
 			},
 		}, ptpStats.HasMetrics(processName), ptpStats.HasMetricHelp(processName))
 		SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": alias}).Set(GetSyncStateID(syncState))
@@ -522,18 +522,34 @@ func (p *PTPEventManager) ParseGNSSLogs(processName, configName, output string, 
 			Offset:      pointer.Float64(gnssOffset),
 			Process:     processName,
 			IFace:       iface,
-			Value:       map[string]int64{"gnss_status": gnssState},
+			Value:       map[string]int64{gnssStatus: gnssState},
 			ClockSource: event.GNSS,
 			NodeName:    ptpNodeName,
-			HelpText:    map[string]string{"gnss_status": "0=NOFIX, 1=Dead Reckoning Only, 2=2D-FIX, 3=3D-FIX, 4=GPS+dead reckoning fix, 5=Time only fix"},
+			HelpText:    map[string]string{gnssStatus: "0=NOFIX, 1=Dead Reckoning Only, 2=2D-FIX, 3=3D-FIX, 4=GPS+dead reckoning fix, 5=Time only fix"},
 		}, ptpStats.HasMetrics(processName), ptpStats.HasMetricHelp(processName))
 		// reduce noise ; if state changed then send events
 		if lastState != GetSyncState(syncState) || errState != nil {
 			log.Infof("%s last state %s and current state %s", processName, lastState, GetSyncState(syncState))
 			masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
-			p.publishGNSSEvent(gnssState, gnssOffset, masterResource, ptp.GnssStateChange)
+			p.publishGNSSEvent(gnssState, gnssOffset, GetSyncState(syncState), masterResource, ptp.GnssStateChange)
 		}
 	}
+}
+
+// GetGPSFixState ... returns gps state by computing gpsFix and offset derived state
+func (p *PTPEventManager) GetGPSFixState(gpsFix int64, syncState ptp.SyncState) (state ptp.SyncState) {
+	state = ptp.ANTENNA_DISCONNECTED
+	// 0=NOFIX, 1=Dead Reckoning Only, 2=2D-FIX, 3=3D-FIX, 4=GPS+dead reckoning fix, 5=Time only fix
+	if syncState == ptp.LOCKED {
+		state = ptp.SYNCHRONIZED
+	} else if gpsFix >= 3 {
+		state = ptp.ACQUIRING_SYNC // if state was declared as FREERUN due to Offset outside threshold set to ACQUIRING_SYNC
+	} else if gpsFix == 0 {
+		state = ptp.ANTENNA_DISCONNECTED
+	} else if gpsFix < 3 {
+		state = ptp.ACQUIRING_SYNC
+	}
+	return
 }
 
 // extractPTPHaMetrics ... parse logs for ptp ha
