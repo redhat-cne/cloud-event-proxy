@@ -181,19 +181,21 @@ func (p *PTPEventManager) PublishClockClassEvent(clockClass float64, source stri
 }
 
 // PublishClockClassEvent ...publish events
-func (p *PTPEventManager) publishGNSSEvent(state int64, offset float64, source string, eventType ptp.EventType) {
+func (p *PTPEventManager) publishGNSSEvent(state int64, offset float64, syncState ptp.SyncState, source string, eventType ptp.EventType) {
 	if p.mock {
 		p.mockEvent = eventType
 		log.Infof("publishGNSSEvent state=%d, offset=%f, source=%s, eventType=%s", state, offset, source, eventType)
 		return
 	}
 	var data *ceevent.Data
-	if state < 3 {
-		data = p.GetPTPEventsData(ptp.LOCKED, int64(offset), source, eventType)
-	} else {
-		data = p.GetPTPEventsData(ptp.FREERUN, int64(offset), source, eventType)
-	}
-
+	gpsFixState := p.GetGPSFixState(state, syncState)
+	data = p.GetPTPEventsData(gpsFixState, int64(offset), source, eventType)
+	data.Values = append(data.Values, ceevent.DataValue{
+		Resource:  fmt.Sprintf("%s/%s", data.Values[0].GetResource(), "gpsFix"),
+		DataType:  ceevent.METRIC,
+		ValueType: ceevent.DECIMAL,
+		Value:     state,
+	})
 	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
 	p.publish(*data, resourceAddress, eventType)
 }
