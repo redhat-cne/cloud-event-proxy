@@ -21,17 +21,6 @@ type ErrorHandler interface {
 	Error() string
 }
 
-// ReceiverNotFoundError  amqp receiver not found
-type ReceiverNotFoundError struct {
-	Name string
-	Desc string
-}
-
-// Error  receiver not found error string
-func (r ReceiverNotFoundError) Error() string {
-	return fmt.Sprintf("receiver %s not found", r.Name)
-}
-
 // ReceiverError receiver general error
 type ReceiverError struct {
 	Name string
@@ -43,17 +32,6 @@ func (r ReceiverError) Error() string {
 	return fmt.Sprintf("receiver %s error %s", r.Name, r.Desc)
 }
 
-// SenderError sender amqp error
-type SenderError struct {
-	Name string
-	Desc string
-}
-
-// Error  sender error string
-func (sr SenderError) Error() string {
-	return fmt.Sprintf("sender %s error %s", sr.Name, sr.Desc)
-}
-
 // SenderNotFoundError sender not found custom error
 type SenderNotFoundError struct {
 	Name string
@@ -63,16 +41,6 @@ type SenderNotFoundError struct {
 // Error sender not found error string
 func (s SenderNotFoundError) Error() string {
 	return fmt.Sprintf("sender %s not found", s.Name)
-}
-
-// AMQPConnectionError custom amqp connection error
-type AMQPConnectionError struct {
-	Desc string
-}
-
-// Error amqp connection error string
-func (a AMQPConnectionError) Error() string {
-	return fmt.Sprintf("amqp connection error %s", a.Desc)
 }
 
 // HTTPConnectionError custom http connection error
