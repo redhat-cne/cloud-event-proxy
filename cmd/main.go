@@ -59,6 +59,7 @@ var (
 	storePath               string
 	transportHost           string
 	apiPort                 int
+	apiVersion              string
 	channelBufferSize       = 100
 	statusChannelBufferSize = 50
 	scConfig                *common.SCConfiguration
@@ -77,6 +78,7 @@ func main() {
 	flag.StringVar(&storePath, "store-path", ".", "The path to store publisher and subscription info.")
 	flag.StringVar(&transportHost, "transport-host", "http://ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043", "The transport bus hostname or service name.")
 	flag.IntVar(&apiPort, "api-port", 8089, "The address the rest api endpoint binds to.")
+	flag.StringVar(&apiVersion, "api-version", "1.0", "The address the rest api endpoint binds to.")
 	flag.StringVar(&httpEventPublisher, "http-event-publishers", "", "Comma separated address of the publishers available.")
 
 	flag.Parse()
