@@ -279,6 +279,7 @@ func processEvent(data []byte) {
 	latency := (time.Now().UnixNano() - e.Time.UnixNano()) / 1000000
 	// set log to Info level for performance measurement
 	log.Infof("Latency for the event: %v ms", latency)
+	log.Infof("Event: %s", e.String())
 }
 
 func initSubscribers(cType ConsumerTypeEnum) map[string]string {
