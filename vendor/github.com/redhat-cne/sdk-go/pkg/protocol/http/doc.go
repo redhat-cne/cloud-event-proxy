@@ -1,4 +1,4 @@
 /*
-Package http provides amqp data processing and handling.
+Package http provides transport data processing and handling.
 */
 package http

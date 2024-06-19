@@ -1,10 +1,3 @@
-# github.com/Azure/go-amqp v0.17.5
-## explicit; go 1.12
-github.com/Azure/go-amqp
-github.com/Azure/go-amqp/internal/bitmap
-github.com/Azure/go-amqp/internal/buffer
-github.com/Azure/go-amqp/internal/encoding
-github.com/Azure/go-amqp/internal/frames
 # github.com/beorn7/perks v1.0.1
 ## explicit; go 1.11
 github.com/beorn7/perks/quantile
@@ -14,9 +7,6 @@ github.com/blang/semver
 # github.com/cespare/xxhash/v2 v2.1.2
 ## explicit; go 1.11
 github.com/cespare/xxhash/v2
-# github.com/cloudevents/sdk-go/protocol/amqp/v2 v2.15.2
-## explicit; go 1.18
-github.com/cloudevents/sdk-go/protocol/amqp/v2
 # github.com/cloudevents/sdk-go/v2 v2.15.2
 ## explicit; go 1.18
 github.com/cloudevents/sdk-go/v2
@@ -194,12 +184,12 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/redhat-cne/rest-api v0.1.1-0.20240321182038-6eeefb7aa65d
-## explicit; go 1.21
+# github.com/redhat-cne/rest-api v1.0.1-0.20240614193557-19aa9664037b
+## explicit; go 1.22
 github.com/redhat-cne/rest-api
 github.com/redhat-cne/rest-api/pkg/localmetrics
-# github.com/redhat-cne/sdk-go v0.1.1-0.20240321130308-a635605654ab
-## explicit; go 1.21
+# github.com/redhat-cne/sdk-go v1.0.1-0.20240614182056-bfc7566a02ac
+## explicit; go 1.22
 github.com/redhat-cne/sdk-go/pkg/channel
 github.com/redhat-cne/sdk-go/pkg/errorhandler
 github.com/redhat-cne/sdk-go/pkg/event
@@ -207,7 +197,6 @@ github.com/redhat-cne/sdk-go/pkg/event/ptp
 github.com/redhat-cne/sdk-go/pkg/event/redfish
 github.com/redhat-cne/sdk-go/pkg/localmetrics
 github.com/redhat-cne/sdk-go/pkg/protocol
-github.com/redhat-cne/sdk-go/pkg/protocol/amqp
 github.com/redhat-cne/sdk-go/pkg/protocol/http
 github.com/redhat-cne/sdk-go/pkg/pubsub
 github.com/redhat-cne/sdk-go/pkg/store
@@ -216,7 +205,6 @@ github.com/redhat-cne/sdk-go/pkg/subscriber
 github.com/redhat-cne/sdk-go/pkg/types
 github.com/redhat-cne/sdk-go/pkg/util/clock
 github.com/redhat-cne/sdk-go/pkg/util/wait
-github.com/redhat-cne/sdk-go/v1/amqp
 github.com/redhat-cne/sdk-go/v1/event
 github.com/redhat-cne/sdk-go/v1/http
 github.com/redhat-cne/sdk-go/v1/pubsub

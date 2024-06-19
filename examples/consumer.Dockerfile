@@ -1,4 +1,4 @@
-FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.21-openshift-4.16 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.22-openshift-4.17 AS builder
 ENV GO111MODULE=on
 ENV CGO_ENABLED=1
 ENV COMMON_GO_ARGS=-race
@@ -9,7 +9,7 @@ COPY . .
 
 RUN hack/build-example-go.sh
 
-FROM registry.ci.openshift.org/ocp/4.16:base-rhel9 AS bin
+FROM registry.ci.openshift.org/ocp/4.17:base-rhel9 AS bin
 COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/build/cloud-event-consumer /
 
 LABEL io.k8s.display-name="Cloud Event Proxy Sample Consumer" \

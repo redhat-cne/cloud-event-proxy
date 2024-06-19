@@ -9,7 +9,6 @@
  [![LICENSE](https://img.shields.io/github/license/redhat-cne/cloud-event-proxy.svg)](https://github.com/redhat-cne/cloud-event-proxy/blob/main/LICENSE)
 ## Contents
 * [Transport Protocol](#event-transporter)
-    * [AMQ Protocol](#amq-protocol)
     * [HTTP Protocol](#http-protocol)
 * [Publishers](#creating-publisher)
     * [JSON Example](#publisher-json-example)
@@ -25,35 +24,9 @@
 * [Plugin](#plugin)
   
 ## Event Transporter
-Cloud event proxy support two types of transport protocol
-1. AMQ Protocol 
-2. HTTP Protocol
+Cloud event proxy currently support one type of transport protocol
+1. HTTP Protocol
 
-### AMQ Protocol
- AMQ protocol required qdr router deployed and running manually or via AMQ interconnect operator.
- Have `transport-host` variable set to AMQ instance example `amqp://localhost:5672`
-The Producer will be sending  events to bus address specified by the  publisher and consumers connect to those bus address.
-AMQ producer example
-```yaml
- - name: cloud-event-sidecar
-          image: quay.io/redhat-cne/cloud-event-proxy
-          args:
-            - "--metrics-addr=127.0.0.1:9091"
-            - "--store-path=/store"
-            - "--transport-host=amqp://amq-router.amq-router.svc.cluster.local"
-            - "--api-port=9085"
-```
-
-AMQ consumer example              
-```yaml
- - name: cloud-event-sidecar
-          image: quay.io/redhat-cne/cloud-event-proxy
-          args:
-            - "--metrics-addr=127.0.0.1:9091"
-            - "--store-path=/store"
-            - "--transport-host=amqp://amq-router.amq-router.svc.cluster.local"
-            - "--api-port=8089"
-```
 ### HTTP Protocol
 #### Producer
 CloudEvents HTTP Protocol will be enabled based on url in `transport-host`.
@@ -150,28 +123,6 @@ Create Publisher Resource: JSON response
 ```
 
 ### Creating Publisher Golang Eexample
-#### Creating publisher golang example with AMQ as transporter protocol
-```go
-package main
-import (
-	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
-    v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
-	"github.com/redhat-cne/sdk-go/pkg/types"
-)
-func main(){
-  //channel for the transport handler subscribed to get and set events  
-    eventInCh := make(chan *channel.DataChan, 10)
-    pubSubInstance = v1pubsub.GetAPIInstance(".")
-    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:9085", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
-    // create publisher 
-    pub, err := pubSubInstance.CreatePublisher(v1pubsub.NewPubSub(endpointURL, "test/test"))
-    // once the publisher response is received, create a transport sender object to send events.
-    if err==nil{
-        v1amqp.CreateSender(eventInCh, pub.GetResource())
-    }
-}
-```
-
 
 #### Creating publisher golang example with HTTP as transporter protocol
 ```go
@@ -211,28 +162,6 @@ Example Create Subscription Resource: JSON response
 ```
 
 ### Creating Subscription Golang Example
-#### Creating subscription golang example with AMQ as transporter protocol 
-```go
-package main
-import (
-	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
-    v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
-	"github.com/redhat-cne/sdk-go/pkg/types"
-)
-func main(){
-    //channel for the transport handler subscribed to get and set events  
-    eventInCh := make(chan *channel.DataChan, 10)
-    
-    pubSubInstance = v1pubsub.GetAPIInstance(".")
-    endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8089", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
-    // create subscription 
-    pub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "test/test"))
-    // once the subscription response is received, create a transport listener object to receive events.
-    if err==nil{
-        v1amqp.CreateListener(eventInCh, pub.GetResource())
-    }
-}
-```
 
 #### Creating subscription golang example with HTTP as transporter protocol
 ```go
@@ -272,22 +201,8 @@ POST /api/ocloudNotifications/v1/create/event
 
 ```
 
-### Create Status Listener
-```go
-// 1.Create Status Listener Fn (onStatusRequestFn is action to be performed on status ping received)
-onStatusRequestFn := func(e v2.Event) error {
-log.Printf("got status check call,fire events for above publisher")
-event, _ := createPTPEvent(pub)
-_ = common.PublishEvent(config, event)
-return nil
-}
-// 2. Create Listener object  
-v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pub.Resource, "status"), onStatusRequestFn, nil)
-
-```
-
-
 ## Cloud Native Events
+
 The following example shows a Cloud Native Events serialized as JSON:
 (Following json should be validated with Cloud native events' event_spec.json schema)
 
@@ -349,7 +264,7 @@ event.SetData(data)
 ### Publisher event create via go-sdk
 ```go
 cloudEvent, _ := v1event.CreateCloudEvents(event, pub)
-//send event to AMQP (rest API does this action by default)
+//send event to transport (rest API does this action by default)
 v1event.SendNewEventToDataChannel(eventInCh, pub.Resource, cloudEvent)
 
 ```

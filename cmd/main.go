@@ -50,7 +50,6 @@ import (
 	apiMetrics "github.com/redhat-cne/rest-api/pkg/localmetrics"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	sdkMetrics "github.com/redhat-cne/sdk-go/pkg/localmetrics"
-	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
 	v1http "github.com/redhat-cne/sdk-go/v1/http"
 )
@@ -67,7 +66,6 @@ var (
 	apiPath                 = "/api/ocloudNotifications/v1/"
 	httpEventPublisher      string
 	pluginHandler           plugins.Handler
-	amqInitTimeout          = 3 * time.Minute
 	nodeName                string
 	namespace               string
 )
@@ -77,7 +75,7 @@ func main() {
 	common.InitLogger()
 	flag.StringVar(&metricsAddr, "metrics-addr", ":9091", "The address the metric endpoint binds to.")
 	flag.StringVar(&storePath, "store-path", ".", "The path to store publisher and subscription info.")
-	flag.StringVar(&transportHost, "transport-host", "amqp:localhost:5672", "The transport bus hostname or service name.")
+	flag.StringVar(&transportHost, "transport-host", "http://ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043", "The transport bus hostname or service name.")
 	flag.IntVar(&apiPort, "api-port", 8089, "The address the rest api endpoint binds to.")
 	flag.StringVar(&httpEventPublisher, "http-event-publishers", "", "Comma separated address of the publishers available.")
 
@@ -148,23 +146,8 @@ func main() {
 	}()
 
 	pluginHandler = plugins.Handler{Path: "./plugins"}
-	transportEnabled := true
-	// load amqp
-	if scConfig.TransportHost.Type == common.AMQ {
-		log.Infof("AMQ enabled as event transport %s", scConfig.TransportHost.String())
-		if scConfig.TransportHost.URL == "amqp://nohup" {
-			log.Infof("transportHost is set to amqp://nohup, events are logged locally")
-			scConfig.PubSubAPI.DisableTransport()
-			transportEnabled = false
-		} else {
-			_, pluginErr := pluginHandler.LoadAMQPPlugin(&wg, scConfig, amqInitTimeout)
-			if pluginErr != nil {
-				log.Warnf("requires QPID router installed to function fully %s", pluginErr.Error())
-				scConfig.PubSubAPI.DisableTransport()
-				transportEnabled = false
-			}
-		}
-	} else if scConfig.TransportHost.Type == common.HTTP {
+	var transportEnabled bool
+	if scConfig.TransportHost.Type == common.HTTP {
 		transportEnabled = enableHTTPTransport(&wg, eventPublishers)
 	} else {
 		transportEnabled = false
@@ -374,16 +357,7 @@ func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 }
 
 func loadFromPubSubStore() {
-	if scConfig.TransportHost.Type == common.AMQ {
-		pubs := scConfig.PubSubAPI.GetPublishers()
-		for _, pub := range pubs {
-			v1amqp.CreateSender(scConfig.EventInCh, pub.Resource)
-		}
-		subs := scConfig.PubSubAPI.GetSubscriptions()
-		for _, sub := range subs {
-			v1amqp.CreateListener(scConfig.EventInCh, sub.Resource)
-		}
-	} else if scConfig.TransportHost.Type == common.HTTP {
+	if scConfig.TransportHost.Type == common.HTTP {
 		subs := scConfig.PubSubAPI.GetSubscriptions() // the publisher won't have any subscription usually the consumer gets this publisher
 		for _, sub := range subs {
 			v1http.CreateSubscription(scConfig.EventInCh, sub.ID, sub.Resource)

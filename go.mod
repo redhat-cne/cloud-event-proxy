@@ -12,8 +12,8 @@ require (
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.23.0
 	github.com/prometheus/client_golang v1.14.0
-	github.com/redhat-cne/rest-api v0.1.1-0.20240321182038-6eeefb7aa65d
-	github.com/redhat-cne/sdk-go v0.1.1-0.20240321130308-a635605654ab
+	github.com/redhat-cne/rest-api v1.0.1-0.20240614193557-19aa9664037b
+	github.com/redhat-cne/sdk-go v1.0.1-0.20240614182056-bfc7566a02ac
 	github.com/sirupsen/logrus v1.9.0
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/net v0.7.0
@@ -26,10 +26,8 @@ require (
 )
 
 require (
-	github.com/Azure/go-amqp v0.17.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
-	github.com/cloudevents/sdk-go/protocol/amqp/v2 v2.15.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emicklei/go-restful v2.16.0+incompatible // indirect
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect

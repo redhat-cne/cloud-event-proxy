@@ -117,7 +117,6 @@ RETRY:
 	updateHTTPPublishers(nodeIP, nodeName, httpEventPublisher)
 
 	// ping for status every n secs
-	// no amq support
 	wg.Add(1)
 	go func() { // in this example there will be only one publisher
 		defer wg.Done()

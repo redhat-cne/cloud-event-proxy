@@ -10,7 +10,7 @@ COPY . .
 
 RUN hack/build-go.sh
 
-FROM registry.ci.openshift.org/ocp/4.17:base-rhel9 AS bin
+FROM --platform=linux/x86_64 registry.ci.openshift.org/ocp/4.17:base-rhel9 AS bin
 COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/build/cloud-event-proxy /
 COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/plugins/*.so /plugins/
 

@@ -3,20 +3,20 @@ run:
   deadline: 3m
   issues-exit-code: 1
   tests: true
-  skip-dirs:
-    - vendor
-  skip-dirs-use-default: false
-
-
 output:
-  format: colored-line-number
+  formats: colored-line-number
   print-issued-lines: true
   print-linter-name: true
 issues:
-  exclude-use-default: false
   exclude:
     - 'ST1000: at least one file in a package should have a package comment'
     - 'package-comments: should have a package comment'
+  exclude-dirs:
+    - vendor
+  exclude-dirs-use-default: false
+  exclude-files:
+    - test/cne/test_suite_test.go
+  exclude-use-default: false
 linters-settings:
   govet:
     # Enable all analyzers.
@@ -33,7 +33,6 @@ linters-settings:
         # Whether to be strict about shadowing; can be noisy.
         # Default: false
         strict: true
-
 
   gocyclo:
     # minimal code complexity to report, 30 by default (but we recommend 10-20)
@@ -64,7 +63,6 @@ linters:
     - gosimple
     - govet
     - ineffassign
-    - megacheck
     - misspell
     - revive
     - stylecheck

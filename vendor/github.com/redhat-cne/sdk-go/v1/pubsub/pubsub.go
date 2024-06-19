@@ -104,17 +104,17 @@ func (p *API) ReloadStore() {
 	}
 }
 
-// HasTransportEnabled flag to indicate if amqp is enabled
+// HasTransportEnabled ...
 func (p *API) HasTransportEnabled() bool {
 	return p.transportEnabled
 }
 
-// DisableTransport disables usage of amqp
+// DisableTransport ...
 func (p *API) DisableTransport() {
 	p.transportEnabled = false
 }
 
-// EnableTransport enable usage of amqp
+// EnableTransport ...
 func (p *API) EnableTransport() {
 	p.transportEnabled = true
 }

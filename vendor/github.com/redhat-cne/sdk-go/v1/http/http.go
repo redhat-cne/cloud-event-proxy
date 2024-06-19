@@ -62,12 +62,12 @@ func GetHTTPInstance(serviceName string, port int, storePath string, dataIn <-ch
 	return instance, nil
 }
 
-// Start start amqp processors
+// Start start http process
 func (h *HTTP) Start(wg *sync.WaitGroup) {
 	if atomic.CompareAndSwapInt32(&h.started, 0, 1) { // protection for starting by other instances
 		log.Info("Starting http transport....")
 		if err := h.server.Start(wg); err != nil {
-			log.Errorf("failed to start http transport. implment re-connect")
+			log.Errorf("failed to start http transport. implement re-connect")
 			atomic.CompareAndSwapInt32(&h.started, 1, 0)
 		}
 		h.server.HTTPProcessor(wg)
