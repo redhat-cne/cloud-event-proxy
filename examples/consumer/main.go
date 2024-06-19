@@ -92,6 +92,9 @@ func main() {
 	} else {
 		consumerType = ConsumerTypeEnum(consumerTypeEnv)
 	}
+	if consumerType == HW {
+		httpEventPublisher = "hw-event-publisher-service.openshift-bare-metal-events.svc.cluster.local:9043"
+	}
 	subscribeTo := initSubscribers(consumerType)
 	var wg sync.WaitGroup
 	wg.Add(1)
