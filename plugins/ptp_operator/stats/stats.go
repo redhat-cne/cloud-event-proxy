@@ -245,6 +245,30 @@ func (s *Stats) GetStateState(processName string, iface *string) (ptp.SyncState,
 	return ptp.FREERUN, fmt.Errorf("sync state not found %s", processName)
 }
 
+// GetDependsOnValueState ... get value offset and state
+func (s *Stats) GetDependsOnValueState(processName string, iface *string, key string) (int64, float64, ptp.SyncState, error) {
+	if s.ptpDependentEventState != nil && s.ptpDependentEventState.DependsOn != nil {
+		if d, ok := s.ptpDependentEventState.DependsOn[processName]; ok {
+			if iface == nil && len(d) > 0 {
+				if v, ok2 := d[0].Value[key]; ok2 {
+					return v, *d[0].Offset, d[0].State, nil
+				}
+			}
+
+			if iface != nil {
+				for _, state := range d {
+					if *state.IFace == *iface {
+						if v, ok2 := state.Value[key]; ok2 {
+							return v, *state.Offset, state.State, nil
+						}
+					}
+				}
+			}
+		}
+	}
+	return 0, 99999999999, ptp.FREERUN, fmt.Errorf("value not found %s", processName)
+}
+
 // HasProcessEnabled ... check if process is enabled
 func (s *Stats) HasProcessEnabled(processName string) bool {
 	if s.ptpDependentEventState != nil && s.ptpDependentEventState.DependsOn != nil {
