@@ -29,7 +29,7 @@ type PTPEventManager struct {
 	mockEvent      ptp.EventType
 	// PtpConfigMapUpdates holds ptp-configmap updated details
 	PtpConfigMapUpdates *ptpConfig.LinuxPTPConfigMapUpdate
-	// Ptp4lConfigInterfaces holds interfaces and its roles , after reading from ptp4l config files
+	// Ptp4lConfigInterfaces holds interfaces and its roles, after reading from ptp4l config files
 	Ptp4lConfigInterfaces map[types.ConfigName]*ptp4lconf.PTP4lConfig
 }
 
@@ -114,10 +114,30 @@ func (p *PTPEventManager) GetPTPConfig(configName types.ConfigName) *ptp4lconf.P
 		return p.Ptp4lConfigInterfaces[configName]
 	}
 	pc := &ptp4lconf.PTP4lConfig{
-		Name: string(configName),
+		Name:    string(configName),
+		Profile: "",
 	}
 	pc.Interfaces = []*ptp4lconf.PTPInterface{}
 	p.AddPTPConfig(configName, pc)
+	return pc
+}
+
+// GetPTPConfigDeepCopy  ... Add PtpConfigUpdate obj
+func (p *PTPEventManager) GetPTPConfigDeepCopy(configName types.ConfigName) *ptp4lconf.PTP4lConfig {
+	if _, ok := p.Ptp4lConfigInterfaces[configName]; ok && p.Ptp4lConfigInterfaces[configName] != nil {
+		pc := &ptp4lconf.PTP4lConfig{
+			Name:       p.Ptp4lConfigInterfaces[configName].Name,
+			Profile:    p.Ptp4lConfigInterfaces[configName].Profile,
+			Interfaces: []*ptp4lconf.PTPInterface{},
+		}
+		pc.Interfaces = append(pc.Interfaces, p.Ptp4lConfigInterfaces[configName].Interfaces...)
+		return pc
+	}
+	pc := &ptp4lconf.PTP4lConfig{
+		Name:    string(configName),
+		Profile: "",
+	}
+
 	return pc
 }
 
@@ -161,19 +181,21 @@ func (p *PTPEventManager) PublishClockClassEvent(clockClass float64, source stri
 }
 
 // PublishClockClassEvent ...publish events
-func (p *PTPEventManager) publishGNSSEvent(state int64, offset float64, source string, eventType ptp.EventType) {
+func (p *PTPEventManager) publishGNSSEvent(state int64, offset float64, syncState ptp.SyncState, source string, eventType ptp.EventType) {
 	if p.mock {
 		p.mockEvent = eventType
 		log.Infof("publishGNSSEvent state=%d, offset=%f, source=%s, eventType=%s", state, offset, source, eventType)
 		return
 	}
 	var data *ceevent.Data
-	if state < 3 {
-		data = p.GetPTPEventsData(ptp.LOCKED, int64(offset), source, eventType)
-	} else {
-		data = p.GetPTPEventsData(ptp.FREERUN, int64(offset), source, eventType)
-	}
-
+	gpsFixState := p.GetGPSFixState(state, syncState)
+	data = p.GetPTPEventsData(gpsFixState, int64(offset), source, eventType)
+	data.Values = append(data.Values, ceevent.DataValue{
+		Resource:  fmt.Sprintf("%s/%s", data.Values[0].GetResource(), "gpsFix"),
+		DataType:  ceevent.METRIC,
+		ValueType: ceevent.DECIMAL,
+		Value:     state,
+	})
 	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
 	p.publish(*data, resourceAddress, eventType)
 }
