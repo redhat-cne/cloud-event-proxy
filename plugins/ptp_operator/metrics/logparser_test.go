@@ -92,6 +92,12 @@ func Test_ParseGNSSLogs(t *testing.T) {
 		lastState, errState := ptpStats[types.IFace(tt.interfaceName)].GetStateState(tt.processName, pointer.String(tt.interfaceName))
 		assert.Equal(t, errState, nil)
 		assert.Equal(t, tt.expectedState, lastState)
+		for _, ptpStats := range ptpEventManager.Stats { // configname->PTPStats
+			for _, s := range ptpStats {
+				_, _, sync, _ := s.GetDependsOnValueState("gnss", nil, "gnss_status")
+				assert.Equal(t, tt.expectedState, sync)
+			}
+		}
 	}
 }
 
