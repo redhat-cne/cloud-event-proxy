@@ -14,8 +14,9 @@ import (
 )
 
 var (
-	ptpConfigFileRegEx    = regexp.MustCompile(`ptp4l.[0-9]*.config`)
-	ts2phcConfigFileRegEx = regexp.MustCompile(`ts2phc.[0-9]*.config`)
+	ptpConfigFileRegEx     = regexp.MustCompile(`ptp4l.[0-9]*.config`)
+	ts2phcConfigFileRegEx  = regexp.MustCompile(`ts2phc.[0-9]*.config`)
+	phc2SysConfigFileRegEx = regexp.MustCompile(`phc2sys.[0-9]*.config`)
 	// NodeName from the env
 	ptpNodeName        = ""
 	masterOffsetSource = ""
@@ -70,6 +71,11 @@ const (
 	UNAVAILABLE float64 = 0
 	// AVAILABLE Nmea and Pps status
 	AVAILABLE float64 = 1
+
+	gnssStatus      = "gnss_status"
+	frequencyStatus = "frequency_status"
+	phaseStatus     = "phase_status"
+	ppsStatus       = "pps_status"
 )
 
 // ExtractMetrics ... extract metrics from ptp logs.
@@ -88,7 +94,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	// make sure configName is found in logs
 	index := FindInLogForCfgFileIndex(output)
 	if index == -1 {
-		log.Errorf("config name is not found in log outpt")
+		log.Errorf("config name is not found in log output %s", output)
 		return
 	}
 
@@ -99,21 +105,18 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 
 	processName := fields[processNameIndex]
 	configName := fields[configNameIndex]
-	// if  is has ts2phc then it will replace it with ptp4l
+	// if log is having ts2phc then it will replace it with ptp4l
 	configName = strings.Replace(configName, ts2phcProcessName, ptp4lProcessName, 1)
 	ptp4lCfg := p.GetPTPConfig(types.ConfigName(configName))
+
 	// ptp stats goes by config either ptp4l ot pch2sys
 	// master (slave) interface can be configured in ptp4l but  offset provided by ts2phc
 
 	ptpStats := p.GetStats(types.ConfigName(configName))
 	profileName := ptp4lCfg.Profile
 
-	if len(ptp4lCfg.Interfaces) == 0 { //TODO: Use PMC to update port and roles
-		log.Errorf("file watcher have not picked the files yet or ptp4l doesn't have config")
-		return
-	}
-	if profileName == "" {
-		log.Errorf("ptp4l config does not have profile name, aborting. ")
+	if !p.validLogToProcess(profileName, processName, len(ptp4lCfg.Interfaces)) {
+		log.Infof("skipped parsing %s", output)
 		return
 	}
 
@@ -251,7 +254,9 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 					// right now we are not managing os clock state based on GM state
 					p.GenPTPEvent(profileName, ptpStats[ClockRealTime], interfaceName, int64(ptpOffset), syncState, ptp.OsClockSyncStateChange)
 				}
+
 				ptpStats[ClockRealTime].SetAlias(ptpStats[master].Alias())
+
 				// continue to update metrics regardless and stick to last sync state
 				UpdateSyncStateMetrics(processName, interfaceName, ptpStats[ClockRealTime].LastSyncState())
 				UpdatePTPMetrics(offsetSource, processName, interfaceName, ptpOffset, float64(ptpStats[ClockRealTime].MaxAbs()), frequencyAdjustment, delay)
@@ -319,6 +324,19 @@ func (p *PTPEventManager) processDownEvent(profileName, processName string, ptpS
 			p.GenPTPEvent(profileName, s, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
 		}
 	}
+}
+
+func (p *PTPEventManager) validLogToProcess(profileName, processName string, iFaceSize int) bool {
+	if profileName == "" {
+		log.Info("ptp4l config does not have profile name, skipping. ")
+		return false
+	}
+	// phc2sys config for HA will not have any interface defined
+	if iFaceSize == 0 { //TODO: Use PMC to update port and roles
+		log.Errorf("file watcher have not picked the files yet or ptp4l doesn't have config for %s by process %s", profileName, processName)
+		return false
+	}
+	return true
 }
 
 func getAlias(iface string) string {
