@@ -1,4 +1,4 @@
-// Copyright 2020 The Cloud Native Events Authors
+// Copyright 2024 The Cloud Native Events Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import (
 	"time"
 
 	ce "github.com/cloudevents/sdk-go/v2/event"
-	"github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	log "github.com/sirupsen/logrus"
 
@@ -49,31 +48,17 @@ func New() *Rest {
 }
 
 // PostEvent post an event to the give url and check for error
-func (r *Rest) PostEvent(url *types.URI, e event.Event) error {
+func (r *Rest) PostCloudEvent(url *types.URI, e ce.Event) (status int, err error) {
 	b, err := json.Marshal(e)
 	if err != nil {
 		log.Errorf("error marshalling event %v", e)
-		return err
+		return status, err
 	}
 
-	if status := r.Post(url, b); status == http.StatusBadRequest {
-		return fmt.Errorf("post returned status %d", status)
+	if status = r.Post(url, b); status == http.StatusBadRequest {
+		return status, fmt.Errorf("post returned status %d", status)
 	}
-	return nil
-}
-
-// PostCloudEvent post an Cloud Event to the give url and check for error
-func (r *Rest) PostCloudEvent(url *types.URI, e ce.Event) error {
-	b, err := json.Marshal(e)
-	if err != nil {
-		log.Errorf("error marshalling event %v", e)
-		return err
-	}
-
-	if status := r.Post(url, b); status == http.StatusBadRequest {
-		return fmt.Errorf("post returned status %d", status)
-	}
-	return nil
+	return status, nil
 }
 
 // Post with data
