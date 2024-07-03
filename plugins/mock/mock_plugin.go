@@ -115,7 +115,7 @@ func sendEvent(pub pubsub.PubSub) {
 func createPublisher(address string) (pub pubsub.PubSub, err error) {
 	// this is loopback on server itself. Since current pod does not create any server
 	returnURL := fmt.Sprintf("%s%s", config.BaseURL, "dummy")
-	pubToCreate := v1pubsub.NewPubSub(types.ParseURI(returnURL), address)
+	pubToCreate := v1pubsub.NewPubSub(types.ParseURI(returnURL), address, config.APIVersion)
 	pub, err = common.CreatePublisher(config, pubToCreate)
 	if err != nil {
 		log.Errorf("failed to create publisher %v", pub)

@@ -35,6 +35,7 @@ import (
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	restapi "github.com/redhat-cne/rest-api"
+	v2restapi "github.com/redhat-cne/rest-api/v2"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
@@ -154,6 +155,7 @@ type SCConfiguration struct {
 	CloseCh           chan struct{}
 	APIPort           int
 	APIPath           string
+	APIVersion        string
 	PubSubAPI         *v1pubsub.API
 	StorePath         string
 	BaseURL           *types.URI
@@ -162,6 +164,7 @@ type SCConfiguration struct {
 	clientID          uuid.UUID
 	StorageType       storageClient.StorageTypeType
 	K8sClient         *storageClient.Client
+	RestAPI           *v2restapi.Server
 }
 
 // ClientID ... read clientID from the configurations
@@ -209,20 +212,34 @@ func GetBoolEnv(key string) bool {
 }
 
 // StartPubSubService starts rest api service to manage events publishers and subscriptions
-func StartPubSubService(scConfig *SCConfiguration) (*restapi.Server, error) {
+func StartPubSubService(scConfig *SCConfiguration) (err error) {
 	// init
 	if scConfig.TransportHost == nil {
 		scConfig.TransportHost.Type = UNKNOWN
 	}
-	server := restapi.InitServer(scConfig.APIPort, scConfig.APIPath,
-		scConfig.StorePath, scConfig.EventInCh, scConfig.CloseCh)
-	server.Start()
-	err := server.EndPointHealthChk()
-	if err == nil {
-		scConfig.BaseURL = server.GetHostPath()
-		scConfig.APIPort = server.Port()
+	if IsV1Api(scConfig.APIVersion) {
+		server := restapi.InitServer(scConfig.APIPort, scConfig.APIPath,
+			scConfig.StorePath, scConfig.EventInCh, scConfig.CloseCh)
+
+		server.Start()
+		err = server.EndPointHealthChk()
+		if err == nil {
+			scConfig.BaseURL = server.GetHostPath()
+			scConfig.APIPort = server.Port()
+		}
+	} else {
+		// use EventOutCh instead since this is only used in producer side
+		server := v2restapi.InitServer(scConfig.APIPort, scConfig.APIPath,
+			scConfig.StorePath, scConfig.EventOutCh, scConfig.CloseCh, nil)
+		scConfig.RestAPI = server
+		server.Start()
+		err = server.EndPointHealthChk()
+		if err == nil {
+			scConfig.BaseURL = server.GetHostPath()
+			scConfig.APIPort = server.Port()
+		}
 	}
-	return server, err
+	return err
 }
 
 // CreatePublisher creates a publisher objects
@@ -317,6 +334,25 @@ func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error
 	return nil
 }
 
+// PublishEventViaAPIV2 ... publish events bypassing http transport
+func PublishEventViaAPIV2(scConfig *SCConfiguration, cneEvent ceevent.Event) error {
+	if ceEvent, err := GetPublishingCloudEvent(scConfig, cneEvent); err == nil {
+		scConfig.EventOutCh <- &channel.DataChan{
+			Type:     channel.EVENT,
+			Status:   channel.NEW,
+			Data:     ceEvent,
+			Address:  ceEvent.Source(), // this is te publishing address
+			ClientID: scConfig.ClientID(),
+		}
+
+		log.Debugf("event source %s sent to queue to process", ceEvent.Source())
+		log.Debugf("event sent %s", cneEvent.JSONString())
+
+		localmetrics.UpdateEventPublishedCount(ceEvent.Source(), localmetrics.SUCCESS, 1)
+	}
+	return nil
+}
+
 // GetPublishingCloudEvent ... Get Publishing cloud event
 func GetPublishingCloudEvent(scConfig *SCConfiguration, cneEvent ceevent.Event) (*event.Event, error) {
 	pub, err := scConfig.PubSubAPI.GetPublisher(cneEvent.ID)
@@ -334,12 +370,12 @@ func GetPublishingCloudEvent(scConfig *SCConfiguration, cneEvent ceevent.Event) 
 
 // APIHealthCheck ... rest api should be ready before starting to consume api
 func APIHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
-	log.Printf("checking for rest service health\n")
+	log.Printf("checking for rest service health")
 	for i := 0; i <= 5; i++ {
-		log.Infof("health check %s ", uri.String())
+		log.Infof("health check %s", uri.String())
 		response, errResp := http.Get(uri.String())
 		if errResp != nil {
-			log.Warnf("try %d, return health check of the rest service for error  %v", i, errResp)
+			log.Warnf("try %d, return health check of the rest service for error %v", i, errResp)
 			time.Sleep(delay)
 			err = errResp
 			continue
@@ -397,4 +433,31 @@ func InitLogger() {
 	}
 	// set global log level
 	log.SetLevel(ll)
+}
+
+// GetMajorVersion returns major version
+func GetMajorVersion(version string) (int, error) {
+	if version == "" {
+		return 1, nil
+	}
+	version = strings.TrimPrefix(version, "v")
+	version = strings.TrimPrefix(version, "V")
+	v := strings.Split(version, ".")
+	majorVersion, err := strconv.Atoi(v[0])
+	if err != nil {
+		log.Errorf("Error parsing major version from %s, %v", version, err)
+		return 1, err
+	}
+	return majorVersion, nil
+}
+
+// IsV1Api ...
+func IsV1Api(version string) bool {
+	if majorVersion, err := GetMajorVersion(version); err == nil {
+		if majorVersion >= 2 {
+			return false
+		}
+	}
+	// by default use V1
+	return true
 }

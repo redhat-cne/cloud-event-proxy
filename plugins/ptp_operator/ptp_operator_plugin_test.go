@@ -55,6 +55,7 @@ func TestMain(m *testing.M) {
 		CloseCh:    make(chan struct{}),
 		APIPort:    apiPort,
 		APIPath:    "/api/test-cloud/",
+		APIVersion: "1.0",
 		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
 		StorePath:  storePath,
 		TransportHost: &common.TransportHost{
@@ -68,9 +69,7 @@ func TestMain(m *testing.M) {
 	}
 
 	c = make(chan os.Signal)
-	server, _ = common.StartPubSubService(scConfig)
-	scConfig.APIPort = server.Port()
-	scConfig.BaseURL = server.GetHostPath()
+	common.StartPubSubService(scConfig)
 	pubsubTypes = InitPubSubTypes()
 	cleanUP()
 	os.Exit(m.Run())
@@ -108,7 +107,7 @@ func Test_StartWithHTTP(t *testing.T) {
 	//CLIENT SUBSCRIPTION: create a subscription to consume events
 	endpointURL := fmt.Sprintf("%s%s", scConfig.BaseURL, "dummy")
 	for _, pTypes := range pubsubTypes {
-		sub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), fmt.Sprintf(resourcePrefix, "test_node", string(pTypes.Resource)))
+		sub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), fmt.Sprintf(resourcePrefix, "test_node", string(pTypes.Resource)), scConfig.APIVersion)
 		sub, _ = common.CreateSubscription(scConfig, sub)
 		assert.NotEmpty(t, sub.ID)
 		assert.NotEmpty(t, sub.URILocation)

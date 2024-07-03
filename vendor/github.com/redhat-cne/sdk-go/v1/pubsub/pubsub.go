@@ -44,8 +44,12 @@ var once sync.Once
 var mu sync.Mutex
 
 // NewPubSub create new publisher or subscriber
-func NewPubSub(endPointURI *types.URI, resource string) pubsub.PubSub {
+func NewPubSub(endPointURI *types.URI, resource string, version string) pubsub.PubSub {
+	if version == "" {
+		version = "1.0"
+	}
 	return pubsub.PubSub{
+		Version:     version,
 		EndPointURI: endPointURI,
 		Resource:    resource,
 	}
@@ -124,6 +128,7 @@ func (p *API) GetFromPubStore(address string) (pubsub.PubSub, error) {
 	for _, pub := range p.pubStore.Store {
 		if pub.GetResource() == address {
 			return pubsub.PubSub{
+				Version:     pub.Version,
 				ID:          pub.ID,
 				EndPointURI: pub.EndPointURI,
 				URILocation: pub.URILocation,
@@ -139,6 +144,7 @@ func (p *API) GetFromSubStore(address string) (pubsub.PubSub, error) {
 	for _, sub := range p.subStore.Store {
 		if sub.GetResource() == address {
 			return pubsub.PubSub{
+				Version:     sub.Version,
 				ID:          sub.ID,
 				EndPointURI: sub.EndPointURI,
 				URILocation: sub.URILocation,
@@ -167,6 +173,7 @@ func (p *API) HasPublisher(address string) (pubsub.PubSub, bool) {
 
 // CreateSubscription create a subscription and store it in a file and cache
 func (p *API) CreateSubscription(sub pubsub.PubSub) (pubsub.PubSub, error) {
+	//TODO-V2: remove this from v2 since already checked this before calling
 	if subExists, ok := p.HasSubscription(sub.GetResource()); ok {
 		log.Warnf("there was already a subscription in the store,skipping creation %v", subExists)
 		p.subStore.Set(sub.ID, subExists)
@@ -176,7 +183,6 @@ func (p *API) CreateSubscription(sub pubsub.PubSub) (pubsub.PubSub, error) {
 		sub.SetID(uuid.New().String())
 	}
 	// persist the subscription -
-	//TODO:might want to use PVC to live beyond pod crash
 	err := writeToFile(sub, fmt.Sprintf("%s/%s", p.storeFilePath, p.subFile))
 	if err != nil {
 		log.Errorf("error writing to a store %v\n", err)
@@ -199,7 +205,6 @@ func (p *API) CreatePublisher(pub pubsub.PubSub) (pubsub.PubSub, error) {
 		pub.SetID(uuid.New().String())
 	}
 	// persist the subscription -
-	//TODO:might want to use PVC to live beyond pod crash
 	err := writeToFile(pub, fmt.Sprintf("%s/%s", p.storeFilePath, p.pubFile))
 	if err != nil {
 		log.Errorf("error writing to a store %v\n", err)
@@ -252,9 +257,13 @@ func (p *API) DeletePublisher(publisherID string) error {
 func (p *API) DeleteSubscription(subscriptionID string) error {
 	log.Info("deleting subscription")
 	if pub, ok := p.subStore.Store[subscriptionID]; ok {
-		err := deleteFromFile(*pub, fmt.Sprintf("%s/%s", p.storeFilePath, p.subFile))
-		p.subStore.Delete(subscriptionID)
-		return err
+		if err := deleteFromFile(*pub, fmt.Sprintf("%s/%s", p.storeFilePath, p.subFile)); err == nil {
+			p.subStore.Delete(subscriptionID)
+		} else {
+			return err
+		}
+	} else {
+		return fmt.Errorf("subscription not found")
 	}
 	return nil
 }
