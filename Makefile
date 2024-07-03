@@ -100,10 +100,17 @@ deploy-consumer:kustomize
 	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-sidecar=${IMG} && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl apply -f -
 
-# Deploy all in the configured Kubernetes cluster in ~/.kube/config
 undeploy-consumer:kustomize
 	cd ./examples/manifests  && $(KUSTOMIZE) edit set image cloud-event-sidecar=${IMG} && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl delete -f -
+
+deploy-consumer-v2:kustomize
+	cd ./examples/manifests/v2 && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
+	$(KUSTOMIZE) build ./examples/manifests/v2 | kubectl apply -f -
+
+undeploy-consumer-v2:kustomize
+	cd ./examples/manifests/v2 && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
+	$(KUSTOMIZE) build ./examples/manifests/v2 | kubectl delete -f -
 
 # For GitHub Actions CI
 gha:

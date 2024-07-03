@@ -118,6 +118,7 @@ func (p *API) GetSubFromSubscriptionsStore(clientID uuid.UUID, address string) (
 		for _, sub := range subscriber.SubStore.Store {
 			if sub.GetResource() == address {
 				return pubsub.PubSub{
+					Version:     sub.Version,
 					ID:          sub.ID,
 					EndPointURI: sub.EndPointURI,
 					URILocation: sub.URILocation,
@@ -175,7 +176,6 @@ func (p *API) CreateSubscription(clientID uuid.UUID, sub subscriber.Subscriber) 
 	}
 	p.SubscriberStore.Set(clientID, *subscriptionClient)
 	// persist the subscriptionOne -
-	//TODO:might want to use PVC to live beyond pod crash
 	err = writeToFile(*subscriptionClient, fmt.Sprintf("%s/%s", p.storeFilePath, fmt.Sprintf("%s.json", clientID)))
 	if err != nil {
 		log.Errorf("error writing to a store %v\n", err)
@@ -262,6 +262,20 @@ func (p *API) GetClientIDByResource(resource string) (clientIds []uuid.UUID) {
 		}
 	}
 	return clientIds
+}
+
+// GetClientIDBySubID ...
+func (p *API) GetClientIDBySubID(subID string) (clientIDs []uuid.UUID) {
+	p.SubscriberStore.RLock()
+	defer p.SubscriberStore.RUnlock()
+	for _, subs := range p.SubscriberStore.Store {
+		for _, sub := range subs.SubStore.Store {
+			if sub.GetID() == subID {
+				clientIDs = append(clientIDs, subs.ClientID)
+			}
+		}
+	}
+	return clientIDs
 }
 
 // GetClientIDAddressByResource  get  subscriptionOne information

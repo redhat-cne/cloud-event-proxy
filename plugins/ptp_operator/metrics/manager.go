@@ -211,7 +211,8 @@ func (p *PTPEventManager) GetPTPEventsData(state ptp.SyncState, ptpOffset int64,
 	// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
 	eventSource := path.Join(p.resourcePrefix, p.nodeName, source)
 	data := ceevent.Data{
-		Version: "v1",
+		// TODO use a const from sdk-go
+		Version: "1.0",
 		Values:  []ceevent.DataValue{},
 	}
 	if eventType != ptp.PtpClockClassChange {
@@ -290,9 +291,16 @@ func (p *PTPEventManager) publish(data ceevent.Data, resourceAddress string, eve
 			log.Errorf("failed to create ptp event, %s", err)
 			return
 		}
-		if err = common.PublishEventViaAPI(p.scConfig, e); err != nil {
-			log.Errorf("failed to publish ptp event %v, %s", e, err)
-			return
+		if common.IsV1Api(p.scConfig.APIVersion) {
+			if err = common.PublishEventViaAPI(p.scConfig, e); err != nil {
+				log.Errorf("failed to publish ptp event %v, %s", e, err)
+				return
+			}
+		} else {
+			if err = common.PublishEventViaAPIV2(p.scConfig, e); err != nil {
+				log.Errorf("failed to publish ptp event %v, %s", e, err)
+				return
+			}
 		}
 	} else {
 		log.Errorf("failed to publish ptp event due to missing publisher for type %s", string(eventType))

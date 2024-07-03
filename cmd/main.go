@@ -65,10 +65,13 @@ var (
 	scConfig                *common.SCConfiguration
 	metricsAddr             string
 	apiPath                 = "/api/ocloudNotifications/v1/"
-	httpEventPublisher      string
-	pluginHandler           plugins.Handler
-	nodeName                string
-	namespace               string
+	// Event API Version 2 is O-RAN V3.0 Compliant
+	apiPathV2          = "/api/ocloudNotifications/v2/"
+	httpEventPublisher string
+	pluginHandler      plugins.Handler
+	nodeName           string
+	namespace          string
+	isV1Api            bool
 )
 
 func main() {
@@ -112,6 +115,7 @@ func main() {
 		CloseCh:       make(chan struct{}),
 		APIPort:       apiPort,
 		APIPath:       apiPath,
+		APIVersion:    apiVersion,
 		StorePath:     storePath,
 		PubSubAPI:     v1pubs.GetAPIInstance(storePath),
 		BaseURL:       nil,
@@ -148,21 +152,33 @@ func main() {
 	}()
 
 	pluginHandler = plugins.Handler{Path: "./plugins"}
+	isV1Api = common.IsV1Api(scConfig.APIVersion)
+	// make PubSub REST API accessible by event service ptp-event-publisher-service-NODE_NAME
+	if !isV1Api {
+		// switch between Internal API port and PubSub port
+		tmpPort := scConfig.APIPort
+		scConfig.APIPort = scConfig.TransportHost.Port
+		scConfig.TransportHost.Port = tmpPort
+		scConfig.APIPath = apiPathV2
+		log.Infof("v2 rest api set scConfig.APIPort=%d, scConfig.APIPath=%s, scConfig.TransportHost.Port=%d", scConfig.APIPort, scConfig.APIPath, scConfig.TransportHost.Port)
+	}
+
 	var transportEnabled bool
-	if scConfig.TransportHost.Type == common.HTTP {
+	if scConfig.TransportHost.Type == common.HTTP && isV1Api {
 		transportEnabled = enableHTTPTransport(&wg, eventPublishers)
 	} else {
 		transportEnabled = false
 	}
+
 	// if all transport types failed then process internally
-	if !transportEnabled {
+	if !transportEnabled && isV1Api {
 		log.Errorf("No transport is enabled for sending events %s", scConfig.TransportHost.String())
 		wg.Add(1)
 		go ProcessInChannel(&wg, scConfig)
 	}
 
 	/* Enable pub/sub services */
-	_, err = common.StartPubSubService(scConfig)
+	err = common.StartPubSubService(scConfig)
 	if err != nil {
 		log.Fatal("pub/sub service API failed to start.")
 	}
@@ -181,6 +197,7 @@ func main() {
 			log.Fatalf("error loading mock plugin %v", err)
 		}
 	}
+
 	// process data that are coming from api server requests
 	ProcessOutChannel(&wg, scConfig)
 }
@@ -249,7 +266,11 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 						if sub.EndPointURI != nil {
 							restClient := restclient.New()
 							event.ID = sub.ID // set ID to the subscriptionID
-							err = restClient.PostEvent(sub.EndPointURI, event)
+							if common.IsV1Api(scConfig.APIVersion) {
+								err = restClient.PostEvent(sub.EndPointURI, event)
+							} else {
+								err = restClient.PostCloudEvent(sub.EndPointURI, *d.Data)
+							}
 							postHandler(err, sub.EndPointURI, d.Address)
 						} else {
 							log.Warnf("endpoint uri not given, posting event to log %#v for address %s\n", event, d.Address)
