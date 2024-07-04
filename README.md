@@ -137,7 +137,7 @@ func main(){
     pubSubInstance = v1pubsub.GetAPIInstance(".")
     endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:9085", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
     // create publisher 
-    pub, err := pubSubInstance.CreatePublisher(v1pubsub.NewPubSub(endpointURL, "test/test"))
+    pub, err := pubSubInstance.CreatePublisher(v1pubsub.NewPubSub(endpointURL, "test/test", "1.0"))
 
 }
 ```
@@ -177,7 +177,7 @@ func main(){
     pubSubInstance = v1pubsub.GetAPIInstance(".")
     endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8089", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
     // create subscription 
-    pub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "test/test"))
+    pub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "test/test", "1.0"))
     
 }
 

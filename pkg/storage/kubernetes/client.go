@@ -132,7 +132,6 @@ func (sClient *Client) UpdateConfigMap(ctx context.Context, data []subscriber.Su
 				log.Errorf("error marshalling subscriber %s", e.Error())
 				continue
 			}
-
 			log.Infof("persisting following contents %s ", string(out))
 
 			log.Infof("updating new subscriber in configmap")
