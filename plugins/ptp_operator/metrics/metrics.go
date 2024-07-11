@@ -181,8 +181,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			alias := getAlias(interfaceName)
 			// no event for nmeas status , change in GM will manage ptp events and sync states
 			UpdateNmeaStatusMetrics(processName, alias, status)
-		} else if strings.Contains(output, " offset ") &&
-			(processName != gnssProcessName && processName != dpllProcessName && processName != gmProcessName) {
+		} else if strings.Contains(output, " offset ") { //  DPLL has Offset too
 			// ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay    374976
 			// phc2sys[4268818.286]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -62 s0 freq  -78368 delay   1100
 			// phc2sys[4268818.287]: [ptp4l.0.config] ens5f1 phc offset       -92 s0 freq    -890 delay   2464   ( this is down)
@@ -224,7 +223,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				ptpInterface = ptp4lconf.PTPInterface{Name: interfaceName}
 				// create GM interfaces
 				ptpStats.CheckSource(master, configName, processName)
-				// update processname in master since pch2sys looks for it
+				// update process name in master since phc2sys looks for it
 				ptpStats[master].SetProcessName(processName)
 				ptpStats[master].SetOffsetSource(offsetSource)
 			} else {
@@ -284,25 +283,29 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 					ptpStats[types.IFace(interfaceName)].AddValue(int64(ptpOffset))
 				}
 			default: // for ts2phc the master stats are not updated at all, so rely on interface
-				if masterOffsetSource == ts2phcProcessName {
+				if processName == ts2phcProcessName {
 					alias := ptpStats[types.IFace(interfaceName)].Alias()
 					if alias == "" {
 						alias = getAlias(ptpInterface.Name)
 						ptpStats[types.IFace(interfaceName)].SetAlias(alias)
 					}
-					// update ts2phc sync state to GM state if available,since GM State is identifies PTP state
+					// update ts2phc sync state to GM state if available,since GM State identifies PTP state
 					// This identifies sync state of GM and adds ts2phc offset to verify if it has to stay in GM state or set new state
 					// based on ts2phc offset threshold : Which is unnecessary but to avoid breaking existing logic
-					// let the check happen again : GM state published by linuxptpdaemon already have checked ts2phc offset
+					// let the check happen again : GM state published by linuxptp-daemon already have checked ts2phc offset
 					// TO GM State we need to know GM interface ; here MASTER stats will hold data of GM
 					// and GM state will be held as dependant of master key
 					masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
-					// use gm state to identify synstate
+					// use gm state to identify syncState
 					// master will hold multiple ts2phc state as one state based on GM state
 					// HANDLE case where there is no GM status but only ts2phc
 					if !ptpStats[master].HasProcessEnabled(gmProcessName) {
 						p.GenPTPEvent(profileName, ptpStats[types.IFace(interfaceName)], masterResource, int64(ptpOffset), syncState, ptp.PtpStateChange)
 					} else {
+						threshold := p.PtpThreshold(profileName, false)
+						if !isOffsetInRange(int64(ptpOffset), threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
+							syncState = ptp.FREERUN
+						}
 						ptpStats[types.IFace(interfaceName)].SetLastSyncState(syncState)
 						ptpStats[types.IFace(interfaceName)].SetLastOffset(int64(ptpOffset))
 						ptpStats[types.IFace(interfaceName)].AddValue(int64(ptpOffset))
@@ -345,7 +348,7 @@ func (p *PTPEventManager) validLogToProcess(profileName, processName string, iFa
 		return false
 	}
 	// phc2sys config for HA will not have any interface defined
-	if iFaceSize == 0 && profileName != "" && !p.IsHAProfile(profileName) { //TODO: Use PMC to update port and roles
+	if iFaceSize == 0 && !p.IsHAProfile(profileName) { //TODO: Use PMC to update port and roles
 		log.Errorf("file watcher have not picked the files yet or ptp4l doesn't have config for %s by process %s", profileName, processName)
 		return false
 	}
