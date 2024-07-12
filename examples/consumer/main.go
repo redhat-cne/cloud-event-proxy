@@ -279,7 +279,10 @@ func getEvent(w http.ResponseWriter, req *http.Request) {
 		if isV1Api {
 			processEvent(bodyBytes)
 		} else {
-			processEventV2(bodyBytes)
+			if err = processEventV2(bodyBytes); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -301,26 +304,27 @@ func ackEvent(w http.ResponseWriter, req *http.Request) {
 
 func processEvent(data []byte) {
 	var e event.Event
-	if err := json.Unmarshal(data, &e); err == nil {
-		// Note that there is no UnixMillis, so to get the
-		// milliseconds since epoch you'll need to manually
-		// divide from nanoseconds.
-		latency := (time.Now().UnixNano() - e.Time.UnixNano()) / 1000000
-		// set log to Info level for performance measurement
-		log.Infof("Latency for the event: %v ms", latency)
-		log.Infof("Event: %s", e.String())
-	} else {
-		log.Errorf("failed to unmarshal v1 event, %v", err)
+	if err := json.Unmarshal(data, &e); err != nil {
+		log.Errorf("failed to unmarshal event, %v", err)
+		return
 	}
+	latency := time.Now().UnixMilli() - e.GetTime().UnixMilli()
+	// set log to Info level for performance measurement
+	log.Infof("Latency for the event: %v ms", latency)
+	log.Infof("Event: %s", e.String())
 }
 
-func processEventV2(data []byte) {
+func processEventV2(data []byte) error {
 	var e ce.Event
-	if err := json.Unmarshal(data, &e); err == nil {
-		log.Infof("Event: %s", e.String())
-	} else {
+	if err := json.Unmarshal(data, &e); err != nil {
 		log.Errorf("failed to unmarshal event, %v", err)
+		return err
 	}
+	latency := time.Now().UnixMilli() - e.Context.GetTime().UnixMilli()
+	// set log to Info level for performance measurement
+	log.Infof("Latency for the event: %v ms", latency)
+	log.Infof("Event: %s", e.String())
+	return nil
 }
 
 func initSubscribers(cType ConsumerTypeEnum) map[string]string {

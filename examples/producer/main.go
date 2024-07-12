@@ -93,7 +93,7 @@ RETRY:
 				event.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
 				event.SetDataContentType(cneevent.ApplicationJSON)
 				data := cneevent.Data{
-					Version: "v1",
+					Version: cneevent.APISchemaVersion,
 					Values: []cneevent.DataValue{{
 						Resource:  pub.Resource,
 						DataType:  cneevent.NOTIFICATION,
@@ -102,7 +102,7 @@ RETRY:
 					},
 					},
 				}
-				data.SetVersion("1.0") //nolint:errcheck
+				data.SetVersion(cneevent.APISchemaVersion) //nolint:errcheck
 				event.SetData(data)
 				publishEvent(event)
 			}
