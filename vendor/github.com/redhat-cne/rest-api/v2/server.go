@@ -81,6 +81,7 @@ const (
 // Server defines rest routes server object
 type Server struct {
 	port    int
+	apiHost string
 	apiPath string
 	//use dataOut chanel to write to configMap
 	dataOut                 chan<- *channel.DataChan
@@ -138,12 +139,13 @@ type swaggReqAccepted struct { //nolint:deadcode,unused
 }
 
 // InitServer is used to supply configurations for rest routes server
-func InitServer(port int, apiPath, storePath string,
+func InitServer(port int, apiHost, apiPath, storePath string,
 	dataOut chan<- *channel.DataChan, closeCh <-chan struct{},
 	onStatusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error) *Server {
 	once.Do(func() {
 		ServerInstance = &Server{
 			port:    port,
+			apiHost: apiHost,
 			apiPath: apiPath,
 			dataOut: dataOut,
 			closeCh: closeCh,

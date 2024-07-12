@@ -122,7 +122,6 @@ func (sClient *Client) UpdateConfigMap(ctx context.Context, data []subscriber.Su
 
 	for _, d := range data {
 		if d.Action == channel.DELETE {
-			//TODO: delete subscription by subscription
 			delete(existingData, d.ClientID.String())
 		} else {
 			// Marshal back to json (as original)

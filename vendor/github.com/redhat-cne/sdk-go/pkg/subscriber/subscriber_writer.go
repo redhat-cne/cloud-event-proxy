@@ -42,12 +42,6 @@ func (s *Subscriber) SetStatus(status Status) {
 // AddSubscription ...
 func (s *Subscriber) AddSubscription(subs ...pubsub.PubSub) {
 	for _, ss := range subs {
-		newS := &pubsub.PubSub{
-			ID:          ss.GetID(),
-			EndPointURI: nil,
-			URILocation: nil,
-			Resource:    ss.Resource,
-		}
-		s.SubStore.Store[ss.GetID()] = newS
+		s.SubStore.Store[ss.GetID()] = &ss
 	}
 }
