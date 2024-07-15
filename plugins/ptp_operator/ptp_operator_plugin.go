@@ -188,14 +188,19 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 		}
 		log.Infof("got status check call,send events for subscriber %s => %s", d.ClientID.String(), e.Source())
 		var eventType ptp.EventType
+		var eventSource ptp.EventResource
 		if strings.Contains(e.Source(), string(ptp.PtpLockState)) {
 			eventType = ptp.PtpStateChange
+			eventSource = ptp.PtpLockState
 		} else if strings.Contains(e.Source(), string(ptp.OsClockSyncState)) {
 			eventType = ptp.OsClockSyncStateChange
+			eventSource = ptp.OsClockSyncState
 		} else if strings.Contains(e.Source(), string(ptp.PtpClockClass)) {
 			eventType = ptp.PtpClockClassChange
+			eventSource = ptp.PtpClockClass
 		} else if strings.Contains(e.Source(), string(ptp.GnssSyncStatus)) {
 			eventType = ptp.GnssStateChange
+			eventSource = ptp.GnssSyncStatus
 		} else {
 			log.Warnf("could not find any events for requested resource type %s", e.Source())
 			return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
@@ -203,6 +208,7 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 		if len(eventManager.Stats) == 0 {
 			data := eventManager.GetPTPEventsData(ptp.FREERUN, 0, "ptp-not-set", eventType)
 			d.Data = eventManager.GetPTPCloudEvents(*data, eventType)
+			d.Data.SetSource(string(eventSource))
 			return nil
 		}
 		// process events
@@ -258,9 +264,11 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 		}
 		if data != nil {
 			d.Data = eventManager.GetPTPCloudEvents(*data, eventType)
+			d.Data.SetSource(string(eventSource))
 		} else {
 			data = eventManager.GetPTPEventsData(ptp.FREERUN, 0, "event-not-found", eventType)
 			d.Data = eventManager.GetPTPCloudEvents(*data, eventType)
+			d.Data.SetSource(string(eventSource))
 			log.Errorf("could not find any events for requested resource type %s", e.Source())
 			return nil
 		}

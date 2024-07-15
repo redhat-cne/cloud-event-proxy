@@ -40,11 +40,11 @@ func (e *Event) NewCloudEvent(ps *pubsub.PubSub) (*cloudevent.Event, error) {
 }
 
 // NewCloudEvent create new cloud event from cloud native events and pubsub
-func (e *Event) NewCloudEventV2(ps *pubsub.PubSub) (*cloudevent.Event, error) {
+func (e *Event) NewCloudEventV2() (*cloudevent.Event, error) {
 	ce := cloudevent.NewEvent(cloudevent.VersionV1)
 	ce.SetTime(e.GetTime())
 	ce.SetType(e.Type)
-	ce.SetSource(ps.Resource) // bus address
+	ce.SetSource(e.Source)
 	ce.SetSpecVersion(cloudevent.VersionV1)
 	ce.SetID(uuid.New().String())
 	if err := ce.SetData("", e.GetData()); err != nil {
