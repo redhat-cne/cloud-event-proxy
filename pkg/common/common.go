@@ -42,6 +42,7 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
+	subscriberApi "github.com/redhat-cne/sdk-go/v1/subscriber"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -149,14 +150,16 @@ func (t *TransportHost) ParseTransportHost() {
 
 // SCConfiguration simple configuration to initialize variables
 type SCConfiguration struct {
-	EventInCh         chan *channel.DataChan
-	EventOutCh        chan *channel.DataChan
-	StatusCh          chan *channel.StatusChan
-	CloseCh           chan struct{}
-	APIPort           int
-	APIPath           string
-	APIVersion        string
-	PubSubAPI         *v1pubsub.API
+	EventInCh  chan *channel.DataChan
+	EventOutCh chan *channel.DataChan
+	StatusCh   chan *channel.StatusChan
+	CloseCh    chan struct{}
+	APIPort    int
+	APIPath    string
+	APIVersion string
+	PubSubAPI  *v1pubsub.API
+	// this is used in V2 when pubsub is removed from local store
+	SubscriberAPI     *subscriberApi.API
 	StorePath         string
 	BaseURL           *types.URI
 	TransportHost     *TransportHost
@@ -228,8 +231,10 @@ func StartPubSubService(scConfig *SCConfiguration) (err error) {
 			scConfig.APIPort = server.Port()
 		}
 	} else {
+		// reload sub store from configMap
+		scConfig.SubscriberAPI.ReloadStore()
 		// use EventOutCh instead since this is only used in producer side
-		server := v2restapi.InitServer(scConfig.APIPort, scConfig.APIPath,
+		server := v2restapi.InitServer(scConfig.APIPort, scConfig.TransportHost.Host, scConfig.APIPath,
 			scConfig.StorePath, scConfig.EventOutCh, scConfig.CloseCh, nil)
 		scConfig.RestAPI = server
 		server.Start()
@@ -318,31 +323,23 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 // PublishEventViaAPI ... publish events by not using http request but direct api
 func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error {
 	if ceEvent, err := GetPublishingCloudEvent(scConfig, cneEvent); err == nil {
-		scConfig.EventInCh <- &channel.DataChan{
-			Type:     channel.EVENT,
-			Status:   channel.NEW,
-			Data:     ceEvent,
-			Address:  ceEvent.Source(), // this is te publishing address
-			ClientID: scConfig.ClientID(),
-		}
-
-		log.Debugf("event source %s sent to queue to process", ceEvent.Source())
-		log.Debugf("event sent %s", cneEvent.JSONString())
-
-		localmetrics.UpdateEventPublishedCount(ceEvent.Source(), localmetrics.SUCCESS, 1)
-	}
-	return nil
-}
-
-// PublishEventViaAPIV2 ... publish events bypassing http transport
-func PublishEventViaAPIV2(scConfig *SCConfiguration, cneEvent ceevent.Event) error {
-	if ceEvent, err := GetPublishingCloudEvent(scConfig, cneEvent); err == nil {
-		scConfig.EventOutCh <- &channel.DataChan{
-			Type:     channel.EVENT,
-			Status:   channel.NEW,
-			Data:     ceEvent,
-			Address:  ceEvent.Source(), // this is te publishing address
-			ClientID: scConfig.ClientID(),
+		if IsV1Api(scConfig.APIVersion) {
+			scConfig.EventInCh <- &channel.DataChan{
+				Type:     channel.EVENT,
+				Status:   channel.NEW,
+				Data:     ceEvent,
+				Address:  ceEvent.Source(), // this is the publishing address
+				ClientID: scConfig.ClientID(),
+			}
+		} else {
+			// use EventOutCh instead of EventInCh to bypass http transport
+			scConfig.EventOutCh <- &channel.DataChan{
+				Type:     channel.EVENT,
+				Status:   channel.NEW,
+				Data:     ceEvent,
+				Address:  ceEvent.Source(), // this is the publishing address
+				ClientID: scConfig.ClientID(),
+			}
 		}
 
 		log.Debugf("event source %s sent to queue to process", ceEvent.Source())
@@ -354,13 +351,17 @@ func PublishEventViaAPIV2(scConfig *SCConfiguration, cneEvent ceevent.Event) err
 }
 
 // GetPublishingCloudEvent ... Get Publishing cloud event
-func GetPublishingCloudEvent(scConfig *SCConfiguration, cneEvent ceevent.Event) (*event.Event, error) {
+func GetPublishingCloudEvent(scConfig *SCConfiguration, cneEvent ceevent.Event) (ceEvent *event.Event, err error) {
 	pub, err := scConfig.PubSubAPI.GetPublisher(cneEvent.ID)
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(cneEvent.ID, localmetrics.FAIL, 1)
 		return nil, fmt.Errorf("no publisher data for id %s found to publish event for", cneEvent.ID)
 	}
-	ceEvent, err := cneEvent.NewCloudEvent(&pub)
+	if IsV1Api(scConfig.APIVersion) {
+		ceEvent, err = cneEvent.NewCloudEvent(&pub)
+	} else {
+		ceEvent, err = cneEvent.NewCloudEventV2(&pub)
+	}
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
 		return nil, fmt.Errorf("error converting to CloudEvents %s", err)

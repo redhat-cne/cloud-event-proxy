@@ -56,6 +56,7 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sub := pubsub.PubSub{}
+	sub.SetVersion(API_VERSION)
 	if err = json.Unmarshal(bodyBytes, &sub); err != nil {
 		respondWithStatusCode(w, http.StatusBadRequest, fmt.Sprintf("marshalling error %v", err))
 		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
@@ -67,26 +68,18 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
 		return
 	}
-	if subExists, ok := s.pubSubAPI.HasSubscription(sub.GetResource()); ok {
+	clientIDs := s.subscriberAPI.GetClientIDByResource(sub.GetResource())
+	if len(clientIDs) != 0 {
 		respondWithStatusCode(w, http.StatusConflict,
-			fmt.Sprintf("subscription (id: %s) with same resource already exists, skipping creation",
-				subExists.GetID()))
+			fmt.Sprintf("subscription (clientID: %s) with same resource already exists, skipping creation",
+				clientIDs[0]))
 		return
 	}
 
 	id := uuid.New().String()
 	sub.SetID(id)
-	sub.SetVersion(API_VERSION)
-	sub.SetURILocation(fmt.Sprintf("http://localhost:%d%s%s/%s", s.port, s.apiPath, "subscriptions", sub.ID)) //nolint:errcheck
-
-	// TODO: cleanup: local pubsub is no longer needed since we are using configMap
-	newSub, err := s.pubSubAPI.CreateSubscription(sub)
-	if err != nil {
-		respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("error creating subscription %v", err))
-		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
-		return
-	}
-	addr := newSub.GetResource()
+	sub.SetURILocation(fmt.Sprintf("http://%s:%d%s%s/%s", s.apiHost, s.port, s.apiPath, "subscriptions", sub.ID)) //nolint:errcheck
+	addr := sub.GetResource()
 
 	// this is placeholder not sending back to report
 	out := channel.DataChan{
@@ -119,7 +112,8 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 
 	restClient := restclient.New()
-	out.Data.SetID(newSub.ID) // set ID to the subscriptionID
+	// make sure event ID is unique
+	out.Data.SetID(uuid.New().String())
 	status, err := restClient.PostCloudEvent(sub.EndPointURI, *out.Data)
 	if err != nil {
 		respondWithStatusCode(w, http.StatusBadRequest,
@@ -139,7 +133,7 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 	subs := subscriber.New(s.getClientIDFromURI(endPointURI))
 	_ = subs.SetEndPointURI(endPointURI)
 
-	subs.AddSubscription(newSub)
+	subs.AddSubscription(sub)
 	subs.Action = channel.NEW
 	cevent, _ := subs.CreateCloudEvents()
 	cevent.SetSource(addr)
@@ -162,10 +156,10 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
 	} else {
 		out.Status = channel.SUCCESS
-		_ = out.Data.SetData(cloudevents.ApplicationJSON, updatedObj)
+		_ = out.Data.SetData("", updatedObj)
 		log.Infof("subscription created successfully.")
 		localmetrics.UpdateSubscriptionCount(localmetrics.ACTIVE, 1)
-		respondWithJSON(w, http.StatusCreated, newSub)
+		respondWithJSON(w, http.StatusCreated, sub)
 	}
 
 	s.dataOut <- &out
@@ -188,6 +182,7 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pub := pubsub.PubSub{}
+	pub.SetVersion(API_VERSION)
 	if err = json.Unmarshal(bodyBytes, &pub); err != nil {
 		localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
 		respondWithError(w, "marshalling error")
@@ -256,12 +251,15 @@ func (s *Server) getSubscriptionByID(w http.ResponseWriter, r *http.Request) {
 		respondWithStatusCode(w, http.StatusNotFound, "")
 		return
 	}
-	sub, err := s.pubSubAPI.GetSubscription(subscriptionID)
-	if err != nil {
-		respondWithStatusCode(w, http.StatusNotFound, "")
-		return
+
+	for _, c := range s.subscriberAPI.GetClientIDBySubID(subscriptionID) {
+		sub, err := s.subscriberAPI.GetSubscription(c, subscriptionID)
+		if err == nil {
+			respondWithJSON(w, http.StatusOK, sub)
+			return
+		}
 	}
-	respondWithJSON(w, http.StatusOK, sub)
+	respondWithStatusCode(w, http.StatusNotFound, "")
 }
 
 func (s *Server) getPublisherByID(w http.ResponseWriter, r *http.Request) {
@@ -278,9 +276,11 @@ func (s *Server) getPublisherByID(w http.ResponseWriter, r *http.Request) {
 	}
 	respondWithJSON(w, http.StatusOK, pub)
 }
+
 func (s *Server) getSubscriptions(w http.ResponseWriter, _ *http.Request) {
-	b, err := s.pubSubAPI.GetSubscriptionsFromFile()
+	b, err := s.subscriberAPI.GetSubscriptions()
 	if err != nil {
+		log.Errorf("error loading subscriber data %v", err)
 		respondWithError(w, "error loading subscriber data")
 		return
 	}
@@ -322,14 +322,13 @@ func (s *Server) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.pubSubAPI.DeleteSubscription(subscriptionID); err != nil {
-		localmetrics.UpdateSubscriptionCount(localmetrics.FAILDELETE, 1)
-		respondWithStatusCode(w, http.StatusNotFound, err.Error())
+	clientIDs := s.subscriberAPI.GetClientIDBySubID(subscriptionID)
+	if len(clientIDs) == 0 {
+		respondWithStatusCode(w, http.StatusNotFound, "")
 		return
 	}
 
-	// update configMap
-	for _, c := range s.subscriberAPI.GetClientIDBySubID(subscriptionID) {
+	for _, c := range clientIDs {
 		if err := s.subscriberAPI.DeleteSubscription(c, subscriptionID); err != nil {
 			localmetrics.UpdateSubscriptionCount(localmetrics.FAILDELETE, 1)
 			respondWithStatusCode(w, http.StatusNotFound, err.Error())
@@ -337,6 +336,7 @@ func (s *Server) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// update configMap
 	for _, subs := range s.subscriberAPI.SubscriberStore.Store {
 		cevent, _ := subs.CreateCloudEvents()
 		out := channel.DataChan{
@@ -400,7 +400,7 @@ func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, fmt.Sprintf("no publisher data for id %s found to publish event for", cneEvent.ID))
 		return
 	}
-	ceEvent, err := cneEvent.NewCloudEvent(&pub)
+	ceEvent, err := cneEvent.NewCloudEventV2(&pub)
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
 		respondWithError(w, err.Error())
@@ -441,12 +441,12 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		respondWithError(w, "subscription not found")
+		respondWithStatusCode(w, http.StatusNotFound, "subscription not found")
 		return
 	}
 
 	if sub == nil {
-		respondWithError(w, "subscription not found")
+		respondWithStatusCode(w, http.StatusNotFound, "subscription not found")
 		return
 	}
 
@@ -471,14 +471,14 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 	// statusReceiveOverrideFn must return value for
 	if s.statusReceiveOverrideFn != nil {
 		if statusErr := s.statusReceiveOverrideFn(*e, &out); statusErr != nil {
-			respondWithError(w, statusErr.Error())
+			respondWithStatusCode(w, http.StatusNotFound, statusErr.Error())
 		} else if out.Data != nil {
 			respondWithJSON(w, http.StatusOK, *out.Data)
 		} else {
-			respondWithError(w, "event not found")
+			respondWithStatusCode(w, http.StatusNotFound, "event not found")
 		}
 	} else {
-		respondWithError(w, "onReceive function not defined")
+		respondWithStatusCode(w, http.StatusNotFound, "onReceive function not defined")
 	}
 }
 
@@ -504,7 +504,7 @@ func (s *Server) pingForSubscribedEventStatus(w http.ResponseWriter, r *http.Req
 
 		Version: "v1",
 	})
-	ceEvent, err := cneEvent.NewCloudEvent(&sub)
+	ceEvent, err := cneEvent.NewCloudEventV2(&sub)
 
 	if err != nil {
 		respondWithError(w, err.Error())

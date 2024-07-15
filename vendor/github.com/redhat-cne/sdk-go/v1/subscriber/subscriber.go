@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -73,12 +74,19 @@ func (p *API) ReloadStore() {
 	log.Infof("reloading subscribers from the store %s", p.storeFilePath)
 	if files, err := loadFileNamesFromDir(p.storeFilePath); err == nil {
 		for _, f := range files {
-			if b, err1 := loadFromFile(fmt.Sprintf("%s/%s", p.storeFilePath, f)); err1 == nil {
+			// valid subscription filename is <uuid>.json
+			if uuid.Validate(strings.Split(f, ".")[0]) != nil {
+				continue
+			} else if b, err1 := loadFromFile(fmt.Sprintf("%s/%s", p.storeFilePath, f)); err1 == nil {
 				if len(b) > 0 {
 					var sub subscriber.Subscriber
 					var err2 error
 					if err2 = json.Unmarshal(b, &sub); err2 == nil {
-						p.SubscriberStore.Set(sub.ClientID, sub)
+						if sub.ClientID != uuid.Nil {
+							p.SubscriberStore.Set(sub.ClientID, sub)
+						} else {
+							log.Errorf("subscriber data from file %s is not valid", f)
+						}
 					} else {
 						log.Errorf("error parsing subscriber %s \n %s", string(b), err2.Error())
 					}
@@ -201,21 +209,33 @@ func (p *API) GetSubscriptionsFromFile(clientID uuid.UUID) ([]byte, error) {
 	return b, err
 }
 
-// GetSubscriptions  get all subscriptionOne inforamtions
-func (p *API) GetSubscriptions(clientID uuid.UUID) (sub map[string]*pubsub.PubSub) {
+// GetSubscriptionsFromClientID get all subs from the client
+func (p *API) GetSubscriptionsFromClientID(clientID uuid.UUID) (sub map[string]*pubsub.PubSub) {
 	if subs, ok := p.SubscriberStore.Get(clientID); ok {
 		sub = subs.SubStore.Store
 	}
-
 	return
 }
 
-// GetSubscription  get  subscriptionOne inforamtions
-func (p *API) GetSubscription(clientID uuid.UUID, subID string) pubsub.PubSub {
-	if subs, ok := p.SubscriberStore.Get(clientID); ok {
-		return subs.Get(subID)
+// GetSubscriptions get all subs
+func (p *API) GetSubscriptions() ([]byte, error) {
+	p.SubscriberStore.RLock()
+	defer p.SubscriberStore.RUnlock()
+	var allSubs []pubsub.PubSub
+	for _, s := range p.SubscriberStore.Store {
+		for _, sub := range s.SubStore.Store {
+			allSubs = append(allSubs, *sub)
+		}
 	}
-	return pubsub.PubSub{}
+	return json.MarshalIndent(&allSubs, "", " ")
+}
+
+// GetSubscription get sub info from clientID and subID
+func (p *API) GetSubscription(clientID uuid.UUID, subID string) (pubsub.PubSub, error) {
+	if subs, ok := p.SubscriberStore.Get(clientID); ok {
+		return subs.Get(subID), nil
+	}
+	return pubsub.PubSub{}, fmt.Errorf("subscription data was not found for id %s", subID)
 }
 
 // GetSubscriberURLByResourceAndClientID  get  subscription information by client id/resource

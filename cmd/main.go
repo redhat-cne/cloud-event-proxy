@@ -28,6 +28,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/redhat-cne/sdk-go/pkg/subscriber"
 	v1pubs "github.com/redhat-cne/sdk-go/v1/pubsub"
 
@@ -52,6 +54,7 @@ import (
 	sdkMetrics "github.com/redhat-cne/sdk-go/pkg/localmetrics"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
 	v1http "github.com/redhat-cne/sdk-go/v1/http"
+	subscriberApi "github.com/redhat-cne/sdk-go/v1/subscriber"
 )
 
 var (
@@ -118,6 +121,7 @@ func main() {
 		APIVersion:    apiVersion,
 		StorePath:     storePath,
 		PubSubAPI:     v1pubs.GetAPIInstance(storePath),
+		SubscriberAPI: subscriberApi.GetAPIInstance(storePath),
 		BaseURL:       nil,
 		TransportHost: parsedTransportHost,
 		StorageType:   storageClient.EmptyDir,
@@ -266,19 +270,34 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 						if sub.EndPointURI != nil {
 							restClient := restclient.New()
 							event.ID = sub.ID // set ID to the subscriptionID
-							if common.IsV1Api(scConfig.APIVersion) {
-								err = restClient.PostEvent(sub.EndPointURI, event)
-							} else {
-								err = restClient.PostCloudEvent(sub.EndPointURI, *d.Data)
-							}
+							err = restClient.PostEvent(sub.EndPointURI, event)
 							postHandler(err, sub.EndPointURI, d.Address)
 						} else {
 							log.Warnf("endpoint uri not given, posting event to log %#v for address %s\n", event, d.Address)
 							localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
 						}
 					} else {
-						log.Warnf("subscription not found, posting event %#v to log for address %s\n", event, d.Address)
-						localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
+						// V2
+						eventSubscribers := scConfig.SubscriberAPI.GetClientIDAddressByResource(d.Address)
+						if len(eventSubscribers) != 0 {
+							restClient := restclient.New()
+							for clientID, endPointURI := range eventSubscribers {
+								if endPointURI != nil {
+									log.Infof("post events %s to subscriber %s", d.Address, endPointURI)
+									// make sure event ID is unique
+									event.ID = uuid.New().String()
+									err = restClient.PostCloudEvent(endPointURI, *d.Data)
+									postHandler(err, sub.EndPointURI, d.Address)
+								} else {
+									// this should not happen
+									log.Errorf("endPointURI is nil for ResourceAddress %s clientID %s", d.Address, clientID)
+									continue
+								}
+							}
+						} else {
+							log.Warnf("subscription not found, posting event %#v to log for address %s\n", event, d.Address)
+							localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
+						}
 					}
 				} else if d.Status == channel.SUCCESS || d.Status == channel.FAILED { // event sent ,ack back to publisher
 					postProcessFn(d.Address, d.Status)

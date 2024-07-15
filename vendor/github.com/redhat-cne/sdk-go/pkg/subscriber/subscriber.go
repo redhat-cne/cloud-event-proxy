@@ -49,7 +49,7 @@ type Subscriber struct {
 	SubStore *store.PubSubStore `json:"subStore" omit:"empty"`
 	// EndPointURI - A URI describing the subscriber link .
 	// +required
-	EndPointURI *types.URI `json:"endPointURI" omit:"empty"`
+	EndPointURI *types.URI `json:"EndpointUri" omit:"empty"`
 	// Status ...
 	Status Status `json:"status" omit:"empty"`
 	// Action ...
@@ -84,8 +84,8 @@ func (s *Subscriber) FailedCount() int {
 // String returns a pretty-printed representation of the Event.
 func (s *Subscriber) String() string {
 	b := strings.Builder{}
-	b.WriteString("  EndPointURI: " + s.GetEndPointURI() + "\n")
-	b.WriteString("  ID: " + s.GetClientID().String() + "\n")
+	b.WriteString("  EndpointUri: " + s.GetEndPointURI() + "\n")
+	b.WriteString("  clientID: " + s.GetClientID().String() + "\n")
 	b.WriteString("  sub :{")
 	if s.SubStore != nil {
 		for _, v := range s.SubStore.Store {
