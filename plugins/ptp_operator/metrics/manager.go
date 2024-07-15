@@ -285,12 +285,16 @@ func (p *PTPEventManager) publish(data ceevent.Data, resourceAddress string, eve
 	var e ceevent.Event
 	var err error
 	if pubs, ok := p.publisherTypes[eventType]; ok {
-		e, err = common.CreateEvent(pubs.PubID, string(eventType), resourceAddress, data)
+		if common.IsV1Api(p.scConfig.APIVersion) {
+			e, err = common.CreateEvent(pubs.PubID, string(eventType), resourceAddress, data)
+		} else {
+			e, err = common.CreateEvent(pubs.PubID, string(eventType), string(p.publisherTypes[eventType].Resource), data)
+		}
 		if err != nil {
 			log.Errorf("failed to create ptp event, %s", err)
 			return
 		}
-		if err = common.PublishEventViaAPI(p.scConfig, e); err != nil {
+		if err = common.PublishEventViaAPI(p.scConfig, e, resourceAddress); err != nil {
 			log.Errorf("failed to publish ptp event %v, %s", e, err)
 			return
 		}

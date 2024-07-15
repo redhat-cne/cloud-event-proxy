@@ -109,6 +109,7 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		respondWithStatusCode(w, http.StatusNotFound, "event not found")
 		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
 		log.Error("event not found")
+		return
 	}
 
 	restClient := restclient.New()
@@ -400,7 +401,7 @@ func (s *Server) publishEvent(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, fmt.Sprintf("no publisher data for id %s found to publish event for", cneEvent.ID))
 		return
 	}
-	ceEvent, err := cneEvent.NewCloudEventV2(&pub)
+	ceEvent, err := cneEvent.NewCloudEventV2()
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
 		respondWithError(w, err.Error())
@@ -467,7 +468,6 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 	}
 
 	e, _ := out.CreateCloudEvents(CURRENTSTATE)
-	e.SetSource(resourceAddress)
 	// statusReceiveOverrideFn must return value for
 	if s.statusReceiveOverrideFn != nil {
 		if statusErr := s.statusReceiveOverrideFn(*e, &out); statusErr != nil {
@@ -501,10 +501,9 @@ func (s *Server) pingForSubscribedEventStatus(w http.ResponseWriter, r *http.Req
 	cneEvent.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
 	cneEvent.SetDataContentType(cloudevents.ApplicationJSON)
 	cneEvent.SetData(cne.Data{
-
-		Version: "v1",
+		Version: cne.APISchemaVersion,
 	})
-	ceEvent, err := cneEvent.NewCloudEventV2(&sub)
+	ceEvent, err := cneEvent.NewCloudEventV2()
 
 	if err != nil {
 		respondWithError(w, err.Error())

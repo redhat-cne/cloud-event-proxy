@@ -321,7 +321,7 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 }
 
 // PublishEventViaAPI ... publish events by not using http request but direct api
-func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error {
+func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event, resourceAddress string) error {
 	if ceEvent, err := GetPublishingCloudEvent(scConfig, cneEvent); err == nil {
 		if IsV1Api(scConfig.APIVersion) {
 			scConfig.EventInCh <- &channel.DataChan{
@@ -337,7 +337,7 @@ func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error
 				Type:     channel.EVENT,
 				Status:   channel.NEW,
 				Data:     ceEvent,
-				Address:  ceEvent.Source(), // this is the publishing address
+				Address:  resourceAddress, // this is the publishing address
 				ClientID: scConfig.ClientID(),
 			}
 		}
@@ -360,7 +360,7 @@ func GetPublishingCloudEvent(scConfig *SCConfiguration, cneEvent ceevent.Event) 
 	if IsV1Api(scConfig.APIVersion) {
 		ceEvent, err = cneEvent.NewCloudEvent(&pub)
 	} else {
-		ceEvent, err = cneEvent.NewCloudEventV2(&pub)
+		ceEvent, err = cneEvent.NewCloudEventV2()
 	}
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)

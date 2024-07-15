@@ -57,7 +57,8 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 	// 1. Create event Publication
 	var pub pubsub.PubSub
 	var err error
-	if pub, err = createPublisher(fmt.Sprintf(resourceAddress, nodeName)); err != nil {
+	resource := fmt.Sprintf(resourceAddress, nodeName)
+	if pub, err = createPublisher(resource); err != nil {
 		log.Errorf("failed to create a publisher %v", err)
 		return err
 	}
@@ -95,17 +96,17 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 		defer wg.Done()
 		for range time.Tick(eventInterval * time.Second) {
 			// create an event
-			sendEvent(pub)
+			sendEvent(pub, resource)
 		}
 	}()
 	return nil
 }
-func sendEvent(pub pubsub.PubSub) {
+func sendEvent(pub pubsub.PubSub, resourceAddress string) {
 	if mEvent, mockEventErr := createMockEvent(pub); mockEventErr == nil {
 		mEvent.Type = mockEventType
 		mEvent.Data.Values[0].Value = mockEventStateLocked
 		mEvent.Data.Values[1].Value = mockEventValue
-		if mockEventErr = common.PublishEventViaAPI(config, mEvent); mockEventErr != nil {
+		if mockEventErr = common.PublishEventViaAPI(config, mEvent, resourceAddress); mockEventErr != nil {
 			log.Errorf("error publishing events %s", mockEventErr)
 		}
 	} else {
@@ -126,7 +127,7 @@ func createPublisher(address string) (pub pubsub.PubSub, err error) {
 func createMockEvent(pub pubsub.PubSub) (ceEvent.Event, error) {
 	// create an event
 	data := ceEvent.Data{
-		Version: "v1",
+		Version: ceEvent.APISchemaVersion,
 		Values: []ceEvent.DataValue{{
 			Resource:  mockResourceName,
 			DataType:  ceEvent.NOTIFICATION,

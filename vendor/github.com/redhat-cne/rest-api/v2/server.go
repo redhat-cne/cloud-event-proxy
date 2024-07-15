@@ -388,3 +388,8 @@ func (s *Server) Shutdown() {
 func (s *Server) SetOnStatusReceiveOverrideFn(fn func(e cloudevents.Event, dataChan *channel.DataChan) error) {
 	s.statusReceiveOverrideFn = fn
 }
+
+// GetSubscriberAPI ...
+func (s *Server) GetSubscriberAPI() *subscriberApi.API {
+	return s.subscriberAPI
+}
