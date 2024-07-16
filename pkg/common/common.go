@@ -288,7 +288,7 @@ func CreateSubscription(config *SCConfiguration, subscription pubsub.PubSub) (su
 }
 
 // CreateEvent create an event
-func CreateEvent(pubSubID, eventType, resourceAddress string, data ceevent.Data) (ceevent.Event, error) {
+func CreateEvent(pubSubID, eventType, source string, data ceevent.Data) (ceevent.Event, error) {
 	// create an event
 	if pubSubID == "" {
 		return ceevent.Event{}, fmt.Errorf("id is a required field")
@@ -299,7 +299,7 @@ func CreateEvent(pubSubID, eventType, resourceAddress string, data ceevent.Data)
 	event := v1event.CloudNativeEvent()
 	event.ID = pubSubID
 	event.Type = eventType
-	event.SetSource(resourceAddress)
+	event.SetSource(source)
 	event.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
 	event.SetDataContentType(ceevent.ApplicationJSON)
 	event.SetData(data)
@@ -321,7 +321,7 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 }
 
 // PublishEventViaAPI ... publish events by not using http request but direct api
-func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error {
+func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event, resourceAddress string) error {
 	if ceEvent, err := GetPublishingCloudEvent(scConfig, cneEvent); err == nil {
 		if IsV1Api(scConfig.APIVersion) {
 			scConfig.EventInCh <- &channel.DataChan{
@@ -337,7 +337,7 @@ func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event) error
 				Type:     channel.EVENT,
 				Status:   channel.NEW,
 				Data:     ceEvent,
-				Address:  ceEvent.Source(), // this is the publishing address
+				Address:  resourceAddress, // this is the publishing address
 				ClientID: scConfig.ClientID(),
 			}
 		}
@@ -360,7 +360,7 @@ func GetPublishingCloudEvent(scConfig *SCConfiguration, cneEvent ceevent.Event) 
 	if IsV1Api(scConfig.APIVersion) {
 		ceEvent, err = cneEvent.NewCloudEvent(&pub)
 	} else {
-		ceEvent, err = cneEvent.NewCloudEventV2(&pub)
+		ceEvent, err = cneEvent.NewCloudEventV2()
 	}
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
