@@ -355,7 +355,7 @@ func GetPublishingCloudEvent(scConfig *SCConfiguration, cneEvent ceevent.Event) 
 	pub, err := scConfig.PubSubAPI.GetPublisher(cneEvent.ID)
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(cneEvent.ID, localmetrics.FAIL, 1)
-		return nil, fmt.Errorf("no publisher data for id %s found to publish event for", cneEvent.ID)
+		return nil, err
 	}
 	if IsV1Api(scConfig.APIVersion) {
 		ceEvent, err = cneEvent.NewCloudEvent(&pub)

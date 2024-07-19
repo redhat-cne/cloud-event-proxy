@@ -183,6 +183,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 // getCurrentStatOverrideFn is called when GET CurrentState request is received by rest api
 func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 	return func(e v2.Event, d *channel.DataChan) error {
+		var err error
 		if e.Source() != "" {
 			d.ReturnAddress = pointer.String(e.Source())
 		}
@@ -201,13 +202,19 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 		} else if strings.Contains(e.Source(), string(ptp.GnssSyncStatus)) {
 			eventType = ptp.GnssStateChange
 			eventSource = ptp.GnssSyncStatus
+		} else if strings.Contains(e.Source(), string(ptp.SyncStatusState)) {
+			eventType = ptp.SyncStateChange
+			eventSource = ptp.SyncStatusState
 		} else {
 			log.Warnf("could not find any events for requested resource type %s", e.Source())
 			return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
 		}
 		if len(eventManager.Stats) == 0 {
 			data := eventManager.GetPTPEventsData(ptp.FREERUN, 0, "ptp-not-set", eventType)
-			d.Data = eventManager.GetPTPCloudEvents(*data, eventType)
+			d.Data, err = eventManager.GetPTPCloudEvents(*data, eventType)
+			if err != nil {
+				return err
+			}
 			d.Data.SetSource(string(eventSource))
 			return nil
 		}
@@ -221,6 +228,8 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 			}
 			return data
 		}
+
+		var overallSyncState ptp.SyncState
 
 		for _, ptpStats := range eventManager.Stats { // configname->PTPStats
 			for ptpInterface, s := range ptpStats { // iface->stats
@@ -236,9 +245,13 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 					case ptp.PtpClockClassChange:
 						clockClass := fmt.Sprintf("%s/%s", string(ptpInterface), ptpMetrics.ClockClass)
 						data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.ClockClass(), clockClass, eventType))
+					// overallSyncState is only for master
+					case ptp.SyncStateChange:
+						overallSyncState = getOverallState(overallSyncState, s.SyncState())
 					}
 				case ptpMetrics.ClockRealTime:
-					if eventType == ptp.OsClockSyncStateChange {
+					switch eventType {
+					case ptp.OsClockSyncStateChange:
 						data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType))
 					}
 				default:
@@ -262,18 +275,49 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 				}
 			}
 		}
+		if eventType == ptp.SyncStateChange && overallSyncState != "" {
+			data = processDataFn(data, eventManager.GetPTPEventsData(overallSyncState, 0, string(eventSource), eventType))
+		}
 		if data != nil {
-			d.Data = eventManager.GetPTPCloudEvents(*data, eventType)
+			d.Data, err = eventManager.GetPTPCloudEvents(*data, eventType)
+			if err != nil {
+				return err
+			}
 			d.Data.SetSource(string(eventSource))
 		} else {
 			data = eventManager.GetPTPEventsData(ptp.FREERUN, 0, "event-not-found", eventType)
-			d.Data = eventManager.GetPTPCloudEvents(*data, eventType)
+			d.Data, err = eventManager.GetPTPCloudEvents(*data, eventType)
+			if err != nil {
+				return err
+			}
 			d.Data.SetSource(string(eventSource))
 			log.Errorf("could not find any events for requested resource type %s", e.Source())
 			return nil
 		}
 		return nil
 	}
+}
+
+// return worst of FREERUN, HOLDOVER or LOCKED
+func getOverallState(current, new ptp.SyncState) ptp.SyncState {
+	if current == "" {
+		return new
+	}
+	switch new {
+	case ptp.FREERUN:
+		return ptp.FREERUN
+	case ptp.HOLDOVER:
+		if current == ptp.FREERUN {
+			return current
+		} else {
+			return new
+		}
+	case ptp.LOCKED:
+		return current
+	default:
+		log.Warnf("last sync state is unknown: %s", new)
+	}
+	return ""
 }
 
 // update interface details  and threshold details when ptpConfig change found.
@@ -531,6 +575,10 @@ func HasEqualInterface(a []*string, b []*ptp4lconf.PTPInterface) bool {
 // InitPubSubTypes ... initialize types of publishers for ptp operator
 func InitPubSubTypes() map[ptp.EventType]*ptpTypes.EventPublisherType {
 	InitPubs := make(map[ptp.EventType]*ptpTypes.EventPublisherType)
+	InitPubs[ptp.SyncStateChange] = &ptpTypes.EventPublisherType{
+		EventType: ptp.SyncStateChange,
+		Resource:  ptp.SyncStatusState,
+	}
 	InitPubs[ptp.OsClockSyncStateChange] = &ptpTypes.EventPublisherType{
 		EventType: ptp.OsClockSyncStateChange,
 		Resource:  ptp.OsClockSyncState,

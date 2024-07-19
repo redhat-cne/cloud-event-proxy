@@ -220,31 +220,34 @@ func (p *PTPEventManager) GetPTPEventsData(state ptp.SyncState, ptpOffset int64,
 			Value:     state,
 		})
 	}
-
-	data.Values = append(data.Values, ceevent.DataValue{
-		Resource:  eventSource,
-		DataType:  ceevent.METRIC,
-		ValueType: ceevent.DECIMAL,
-		Value:     ptpOffset,
-	})
+	if eventType != ptp.SyncStateChange {
+		data.Values = append(data.Values, ceevent.DataValue{
+			Resource:  eventSource,
+			DataType:  ceevent.METRIC,
+			ValueType: ceevent.DECIMAL,
+			Value:     ptpOffset,
+		})
+	}
 	return &data
 }
 
 // GetPTPCloudEvents ...GetEvent events
-func (p *PTPEventManager) GetPTPCloudEvents(data ceevent.Data, eventType ptp.EventType) *cloudevents.Event {
-	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
+func (p *PTPEventManager) GetPTPCloudEvents(data ceevent.Data, eventType ptp.EventType) (*cloudevents.Event, error) {
 	if pubs, ok := p.publisherTypes[eventType]; ok {
-		cneEvent, cneErr := common.CreateEvent(pubs.PubID, string(eventType), resourceAddress, data)
+		cneEvent, cneErr := common.CreateEvent(
+			pubs.PubID, string(eventType),
+			fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource)),
+			data)
 		if cneErr != nil {
-			log.Errorf("failed to create ptp event, %s", cneErr)
-			return nil
+			return nil, fmt.Errorf("failed to create ptp event, %s", cneErr)
 		}
-		if ceEvent, err := common.GetPublishingCloudEvent(p.scConfig, cneEvent); err == nil {
-			// the saw because api is not processing this, returned  directly by currentState call
-			return ceEvent
+		ceEvent, err := common.GetPublishingCloudEvent(p.scConfig, cneEvent)
+		if err != nil {
+			return nil, err
 		}
+		return ceEvent, nil
 	}
-	return nil
+	return nil, fmt.Errorf("EventPublisherType not found for event type %s", string(eventType))
 }
 
 // PublishEvent ...publish events
