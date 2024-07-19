@@ -184,7 +184,7 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/redhat-cne/rest-api v1.0.1-0.20240716183754-2b0b52c30e8e
+# github.com/redhat-cne/rest-api v1.0.1-0.20240723190342-e6c7d988abd8
 ## explicit; go 1.22
 github.com/redhat-cne/rest-api
 github.com/redhat-cne/rest-api/pkg/localmetrics
