@@ -236,7 +236,7 @@ func (s *Stats) GetStateState(processName string, iface *string) (ptp.SyncState,
 				return d[0].State, nil
 			}
 			for _, state := range d {
-				if *state.IFace == *iface {
+				if iface != nil && *state.IFace == *iface {
 					return state.State, nil
 				}
 			}
