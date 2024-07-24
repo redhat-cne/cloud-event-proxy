@@ -106,9 +106,8 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if out.Data == nil {
-		respondWithStatusCode(w, http.StatusNotFound, "event not found")
+		respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("event not found for %s", addr))
 		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
-		log.Error("event not found")
 		return
 	}
 
@@ -424,7 +423,10 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, "resourceAddress parameter not found")
 		return
 	}
-
+	if resourceAddress == "" {
+		respondWithError(w, "resourceAddress can not be empty")
+		return
+	}
 	//identify publisher or subscriber is asking for status
 	var sub *pubsub.PubSub
 	if len(s.pubSubAPI.GetSubscriptions()) > 0 {
@@ -442,17 +444,13 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
-		respondWithStatusCode(w, http.StatusNotFound, "subscription not found")
+		respondWithStatusCode(w, http.StatusNotFound, "no subscription data available")
 		return
 	}
 
 	if sub == nil {
-		respondWithStatusCode(w, http.StatusNotFound, "subscription not found")
+		respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("subscription not found for %s", resourceAddress))
 		return
-	}
-
-	if resourceAddress == "" {
-		_ = json.NewEncoder(w).Encode(map[string]string{"message": "validation failed, resource is empty"})
 	}
 
 	if !strings.HasPrefix(resourceAddress, "/") {
@@ -475,7 +473,7 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 		} else if out.Data != nil {
 			respondWithJSON(w, http.StatusOK, *out.Data)
 		} else {
-			respondWithStatusCode(w, http.StatusNotFound, "event not found")
+			respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("event not found for %s", resourceAddress))
 		}
 	} else {
 		respondWithStatusCode(w, http.StatusNotFound, "onReceive function not defined")
