@@ -245,7 +245,6 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 					case ptp.PtpClockClassChange:
 						clockClass := fmt.Sprintf("%s/%s", string(ptpInterface), ptpMetrics.ClockClass)
 						data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.ClockClass(), clockClass, eventType))
-					// overallSyncState is only for master
 					case ptp.SyncStateChange:
 						overallSyncState = getOverallState(overallSyncState, s.SyncState())
 					}
@@ -253,6 +252,9 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 					switch eventType {
 					case ptp.OsClockSyncStateChange:
 						data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType))
+					// SyncStateChange includes OsClockSyncStateChange
+					case ptp.SyncStateChange:
+						overallSyncState = getOverallState(overallSyncState, s.SyncState())
 					}
 				default:
 					switch eventType {

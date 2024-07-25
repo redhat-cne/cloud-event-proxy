@@ -31,6 +31,7 @@ type PTPEventManager struct {
 	PtpConfigMapUpdates *ptpConfig.LinuxPTPConfigMapUpdate
 	// Ptp4lConfigInterfaces holds interfaces and its roles, after reading from ptp4l config files
 	Ptp4lConfigInterfaces map[types.ConfigName]*ptp4lconf.PTP4lConfig
+	lastOverallSyncState  ptp.SyncState
 }
 
 // NewPTPEventManager to manage events and metrics
@@ -261,10 +262,22 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, sou
 		log.Infof("PublishEvent state=%s, ptpOffset=%d, source=%s, eventType=%s", state, ptpOffset, source, eventType)
 		return
 	}
+
 	// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
 	data := p.GetPTPEventsData(state, ptpOffset, source, eventType)
 	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
 	p.publish(*data, resourceAddress, eventType)
+	// publish the event again as overall sync state
+	// SyncStateChange is the overall sync state including PtpStateChange and OsClockSyncStateChange
+	if eventType == ptp.PtpStateChange || eventType == ptp.OsClockSyncStateChange {
+		if state != p.lastOverallSyncState {
+			eventType = ptp.SyncStateChange
+			data = p.GetPTPEventsData(state, ptpOffset, source, eventType)
+			resourceAddress = fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
+			p.publish(*data, resourceAddress, eventType)
+			p.lastOverallSyncState = state
+		}
+	}
 }
 
 func (p *PTPEventManager) publish(data ceevent.Data, resourceAddress string, eventType ptp.EventType) {
