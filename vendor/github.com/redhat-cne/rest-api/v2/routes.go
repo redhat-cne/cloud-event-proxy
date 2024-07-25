@@ -427,6 +427,7 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 		respondWithError(w, "resourceAddress can not be empty")
 		return
 	}
+
 	//identify publisher or subscriber is asking for status
 	var sub *pubsub.PubSub
 	if len(s.pubSubAPI.GetSubscriptions()) > 0 {
@@ -449,13 +450,20 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if sub == nil {
-		respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("subscription not found for %s", resourceAddress))
+		respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("subscriptions not found for %s", resourceAddress))
 		return
 	}
 
 	if !strings.HasPrefix(resourceAddress, "/") {
 		resourceAddress = fmt.Sprintf("/%s", resourceAddress)
 	}
+
+	eventSubscribers := s.subscriberAPI.GetClientIDAddressByResource(resourceAddress)
+	if len(eventSubscribers) == 0 {
+		respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("subscription not found for %s", resourceAddress))
+		return
+	}
+
 	// this is placeholder not sending back to report
 	out := channel.DataChan{
 		Address: resourceAddress,

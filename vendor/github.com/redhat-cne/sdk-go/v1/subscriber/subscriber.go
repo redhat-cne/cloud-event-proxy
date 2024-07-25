@@ -276,7 +276,7 @@ func (p *API) GetClientIDByResource(resource string) (clientIds []uuid.UUID) {
 	defer p.SubscriberStore.RUnlock()
 	for _, subs := range p.SubscriberStore.Store {
 		for _, sub := range subs.SubStore.Store {
-			if sub.GetResource() == resource {
+			if strings.Contains(sub.GetResource(), resource) {
 				clientIds = append(clientIds, subs.ClientID)
 			}
 		}
