@@ -181,6 +181,11 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			alias := getAlias(interfaceName)
 			// no event for nmeas status , change in GM will manage ptp events and sync states
 			UpdateNmeaStatusMetrics(processName, alias, status)
+		} else if strings.Contains(output, "process_status") &&
+			processName == ts2phcProcessName {
+			// do nothing processDown identifier will update  metrics and stats
+			// but prevent further from reading offsets
+			return
 		} else if strings.Contains(output, " offset ") { //  DPLL has Offset too
 			// ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay    374976
 			// phc2sys[4268818.286]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -62 s0 freq  -78368 delay   1100
@@ -329,15 +334,35 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 
 func (p *PTPEventManager) processDownEvent(profileName, processName string, ptpStats stats.PTPStats) {
 	// if the process is responsible to set master offset
-	if masterOffsetSource == processName {
-		if ptpStats[master].Alias() != "" {
-			masterResource := fmt.Sprintf("%s/%s", ptpStats[master].Alias(), MasterClockType)
-			p.GenPTPEvent(profileName, ptpStats[master], masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
+	if processName == ts2phcProcessName {
+		//  update metrics for all interface defined by ts2phc
+		//  set ts2phc stats to FREERUN
+		// this should generate PTP stat as free run by event manager
+		for iface := range ptpStats {
+			if iface != ClockRealTime && iface != master {
+				ptpStats[iface].SetLastOffset(FreeRunOffsetValue)
+				ptpStats[iface].SetLastSyncState(ptp.FREERUN)
+				alias := ptpStats[iface].Alias()
+				if alias == "" {
+					alias = getAlias(string(iface))
+				}
+				// update all ts2phc reported metrics as FREERUN
+				UpdateSyncStateMetrics(processName, alias, ptpStats[iface].LastSyncState())
+				UpdatePTPMetrics(master, processName, alias, FreeRunOffsetValue, float64(ptpStats[iface].MaxAbs()),
+					float64(ptpStats[iface].FrequencyAdjustment()), float64(ptpStats[iface].Delay()))
+			}
 		}
-	}
-	if s, ok := ptpStats[ClockRealTime]; ok {
-		if t, ok2 := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok2 && t.Phc2SysEnabled() {
-			p.GenPTPEvent(profileName, s, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
+	} else { // other profiles
+		if masterOffsetSource == processName {
+			if ptpStats[master].Alias() != "" {
+				masterResource := fmt.Sprintf("%s/%s", ptpStats[master].Alias(), MasterClockType)
+				p.GenPTPEvent(profileName, ptpStats[master], masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
+			}
+		}
+		if s, ok := ptpStats[ClockRealTime]; ok {
+			if t, ok2 := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok2 && t.Phc2SysEnabled() {
+				p.GenPTPEvent(profileName, s, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
+			}
 		}
 	}
 }
