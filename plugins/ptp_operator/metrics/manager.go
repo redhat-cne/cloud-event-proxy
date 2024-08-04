@@ -200,6 +200,43 @@ func (p *PTPEventManager) publishGNSSEvent(state int64, offset float64, syncStat
 	p.publish(*data, resourceAddress, eventType)
 }
 
+// publishSyncEEvent ...publish events
+func (p *PTPEventManager) publishSyncEEvent(syncState ptp.SyncState, source string, ql byte, extQl byte, extendedTvlEnabled bool, eventType ptp.EventType) {
+	if p.mock {
+		p.mockEvent = eventType
+		log.Infof("publishSyncEEvent state=%s, source=%s, eventType=%s", syncState, source, eventType)
+		return
+	}
+	if _, ok := p.publisherTypes[eventType]; !ok {
+		log.Infof("cannot publish event, resource not found  for %s", eventType)
+		return
+	}
+	var data *ceevent.Data
+
+	eventSource := fmt.Sprintf(p.resourcePrefix, p.nodeName, fmt.Sprintf("/%s", source))
+	data = &ceevent.Data{
+		Version: ceevent.APISchemaVersion,
+		Values:  []ceevent.DataValue{},
+	}
+
+	if syncState == "" { // clock quality event
+		for i := range []byte{ql, extQl} {
+			data.Values = append(data.Values, ceevent.DataValue{
+				Resource:  eventSource,
+				DataType:  ceevent.METRIC,
+				ValueType: ceevent.DECIMAL,
+				Value:     float64(i),
+			})
+			if !extendedTvlEnabled {
+				break
+			}
+		}
+	}
+
+	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
+	p.publish(*data, resourceAddress, eventType)
+}
+
 // GetPTPEventsData ... get PTP event data object
 func (p *PTPEventManager) GetPTPEventsData(state ptp.SyncState, ptpOffset int64, source string, eventType ptp.EventType) *ceevent.Data {
 	// create an event
@@ -220,7 +257,7 @@ func (p *PTPEventManager) GetPTPEventsData(state ptp.SyncState, ptpOffset int64,
 			Value:     state,
 		})
 	}
-	if eventType != ptp.SyncStateChange {
+	if eventType != ptp.SyncStateChange && eventType != ptp.SynceStateChange {
 		data.Values = append(data.Values, ceevent.DataValue{
 			Resource:  eventSource,
 			DataType:  ceevent.METRIC,

@@ -54,6 +54,7 @@ const (
 	ptp4lProcessName   = "ptp4l"
 	ts2PhcProcessName  = "ts2phc"
 	gnssProcessName    = "gnss"
+	syncE4lProcessName = "synce4l"
 	// ClockRealTime is the slave
 	ClockRealTime = "CLOCK_REALTIME"
 	// MasterClockType is the slave sync slave clock to master
@@ -205,6 +206,12 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 		} else if strings.Contains(e.Source(), string(ptp.SyncStatusState)) {
 			eventType = ptp.SyncStateChange
 			eventSource = ptp.SyncStatusState
+		} else if strings.Contains(e.Source(), string(ptp.SynceStateChange)) {
+			eventType = ptp.SynceStateChange
+			eventSource = ptp.SyncStatusState
+		} else if strings.Contains(e.Source(), string(ptp.SynceClockQualityChange)) {
+			eventType = ptp.SynceClockQualityChange
+			eventSource = ptp.SynceClockQuality
 		} else {
 			log.Warnf("could not find any events for requested resource type %s", e.Source())
 			return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
@@ -416,6 +423,9 @@ func processPtp4lConfigFileUpdates() {
 					if !opts.Phc2SysEnabled() {
 						process = append(process, phc2sysProcessName)
 					}
+					if !opts.SyncE4lEnabled() {
+						process = append(process, syncE4lProcessName)
+					}
 					ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), cName,
 						process...)
 					// special ts2phc due to different configName replace ptp4l.0.conf to ts2phc.0.cnf
@@ -447,6 +457,13 @@ func processPtp4lConfigFileUpdates() {
 				// time="2024-03-19T19:40:16Z" level=info msg="updating ptp config changes for phc2sys.2.config"
 				if eventManager.PtpConfigMapUpdates.HAProfile == ptp4lConfig.Profile {
 					eventManager.PtpConfigMapUpdates.HAProfile = "" // clear profile
+				}
+				// clean up synce metrics
+				for d, s := range ptpStats {
+					if s != nil && s.GetSyncE() != nil {
+						ptpMetrics.DeleteSyncEMetrics(syncE4lProcessName, string(ptpConfigFileName), *s.GetSyncE())
+						ptpStats[d].SetSyncE(nil) // clear all
+					}
 				}
 				// clean up
 				if ptpConfig, ok := eventManager.Ptp4lConfigInterfaces[ptpConfigFileName]; ok {
@@ -500,7 +517,7 @@ func processPtp4lConfigFileUpdates() {
 				eventManager.DeleteStatsConfig(ptpConfigFileName)
 				eventManager.DeletePTPConfig(ptpConfigFileName)
 				// clean up process metrics
-				ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), string(ptpConfigFileName), ptp4lProcessName, phc2sysProcessName)
+				ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), string(ptpConfigFileName), ptp4lProcessName, phc2sysProcessName, syncE4lProcessName)
 				ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), strings.Replace(string(ptpConfigFileName), ptp4lProcessName, ts2PhcProcessName, 1), ts2PhcProcessName)
 				fileModified <- true
 			}
@@ -594,6 +611,14 @@ func InitPubSubTypes() map[ptp.EventType]*ptpTypes.EventPublisherType {
 	InitPubs[ptp.GnssStateChange] = &ptpTypes.EventPublisherType{
 		EventType: ptp.GnssStateChange,
 		Resource:  ptp.GnssSyncStatus,
+	}
+	InitPubs[ptp.SynceStateChange] = &ptpTypes.EventPublisherType{
+		EventType: ptp.SynceStateChange,
+		Resource:  ptp.SynceLockState,
+	}
+	InitPubs[ptp.SynceClockQualityChange] = &ptpTypes.EventPublisherType{
+		EventType: ptp.SynceClockQualityChange,
+		Resource:  ptp.SynceClockQuality,
 	}
 	return InitPubs
 }

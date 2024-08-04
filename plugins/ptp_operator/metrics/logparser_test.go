@@ -1,6 +1,7 @@
 package metrics_test
 
 import (
+	"sort"
 	"strings"
 	"testing"
 
@@ -143,5 +144,121 @@ func TestPTPEventManager_ParseDPLLLogs(t *testing.T) {
 		lastState, errState := ptpStats[types.IFace(tt.interfaceName)].GetStateState(tt.processName, pointer.String(tt.interfaceName))
 		assert.Equal(t, errState, nil)
 		assert.Equal(t, tt.expectedState, lastState)
+	}
+}
+func TestParseSyncELogs(t *testing.T) {
+	ptpEventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "tetsnode", nil)
+	processName := "synce4l"
+	configName = "synce4l.0.config"
+	ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)] = make(stats.PTPStats)
+	ptpStats := ptpEventManager.GetStats(types.ConfigName(configName))
+
+	ptpEventManager.MockTest(true)
+
+	tests := []struct {
+		id            int
+		name          string
+		output        string
+		fields        []string
+		expectedStats *stats.SyncEStats
+		expectErr     bool
+	}{
+		{
+			id:            1,
+			name:          "Invalid log format",
+			output:        "invalid log format",
+			fields:        []string{"invalid", "log", "format"},
+			expectedStats: nil,
+		},
+		{
+			id:     2,
+			name:   "Valid log with clock_quality",
+			output: "synce4l 1722458091 synce4l.0.config ens7f0 clock_quality PRTC device synce1 ext_ql 0x20 network_option 2 ql 0x1 s2",
+			fields: []string{"synce4l", "1722458091", "synce4l.0.config", "ens7f0", "clock_quality", "PRTC", "device", "synce1", "ext_ql", "0x20", "network_option", "2", "ql", "0x1", "s2"},
+			expectedStats: &stats.SyncEStats{
+				Name:      "synce1",
+				ExtSource: "",
+				Port: map[string]*stats.PortState{"ens7f0": {
+					Name:               "ens7f0",
+					State:              ptp.SyncState("s2"),
+					ClockQuality:       "PRTC",
+					QL:                 0x1,
+					ExtQL:              0x20,
+					ExtendedTvlEnabled: true,
+					LastQLState:        33,
+				}},
+				ClockState:    ptp.SyncState("s1"),
+				NetworkOption: 1,
+			},
+		},
+		{
+			id:     3,
+			name:   "Valid log with eec_state",
+			output: "synce4l 1722456110 synce4l.0.config ens7f0 device synce1 eec_state EEC_HOLDOVER network_option 2 s1",
+			fields: []string{"synce4l", "1722456110", "synce4l.0.config", "ens7f0", "device", "synce1", "eec_state", "EEC_HOLDOVER", "network_option", "2", "s1"},
+			expectedStats: &stats.SyncEStats{
+				Name:      "synce1",
+				ExtSource: "",
+				Port: map[string]*stats.PortState{"ens7f0": {
+					Name:               "ens7f0",
+					State:              ptp.SyncState("s1"),
+					ClockQuality:       "",
+					QL:                 0x1,
+					ExtQL:              0x20,
+					ExtendedTvlEnabled: true,
+					LastQLState:        33,
+				}},
+				ClockState:    ptp.SyncState("s1"),
+				NetworkOption: 1,
+			},
+		},
+		{
+			name:   "Valid log with clock_quality new device",
+			output: "synce4l 1722458091 synce4l.0.config ens5f1 clock_quality PRTC device synce2 network_option 2 ql 0x1 s2",
+			fields: []string{"synce4l", "1722458091", "synce4l.0.config", "ens5f1", "clock_quality", "PRTC", "device", "synce2", "network_option", "2", "ql", "0x1", "s2"},
+			expectedStats: &stats.SyncEStats{
+				Name:      "synce2",
+				ExtSource: "",
+				Port: map[string]*stats.PortState{"ens5f1": {
+					Name:               "ens5f1",
+					State:              ptp.SyncState("s2"),
+					ClockQuality:       "PRTC",
+					QL:                 0x1,
+					ExtQL:              0,
+					ExtendedTvlEnabled: false,
+					LastQLState:        1,
+				}},
+				ClockState:    ptp.SyncState("s1"),
+				NetworkOption: 1,
+			},
+		},
+	}
+
+	// Extract keys and sort them
+	keys := make([]int, 0, len(tests))
+	for key := range tests {
+		keys = append(keys, key)
+	}
+	sort.Ints(keys)
+
+	for _, k := range keys {
+		tt := tests[k]
+		t.Run(tt.name, func(t *testing.T) {
+			ptpEventManager.ParseSyncELogs(processName, configName, tt.output, tt.fields, ptpStats)
+			if tt.expectedStats == nil {
+				assert.Nil(t, tt.expectedStats, ptpStats)
+			} else {
+				synceEStat := ptpStats[types.IFace(tt.expectedStats.Name)].GetSyncE()
+				assert.Equal(t, tt.expectedStats.Name, synceEStat.Name)
+				assert.Equal(t, 1, len(synceEStat.Port))
+				for key, val := range synceEStat.Port {
+					assert.Equal(t, tt.expectedStats.Port[key].Name, val.Name)
+					assert.Equal(t, tt.expectedStats.Port[key].ExtendedTvlEnabled, val.ExtendedTvlEnabled)
+					assert.Equal(t, tt.expectedStats.Port[key].ExtQL, val.ExtQL)
+					assert.Equal(t, tt.expectedStats.Port[key].QL, val.QL)
+					assert.Equal(t, tt.expectedStats.Port[key].LastQLState, val.LastQLState)
+				}
+			}
+		})
 	}
 }

@@ -14,9 +14,7 @@ import (
 )
 
 var (
-	ptpConfigFileRegEx     = regexp.MustCompile(`ptp4l.[0-9]*.config`)
-	ts2phcConfigFileRegEx  = regexp.MustCompile(`ts2phc.[0-9]*.config`)
-	phc2SysConfigFileRegEx = regexp.MustCompile(`phc2sys.[0-9]*.config`)
+	configFileRegEx = regexp.MustCompile(`(ptp4l|ts2phc|phc2sys|synce4l)\.[0-9]*\.config`)
 	// NodeName from the env
 	ptpNodeName        = ""
 	masterOffsetSource = ""
@@ -32,6 +30,7 @@ const (
 	gnssProcessName    = "gnss"
 	dpllProcessName    = "dpll"
 	gmProcessName      = "GM"
+	syncE4lProcessName = "synce4l"
 
 	unLocked  = "s0"
 	clockStep = "s1"
@@ -86,49 +85,43 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			log.Errorf("failed to extract %s", msg)
 		}
 	}()
-
 	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
 	output := replacer.Replace(msg)
 	fields := strings.Fields(output)
-
 	// make sure configName is found in logs
 	index := FindInLogForCfgFileIndex(output)
 	if index == -1 {
 		log.Errorf("config name is not found in log output %s", output)
 		return
 	}
-
 	if len(fields) < 3 {
 		log.Errorf("ignoring log:log is not in required format ptp4l/phc2sys[time]: [config] %s", output)
 		return
 	}
-
 	processName := fields[processNameIndex]
 	configName := fields[configNameIndex]
 	// if log is having ts2phc then it will replace it with ptp4l
 	configName = strings.Replace(configName, ts2phcProcessName, ptp4lProcessName, 1)
 	ptp4lCfg := p.GetPTPConfig(types.ConfigName(configName))
-
 	// ptp stats goes by config either ptp4l ot pch2sys
 	// master (slave) interface can be configured in ptp4l but  offset provided by ts2phc
-
 	ptpStats := p.GetStats(types.ConfigName(configName))
 	profileName := ptp4lCfg.Profile
-
-	if !p.validLogToProcess(profileName, processName, len(ptp4lCfg.Interfaces)) {
-		log.Infof("skipped parsing %s", output)
+	//TODO: need better validation here
+	if processName == syncE4lProcessName && configName == "" { // hack to skip for synce4l
+		log.Infof("%s skipped parsing %s output %s\n", processName, configName, output)
+		return
+	} else if processName != syncE4lProcessName &&
+		!p.validLogToProcess(profileName, processName, len(ptp4lCfg.Interfaces)) {
+		log.Infof("%s skipped parsing %s output %s\n", processName, ptp4lCfg.Name, output)
 		return
 	}
-
 	var ptpInterface ptp4lconf.PTPInterface
-
 	// Initialize master and clock_realtime offset stats for the config
 	if _, found := ptpStats[master]; found {
 		// initialize master offset
 		masterOffsetSource = ptpStats[master].ProcessName()
 	}
-
-	//  check if ptp4l or phc2sys process are dead
 	// if process is down fire an event
 	if strings.Contains(output, ptpProcessStatusIdentifier) {
 		if status, e := parsePTPStatus(output, fields); e == nil {
@@ -147,6 +140,8 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		p.ParseDPLLLogs(processName, configName, output, fields, ptpStats)
 	case gmProcessName:
 		p.ParseGMLogs(processName, configName, output, fields, ptpStats)
+	case syncE4lProcessName:
+		p.ParseSyncELogs(processName, configName, output, fields, ptpStats)
 	default:
 		if strings.Contains(output, " max ") { // this get generated in case -u is passed as an option to phy2sys opts
 			//TODO: ts2phc rms is validated
@@ -175,7 +170,6 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			processName == ts2phcProcessName {
 			// ts2phc[1699929121]:[ts2phc.0.config] ens2f0 nmea_status 0 offset 999999 s0
 			interfaceName, status, _, _ := extractNmeaMetrics(processName, output)
-
 			// ts2phc return actual interface name unlike ptp4l
 			ptpInterface = ptp4lconf.PTPInterface{Name: interfaceName}
 			alias := getAlias(interfaceName)
@@ -189,7 +183,6 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		} else if strings.Contains(output, " offset ") { //  DPLL has Offset too
 			// ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay    374976
 			// phc2sys[4268818.286]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -62 s0 freq  -78368 delay   1100
-			// phc2sys[4268818.287]: [ptp4l.0.config] ens5f1 phc offset       -92 s0 freq    -890 delay   2464   ( this is down)
 			// phc2sys[4268818.287]: [ptp4l.0.config] ens5f0 phc offset       -47 s2 freq   -2047 delay   2438
 			// ts2phc[82674.465]: [ts2phc.0.cfg] nmea delay: 88403525 ns
 			// ts2phc[82674.465]: [ts2phc.0.cfg] ens2f1 extts index 0 at 1673031129.000000000 corr 0 src 1673031129.911642976 diff 0
@@ -212,14 +205,12 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			if processName != ts2phcProcessName && !(interfaceName == master || interfaceName == ClockRealTime) {
 				return // only master and clock_realtime are supported
 			}
-
 			offsetSource := master
 			if strings.Contains(output, "sys offset") {
 				offsetSource = sys
 			} else if strings.Contains(output, "phc offset") {
 				offsetSource = phc
 			}
-
 			// here interfaceName will be master , clock_realtime and ens2f0
 			// interfaceType will be of only two kind master and clock_realtime
 			// ts2phc process always reports interface as of now
@@ -237,17 +228,14 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				ptpInterface, _ = ptp4lCfg.ByRole(types.SLAVE)
 			}
 			ptpStats.CheckSource(types.IFace(interfaceName), configName, processName)
-
 			ptpStats[types.IFace(interfaceName)].SetOffsetSource(offsetSource)
 			// Process Name will get Updated when master offset is ts2phc for master
 			ptpStats[types.IFace(interfaceName)].SetProcessName(processName)
 			ptpStats[types.IFace(interfaceName)].SetFrequencyAdjustment(int64(frequencyAdjustment))
 			ptpStats[types.IFace(interfaceName)].SetDelay(int64(delay))
-
 			// Handling GM clock state- syncState is used for events
 			// IF its GM then synState is last syncState of GM
 			// TODO: understand if the config is GM /BC /OC
-
 			switch interfaceName { //note: this is not  interface type
 			case ClockRealTime: // CLOCK_REALTIME is active slave interface
 				//  for HA we can not rely on master ;since there will be 2 or more leaders; this condition will be skipped
@@ -327,7 +315,6 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			}
 		}
 	}
-
 	p.ParsePTP4l(processName, configName, profileName, output, fields,
 		ptpInterface, ptp4lCfg, ptpStats)
 }
@@ -369,7 +356,7 @@ func (p *PTPEventManager) processDownEvent(profileName, processName string, ptpS
 
 func (p *PTPEventManager) validLogToProcess(profileName, processName string, iFaceSize int) bool {
 	if profileName == "" {
-		log.Info("ptp4l config does not have profile name, skipping. ")
+		log.Infof("%s config does not have profile name, skipping. ", processName)
 		return false
 	}
 	// phc2sys config for HA will not have any interface defined

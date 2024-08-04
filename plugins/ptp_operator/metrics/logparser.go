@@ -270,7 +270,7 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 	var e error
 	portID, e = strconv.Atoi(portIndex)
 	if e != nil {
-		log.Errorf("error parsing port id %s", e)
+		log.Errorf("error parsing port id %s for output %s", e, output)
 		portID = 0
 		return
 	}
@@ -306,32 +306,8 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 
 // FindInLogForCfgFileIndex ... find config name from the log
 func FindInLogForCfgFileIndex(out string) int {
-	if matchPtp4l := ptpConfigFileRegEx.FindStringIndex(out); len(matchPtp4l) == 2 {
-		return matchPtp4l[0]
-	}
-	if matchTS2Phc := FindInTS2PhcLogForCfgFileIndex(out); matchTS2Phc > -1 {
-		return matchTS2Phc
-	}
-	if matchPhc2Sys := FindInPhc2SysLogForCfgFileIndex(out); matchPhc2Sys > -1 {
-		return matchPhc2Sys
-	}
-	return -1
-}
-
-// FindInTS2PhcLogForCfgFileIndex ... find config name from the log
-func FindInTS2PhcLogForCfgFileIndex(out string) int {
-	matchPhc2Sys := ts2phcConfigFileRegEx.FindStringIndex(out)
-	if len(matchPhc2Sys) == 2 {
-		return matchPhc2Sys[0]
-	}
-	return -1
-}
-
-// FindInPhc2SysLogForCfgFileIndex ... find config name from the log
-func FindInPhc2SysLogForCfgFileIndex(out string) int {
-	matchPhc2Sys := phc2SysConfigFileRegEx.FindStringIndex(out)
-	if len(matchPhc2Sys) == 2 {
-		return matchPhc2Sys[0]
+	if match := configFileRegEx.FindStringIndex(out); len(match) == 2 {
+		return match[0]
 	}
 	return -1
 }
@@ -542,6 +518,117 @@ func (p *PTPEventManager) ParseGNSSLogs(processName, configName, output string, 
 	}
 }
 
+// ParseSyncELogs  ... parse logs for various events
+func (p *PTPEventManager) ParseSyncELogs(processName, configName, output string, fields []string,
+	ptpStats stats.PTPStats) {
+	// 0        1             2             3        4     5       6             7             8      9  10
+	// synce4l 1722456110 synce4l.0.config ens7f0 device synce1 eec_state EEC_HOLDOVER network_option 2 s1
+	// 0        1             2             3           4         5     6     7      8      9        10       11 12 13   14
+	// synce4l 1722458091 synce4l.0.config ens7f0 clock_quality PRTC device synce1 ext_ql 0x20 network_option 2 ql 0x1 s2
+	if !strings.Contains(output, "eec_state") && !strings.Contains(output, "clock_quality") {
+		return
+	}
+
+	synceLog := SyncELogData{}
+	err := synceLog.Parse(fields)
+	if err != nil {
+		log.Errorf("synce parsing eror %s out %s", err.Error(), output)
+		return
+	}
+	var synceStats *stats.SyncEStats
+	if _, ok := ptpStats[types.IFace(synceLog.Device)]; ok {
+		synceStats = ptpStats[types.IFace(synceLog.Device)].GetSyncE()
+	}
+
+	if synceStats == nil {
+		synceStats = &stats.SyncEStats{
+			Name:          synceLog.Device,
+			NetworkOption: synceLog.NetworkOption,
+			ClockState:    ptp.SyncState(synceLog.State), // overall state computed
+			Port: map[string]*stats.PortState{synceLog.Interface: {
+				Name:         synceLog.Interface,
+				State:        ptp.SyncState(synceLog.State),
+				ClockQuality: synceLog.ClockQuality,
+				QL:           synceLog.QL,
+				ExtQL: func() byte {
+					if synceLog.EECState == "" && synceLog.ExtendedQlEnabled {
+						return synceLog.ExtQL
+					}
+					return 0x0
+				}(),
+				ExtendedTvlEnabled: synceLog.ExtendedQlEnabled,
+				LastQLState: func() int {
+					if synceLog.ExtendedQlEnabled {
+						return int(synceLog.QL + synceLog.ExtQL)
+					}
+					return int(synceLog.QL)
+				}(),
+			}},
+		}
+	} else {
+		// There are two types of updates: clock quality and clock state
+		if synceLog.EECState != "" {
+			// Update only the clock state
+			if portStats, ok := synceStats.Port[synceLog.Interface]; ok {
+				portStats.State = ptp.SyncState(synceLog.State)
+			} else {
+				synceStats.Port[synceLog.Interface] = &stats.PortState{State: ptp.SyncState(synceLog.State)}
+			}
+		} else {
+			// Ensure the port state exists
+			if _, ok := synceStats.Port[synceLog.Interface]; !ok {
+				synceStats.Port[synceLog.Interface] = &stats.PortState{}
+			}
+			port := synceStats.Port[synceLog.Interface]
+
+			// Update the clock quality
+			port.ClockQuality = synceLog.ClockQuality
+			port.QL = synceLog.QL
+			port.Name = synceLog.Interface
+			port.ExtendedTvlEnabled = synceLog.ExtendedQlEnabled
+
+			if synceLog.ExtendedQlEnabled {
+				port.ExtQL = synceLog.ExtQL
+			} else {
+				port.ExtQL = 0xA
+			}
+
+			// Update the last QL state
+			port.LastQLState = func() int {
+				if synceLog.ExtendedQlEnabled {
+					return int(synceLog.QL + synceLog.ExtQL)
+				}
+				return int(synceLog.QL)
+			}()
+		}
+		synceStats.UpdateSyncEClockState()
+	}
+	// update
+	ptpStats.CheckSource(types.IFace(synceLog.Device), configName, processName)
+	ptpStats[types.IFace(synceLog.Device)].SetSyncE(synceStats)
+
+	// update over all state for the device until we learn to capture state at device level
+	// there are 3 metrics for Synce
+	// Clock Quality
+	// Clock state per interface provided by synce
+	// SynceState provided by per device
+	if !p.mock {
+		if synceLog.EECState != "" {
+			masterResource := fmt.Sprintf("%s/%s", synceLog.Device, synceLog.Interface)
+			p.publishSyncEEvent(ptp.SyncState(synceLog.State), masterResource, 0, 0, synceLog.ExtendedQlEnabled, ptp.SynceStateChange)
+			UpdateSyncEClockQlMetrics(processName, configName, synceLog.Interface, synceLog.NetworkOption, synceLog.Device, GetSyncStateID(synceLog.State))
+			SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": synceLog.Interface}).Set(GetSyncStateID(synceLog.State))
+		} else {
+			masterResource := fmt.Sprintf("%s/%s/%s", synceLog.Device, synceLog.Interface, synceLog.ClockQuality)
+			p.publishSyncEEvent("", masterResource, synceLog.QL, synceLog.ExtQL, synceLog.ExtendedQlEnabled, ptp.SynceClockQualityChange)
+			UpdateSyncEQLMetrics(processName, configName, synceLog.Interface, synceLog.NetworkOption, synceLog.Device, "SSM", synceLog.QL)
+			if synceLog.ExtendedQlEnabled {
+				UpdateSyncEQLMetrics(processName, configName, synceLog.Interface, synceLog.NetworkOption, synceLog.Device, "Extended SSM", synceLog.ExtQL)
+			}
+		}
+	}
+}
+
 // GetGPSFixState ... returns gps state by computing gpsFix and offset derived state
 func (p *PTPEventManager) GetGPSFixState(gpsFix int64, syncState ptp.SyncState) (state ptp.SyncState) {
 	state = ptp.ANTENNA_DISCONNECTED
@@ -561,7 +648,7 @@ func (p *PTPEventManager) GetGPSFixState(gpsFix int64, syncState ptp.SyncState) 
 // extractPTPHaMetrics ... parse logs for ptp ha
 func extractPTPHaMetrics(processName, output string) (profile string, state int64, err error) {
 	// phc2sys[1710435400]:[phc2sys.2.config] ptp_ha_profile profile1 state 1
-	index := FindInPhc2SysLogForCfgFileIndex(output)
+	index := FindInLogForCfgFileIndex(output)
 	state = -1
 	if index == -1 {
 		log.Errorf("config name is not found in log output %s", output)
