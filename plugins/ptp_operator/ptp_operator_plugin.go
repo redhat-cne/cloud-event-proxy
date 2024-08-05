@@ -278,6 +278,46 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 								Value:     gpsFixState,
 							})
 						}
+					case ptp.SynceStateChange:
+						if s.GetSyncE() != nil {
+							// has multiple synce state per port configurations
+							// TODO: have synce state at device level when no ports are configured
+							synceStats := s.GetSyncE()
+							for _, sStats := range synceStats.Port {
+								if sStats.State != "" {
+									resource := fmt.Sprintf("%s/%s", synceStats.Name, sStats.Name)
+									data = processDataFn(data, eventManager.GetPTPEventsData(sStats.State, 0, resource, eventType))
+								}
+							}
+						}
+					case ptp.SynceClockQualityChange:
+						{
+							if s.GetSyncE() != nil {
+								// has multiple synce state per port configurations
+								// TODO: have synce state at device level when no ports are configured
+								synceStats := s.GetSyncE()
+								for _, sStats := range synceStats.Port {
+									resource := fmt.Sprintf("%s/%s/%s", synceStats.Name, sStats.Name, "Ql")
+									data = processDataFn(data, eventManager.GetPTPEventsData("NA", int64(sStats.QL), resource, eventType))
+									resource = fmt.Sprintf("%s/%s/%s", synceStats.Name, sStats.Name, "ExtQL")
+									if sStats.ExtendedTvlEnabled {
+										data.Values = append(data.Values, event.DataValue{
+											Resource:  resource,
+											DataType:  event.METRIC,
+											ValueType: event.DECIMAL,
+											Value:     int64(sStats.ExtQL),
+										})
+									} else {
+										data.Values = append(data.Values, event.DataValue{
+											Resource:  resource,
+											DataType:  event.METRIC,
+											ValueType: event.DECIMAL,
+											Value:     int64(0xFF), // default
+										})
+									}
+								}
+							}
+						}
 					}
 				}
 			}
