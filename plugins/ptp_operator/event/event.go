@@ -54,10 +54,10 @@ type PTPEventState struct {
 
 // ClockState ...
 type ClockState struct {
-	State       ptp.SyncState
-	Offset      *float64
-	IFace       *string
-	Process     string //dpll //gnss
+	State       ptp.SyncState // gives over all state as LOCKED OR not
+	Offset      *float64      // for syne no offset for now until frequency offset is provided
+	IFace       *string       // could be iface gnss , sync1
+	Process     string        //dpll //gnss
 	ClockSource ClockSourceType
 	Value       map[string]int64
 	Metric      map[string]*PMetric
@@ -161,7 +161,7 @@ func (p *PTPEventState) UpdateCurrentEventState(c ClockState, metrics map[string
 			if m, hasMetric := metrics[k]; hasMetric {
 				metrics[k] = m
 				if h, hasHelpTxt := help[k]; hasHelpTxt {
-					clockState.HelpText[k] = h // expecets to have help text for value
+					clockState.HelpText[k] = h // expects to have help text for value
 				}
 			} else {
 				metrics[k] = &PMetric{

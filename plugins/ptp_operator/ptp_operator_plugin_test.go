@@ -133,9 +133,9 @@ func Test_StartWithHTTP(t *testing.T) {
 
 	close(scConfig.CloseCh) // close the channel
 	pubs := scConfig.PubSubAPI.GetPublishers()
-	assert.Equal(t, 5, len(pubs))
+	assert.Equal(t, 7, len(pubs))
 	subs := scConfig.PubSubAPI.GetSubscriptions()
-	assert.Equal(t, 5, len(subs))
+	assert.Equal(t, 7, len(subs))
 }
 
 // ProcessInChannel will be  called if Transport is disabled

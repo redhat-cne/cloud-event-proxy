@@ -1,7 +1,10 @@
 package metrics
 
 import (
+	"strconv"
 	"sync"
+
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/stats"
 
 	log "github.com/sirupsen/logrus"
 
@@ -118,6 +121,25 @@ var (
 			Name:      "ha_profile_status",
 			Help:      "0 = INACTIVE 1 = ACTIVE",
 		}, []string{"process", "node", "profile"})
+
+	// SynceClockQL  metrics to show current synce Clock Qulity
+	SynceClockQL = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: ptpNamespace,
+			Subsystem: ptpSubsystem,
+			Name:      "synce_clock_quality",
+			Help:      "network_option1: ePRTC = 32 PRTC = 34 PRC =257  SSU-A = 259 SSU-B = 263 EEC1 = 266 network_option2: ePRTC = 34 PRTC = 33 PRS =256 STU = 255 ST2 = 262 TNC = 259 ST3E =268 EEC2 =265 PROV =269",
+		}, []string{"process", "node", "profile", "network_option", "iface", "device"})
+
+	// SynceQLInfo metrics to show current QL values
+	SynceQLInfo = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Namespace: ptpNamespace,
+			Subsystem: ptpSubsystem,
+			Name:      "synce_ssm_ql",
+			Help: "network_option1: ePRTC: {0, 0x2, 0x21}, PRTC:  {1, 0x2, 0x20}, PRC:   {2, 0x2, 0xFF}, SSUA:  {3, 0x4, 0xFF}, SSUB:  {4, 0x8, 0xFF}, EEC1:  {5, 0xB, 0xFF},\n " +
+				"   network_option2 ePRTC: {0, 0x1, 0x21}, PRTC:  {1, 0x1, 0x20}, PRS:   {2, 0x1, 0xFF}, STU:   {3, 0x0, 0xFF}, ST2:   {4, 0x7, 0xFF}, TNC:   {5, 0x4, 0xFF}, ST3E:  {6, 0xD, 0xFF}, EEC2:  {7, 0xA, 0xFF}, PROV:  {8, 0xE, 0xFF}",
+		}, []string{"process", "node", "profile", "network_option", "iface", "device", "ql_type"})
 )
 
 var registerMetrics sync.Once
@@ -137,6 +159,8 @@ func RegisterMetrics(nodeName string) {
 		prometheus.MustRegister(ProcessStatus)
 		prometheus.MustRegister(ProcessReStartCount)
 		prometheus.MustRegister(PTPHAMetrics)
+		prometheus.MustRegister(SynceQLInfo)
+		prometheus.MustRegister(SynceClockQL)
 
 		// Including these stats kills performance when Prometheus polls with multiple targets
 		prometheus.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
@@ -272,5 +296,34 @@ func DeleteProcessStatusMetricsForConfig(node string, cfgName string, process ..
 			ProcessStatus.Delete(labels)
 			ProcessReStartCount.Delete(labels)
 		}
+	}
+}
+
+// UpdateSyncEClockQlMetrics ... update synce clock quality metrics
+func UpdateSyncEClockQlMetrics(process, cfgName string, iface string, networkOption int, device string, value float64) {
+	SynceClockQL.With(prometheus.Labels{
+		"process": process, "node": ptpNodeName, "profile": cfgName, "network_option": strconv.Itoa(networkOption), "iface": iface, "device": device}).Set(value)
+}
+
+// UpdateSyncEQLMetrics ... update QL metrics
+func UpdateSyncEQLMetrics(process, cfgName string, iface string, networkOption int, device string, qlType string, value byte) {
+	SynceQLInfo.With(prometheus.Labels{
+		"process": process, "node": ptpNodeName, "profile": cfgName, "iface": iface,
+		"network_option": strconv.Itoa(networkOption), "device": device, "ql_type": qlType}).Set(float64(value))
+}
+
+// DeleteSyncEMetrics ... delete synce metrics
+func DeleteSyncEMetrics(process, configName string, synceStats stats.SyncEStats) {
+	for iface := range synceStats.Port {
+		SynceQLInfo.Delete(prometheus.Labels{
+			"process": process, "node": ptpNodeName, "profile": configName, "iface": iface, "device": synceStats.Name, "network_option": strconv.Itoa(synceStats.NetworkOption), "ql_type": "SSM"})
+		SynceQLInfo.Delete(prometheus.Labels{
+			"process": process, "node": ptpNodeName, "profile": configName, "iface": iface, "device": synceStats.Name, "network_option": strconv.Itoa(synceStats.NetworkOption), "ql_type": "Extended SSM"})
+
+		SynceClockQL.Delete(prometheus.Labels{
+			"process": process, "node": ptpNodeName, "profile": configName, "iface": iface, "device": synceStats.Name, "network_option": strconv.Itoa(synceStats.NetworkOption)})
+
+		SyncState.Delete(prometheus.Labels{
+			"process": process, "node": ptpNodeName, "iface": iface})
 	}
 }

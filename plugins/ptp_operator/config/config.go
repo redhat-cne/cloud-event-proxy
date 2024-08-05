@@ -82,11 +82,18 @@ type PtpProcessOpts struct {
 	Phc2Opts *string `json:"Phc2Opts,omitempty"`
 	// TS2PhcOpts
 	TS2PhcOpts *string `json:"TS2PhcOpts,omitempty"`
+	// SyncE4lOpts
+	SyncE4lOpts *string `json:"SyncE4lOpts,omitempty"`
 }
 
 // Ptp4lEnabled check if ptp4l is enabled
 func (ptpOpts *PtpProcessOpts) Ptp4lEnabled() bool {
 	return ptpOpts.Ptp4lOpts != nil && *ptpOpts.Ptp4lOpts != ""
+}
+
+// SyncE4lEnabled check if ptp4l is enabled
+func (ptpOpts *PtpProcessOpts) SyncE4lEnabled() bool {
+	return ptpOpts.SyncE4lOpts != nil && *ptpOpts.SyncE4lOpts != ""
 }
 
 // Phc2SysEnabled check if phc2sys is enabled

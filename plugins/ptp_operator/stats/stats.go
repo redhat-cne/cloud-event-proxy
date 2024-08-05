@@ -38,6 +38,27 @@ type Stats struct {
 	role                   types.PtpPortRole
 	ptpDependentEventState *event.PTPEventState
 	configDeleted          bool
+	syncE                  *SyncEStats // device name is the key
+}
+
+// SyncEStats collects stats for synceE
+type SyncEStats struct {
+	Name          string
+	ExtSource     string                // gnss SMA
+	Port          map[string]*PortState // interface name is the key
+	ClockState    ptp.SyncState
+	NetworkOption int // 1 or 2
+}
+
+// PortState ... interface states as EEX_LOCKED / LOCKED
+type PortState struct {
+	Name               string        // iface name or port name
+	State              ptp.SyncState // over all state will be device state for now
+	ClockQuality       string
+	QL                 byte
+	ExtQL              byte
+	ExtendedTvlEnabled bool
+	LastQLState        int
 }
 
 // AddValue ...add value
@@ -226,6 +247,45 @@ func (s *Stats) SetPtpDependentEventState(e event.ClockState, metrics map[string
 	if !s.configDeleted {
 		s.ptpDependentEventState.UpdateCurrentEventState(e, metrics, help)
 	}
+}
+
+// SetSyncE ... set synce Stats
+func (s *Stats) SetSyncE(se *SyncEStats) {
+	s.syncE = se
+}
+
+// GetSyncE ... get synce Stats
+func (s *Stats) GetSyncE() (se *SyncEStats) {
+	return s.syncE
+}
+
+// GetSyncEPortStats  ... get synce port Stats
+func (ss *SyncEStats) GetSyncEPortStats(source string) (p *PortState) {
+	var ok bool
+	if p, ok = ss.Port[source]; ok {
+		return p
+	}
+	return nil
+}
+
+// UpdateSyncEClockState  ...
+func (ss *SyncEStats) UpdateSyncEClockState() {
+	currentState := ptp.LOCKED // Initialize with the lowest priority state
+	for _, p := range ss.Port {
+		switch p.State {
+		case ptp.HOLDOVER:
+			currentState = ptp.HOLDOVER
+		case ptp.FREERUN:
+			if currentState != ptp.HOLDOVER {
+				currentState = ptp.FREERUN
+			}
+		case ptp.LOCKED:
+			if currentState != ptp.HOLDOVER && currentState != ptp.FREERUN {
+				currentState = ptp.LOCKED
+			}
+		}
+	}
+	ss.ClockState = currentState
 }
 
 // GetStateState ... get state

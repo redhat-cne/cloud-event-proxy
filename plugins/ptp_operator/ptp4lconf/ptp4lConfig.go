@@ -29,6 +29,7 @@ import (
 var (
 	ptpConfigFileRegEx        = regexp.MustCompile(`ptp4l.[0-9]*.config`)
 	ptpPhc2sysConfigFileRegEx = regexp.MustCompile(`phc2sys.[0-9]*.config`)
+	ptpSyncE4lConfigFileRegEx = regexp.MustCompile(`synce4l.[0-9]*.config`)
 	sectionHead               = regexp.MustCompile(`\[([^\[\]]*)\]`)
 	profileRegEx              = regexp.MustCompile(`profile: \s*([\w-_]+)`)
 	fileNameRegEx             = regexp.MustCompile("([^/]+$)")
@@ -194,14 +195,14 @@ func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpd
 					continue
 				}
 				if event.Op&fsnotify.Write == fsnotify.Write {
-					if checkIfPtP4lConf(event.Name) || checkIfPhc2SysConf(event.Name) {
+					if checkIfPtP4lConf(event.Name) || checkIfPhc2SysConf(event.Name) || checkIfSyncE4lConf(event.Name) {
 						if ptpConfig, configErr := readConfig(event.Name); configErr == nil {
 							log.Infof("sending ptpconfig changes for %s", *ptpConfig.Name)
 							updatedConfig <- ptpConfig
 						}
 					}
 				} else if event.Op&fsnotify.Remove == fsnotify.Remove {
-					if checkIfPtP4lConf(event.Name) || checkIfPhc2SysConf(event.Name) {
+					if checkIfPtP4lConf(event.Name) || checkIfPhc2SysConf(event.Name) || checkIfSyncE4lConf(event.Name) {
 						fName := filename(event.Name)
 						ptpConfig := &PtpConfigUpdate{
 							Name:      &fName,
@@ -232,7 +233,7 @@ func readAllConfig(dir string) []*PtpConfigUpdate {
 		log.Errorf("error reading all config fils %s", fileErr)
 	}
 	for _, file := range files {
-		if checkIfPtP4lConf(file.Name()) || checkIfPhc2SysConf(file.Name()) {
+		if checkIfPtP4lConf(file.Name()) || checkIfPhc2SysConf(file.Name()) || checkIfSyncE4lConf(file.Name()) {
 			if p, err := readConfig(filepath.Join(dir, file.Name())); err == nil {
 				ptpConfigs = append(ptpConfigs, p)
 			}
@@ -266,6 +267,9 @@ func checkIfPtP4lConf(filename string) bool {
 }
 func checkIfPhc2SysConf(filename string) bool {
 	return ptpPhc2sysConfigFileRegEx.MatchString(filename)
+}
+func checkIfSyncE4lConf(filename string) bool {
+	return ptpSyncE4lConfigFileRegEx.MatchString(filename)
 }
 
 // GetPTPProfileName  ... get profile name from ptpconfig
