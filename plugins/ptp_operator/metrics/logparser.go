@@ -547,7 +547,7 @@ func (p *PTPEventManager) ParseSyncELogs(processName, configName, output string,
 			ClockState:    ptp.SyncState(synceLog.State), // overall state computed
 			Port: map[string]*stats.PortState{synceLog.Interface: {
 				Name:         synceLog.Interface,
-				State:        ptp.SyncState(synceLog.State),
+				State:        GetSyncState(synceLog.State),
 				ClockQuality: synceLog.ClockQuality,
 				QL:           synceLog.QL,
 				ExtQL: func() byte {
@@ -570,9 +570,9 @@ func (p *PTPEventManager) ParseSyncELogs(processName, configName, output string,
 		if synceLog.EECState != "" {
 			// Update only the clock state
 			if portStats, ok := synceStats.Port[synceLog.Interface]; ok {
-				portStats.State = ptp.SyncState(synceLog.State)
+				portStats.State = GetSyncState(synceLog.State)
 			} else {
-				synceStats.Port[synceLog.Interface] = &stats.PortState{State: ptp.SyncState(synceLog.State)}
+				synceStats.Port[synceLog.Interface] = &stats.PortState{State: GetSyncState(synceLog.State)}
 			}
 		} else {
 			// Ensure the port state exists
@@ -615,15 +615,17 @@ func (p *PTPEventManager) ParseSyncELogs(processName, configName, output string,
 	if !p.mock {
 		if synceLog.EECState != "" {
 			masterResource := fmt.Sprintf("%s/%s", synceLog.Device, synceLog.Interface)
-			p.publishSyncEEvent(ptp.SyncState(synceLog.State), masterResource, 0, 0, synceLog.ExtendedQlEnabled, ptp.SynceStateChange)
+			p.publishSyncEEvent(GetSyncState(synceLog.State), masterResource, 0, 0, synceLog.ExtendedQlEnabled, ptp.SynceStateChange)
 			UpdateSyncEClockQlMetrics(processName, configName, synceLog.Interface, synceLog.NetworkOption, synceLog.Device, GetSyncStateID(synceLog.State))
 			SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": synceLog.Interface}).Set(GetSyncStateID(synceLog.State))
 		} else {
-			masterResource := fmt.Sprintf("%s/%s/%s", synceLog.Device, synceLog.Interface, synceLog.ClockQuality)
+			masterResource := fmt.Sprintf("%s/%s", synceLog.Device, synceLog.Interface)
 			p.publishSyncEEvent("", masterResource, synceLog.QL, synceLog.ExtQL, synceLog.ExtendedQlEnabled, ptp.SynceClockQualityChange)
 			UpdateSyncEQLMetrics(processName, configName, synceLog.Interface, synceLog.NetworkOption, synceLog.Device, "SSM", synceLog.QL)
 			if synceLog.ExtendedQlEnabled {
 				UpdateSyncEQLMetrics(processName, configName, synceLog.Interface, synceLog.NetworkOption, synceLog.Device, "Extended SSM", synceLog.ExtQL)
+			} else {
+				UpdateSyncEQLMetrics(processName, configName, synceLog.Interface, synceLog.NetworkOption, synceLog.Device, "Extended SSM", 0xFF) // default
 			}
 		}
 	}

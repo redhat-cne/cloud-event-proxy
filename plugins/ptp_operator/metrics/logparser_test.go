@@ -180,14 +180,14 @@ func TestParseSyncELogs(t *testing.T) {
 				ExtSource: "",
 				Port: map[string]*stats.PortState{"ens7f0": {
 					Name:               "ens7f0",
-					State:              ptp.SyncState("s2"),
+					State:              metrics.GetSyncState("s2"),
 					ClockQuality:       "PRTC",
 					QL:                 0x1,
 					ExtQL:              0x20,
 					ExtendedTvlEnabled: true,
 					LastQLState:        33,
 				}},
-				ClockState:    ptp.SyncState("s1"),
+				ClockState:    metrics.GetSyncState("s2"),
 				NetworkOption: 1,
 			},
 		},
@@ -201,14 +201,14 @@ func TestParseSyncELogs(t *testing.T) {
 				ExtSource: "",
 				Port: map[string]*stats.PortState{"ens7f0": {
 					Name:               "ens7f0",
-					State:              ptp.SyncState("s1"),
+					State:              metrics.GetSyncState("s1"),
 					ClockQuality:       "",
 					QL:                 0x1,
 					ExtQL:              0x20,
 					ExtendedTvlEnabled: true,
 					LastQLState:        33,
 				}},
-				ClockState:    ptp.SyncState("s1"),
+				ClockState:    metrics.GetSyncState("s1"),
 				NetworkOption: 1,
 			},
 		},
@@ -221,14 +221,14 @@ func TestParseSyncELogs(t *testing.T) {
 				ExtSource: "",
 				Port: map[string]*stats.PortState{"ens5f1": {
 					Name:               "ens5f1",
-					State:              ptp.SyncState("s2"),
+					State:              metrics.GetSyncState("s2"),
 					ClockQuality:       "PRTC",
 					QL:                 0x1,
 					ExtQL:              0,
 					ExtendedTvlEnabled: false,
 					LastQLState:        1,
 				}},
-				ClockState:    ptp.SyncState("s1"),
+				ClockState:    metrics.GetSyncState("s2"),
 				NetworkOption: 1,
 			},
 		},
@@ -257,6 +257,8 @@ func TestParseSyncELogs(t *testing.T) {
 					assert.Equal(t, tt.expectedStats.Port[key].ExtQL, val.ExtQL)
 					assert.Equal(t, tt.expectedStats.Port[key].QL, val.QL)
 					assert.Equal(t, tt.expectedStats.Port[key].LastQLState, val.LastQLState)
+					assert.Equal(t, tt.expectedStats.ClockState, val.State)
+					assert.Equal(t, tt.expectedStats.Port[key].State, val.State)
 				}
 			}
 		})

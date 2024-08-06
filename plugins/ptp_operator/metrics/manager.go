@@ -211,28 +211,43 @@ func (p *PTPEventManager) publishSyncEEvent(syncState ptp.SyncState, source stri
 		log.Infof("cannot publish event, resource not found  for %s", eventType)
 		return
 	}
-	var data *ceevent.Data
 
-	eventSource := fmt.Sprintf(p.resourcePrefix, p.nodeName, fmt.Sprintf("/%s", source))
-	data = &ceevent.Data{
+	data := &ceevent.Data{
 		Version: ceevent.APISchemaVersion,
 		Values:  []ceevent.DataValue{},
 	}
-
+	resource := fmt.Sprintf(p.resourcePrefix, p.nodeName, fmt.Sprintf("/%s/%s", source, "Ql"))
 	if syncState == "" { // clock quality event
-		for i := range []byte{ql, extQl} {
+		data.Values = append(data.Values, ceevent.DataValue{
+			Resource:  resource,
+			DataType:  ceevent.METRIC,
+			ValueType: ceevent.DECIMAL,
+			Value:     float64(ql),
+		})
+		resource = fmt.Sprintf(p.resourcePrefix, p.nodeName, fmt.Sprintf("/%s/%s", source, "extQl"))
+		if !extendedTvlEnabled { // have the default value for clarity
 			data.Values = append(data.Values, ceevent.DataValue{
-				Resource:  eventSource,
+				Resource:  resource,
 				DataType:  ceevent.METRIC,
 				ValueType: ceevent.DECIMAL,
-				Value:     float64(i),
+				Value:     int64(0xFF), // default
 			})
-			if !extendedTvlEnabled {
-				break
-			}
+		} else {
+			data.Values = append(data.Values, ceevent.DataValue{
+				Resource:  resource,
+				DataType:  ceevent.METRIC,
+				ValueType: ceevent.DECIMAL,
+				Value:     int64(extQl), // default
+			})
 		}
+	} else {
+		data.Values = append(data.Values, ceevent.DataValue{
+			Resource:  fmt.Sprintf(p.resourcePrefix, p.nodeName, fmt.Sprintf("/%s", source)),
+			DataType:  ceevent.METRIC,
+			ValueType: ceevent.DECIMAL,
+			Value:     syncState,
+		})
 	}
-
 	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
 	p.publish(*data, resourceAddress, eventType)
 }
@@ -249,7 +264,7 @@ func (p *PTPEventManager) GetPTPEventsData(state ptp.SyncState, ptpOffset int64,
 		Version: ceevent.APISchemaVersion,
 		Values:  []ceevent.DataValue{},
 	}
-	if eventType != ptp.PtpClockClassChange {
+	if eventType != ptp.PtpClockClassChange && eventType != ptp.SynceClockQualityChange {
 		data.Values = append(data.Values, ceevent.DataValue{
 			Resource:  eventSource,
 			DataType:  ceevent.NOTIFICATION,
