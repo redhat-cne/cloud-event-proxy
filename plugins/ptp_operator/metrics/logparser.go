@@ -616,7 +616,6 @@ func (p *PTPEventManager) ParseSyncELogs(processName, configName, output string,
 		if synceLog.EECState != "" {
 			masterResource := fmt.Sprintf("%s/%s", synceLog.Device, synceLog.Interface)
 			p.publishSyncEEvent(GetSyncState(synceLog.State), masterResource, 0, 0, synceLog.ExtendedQlEnabled, ptp.SynceStateChange)
-			UpdateSyncEClockQlMetrics(processName, configName, synceLog.Interface, synceLog.NetworkOption, synceLog.Device, GetSyncStateID(synceLog.State))
 			SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": synceLog.Interface}).Set(GetSyncStateID(synceLog.State))
 		} else {
 			masterResource := fmt.Sprintf("%s/%s", synceLog.Device, synceLog.Interface)
@@ -624,8 +623,10 @@ func (p *PTPEventManager) ParseSyncELogs(processName, configName, output string,
 			UpdateSyncEQLMetrics(processName, configName, synceLog.Interface, synceLog.NetworkOption, synceLog.Device, "SSM", synceLog.QL)
 			if synceLog.ExtendedQlEnabled {
 				UpdateSyncEQLMetrics(processName, configName, synceLog.Interface, synceLog.NetworkOption, synceLog.Device, "Extended SSM", synceLog.ExtQL)
+				UpdateSyncEClockQlMetrics(processName, configName, synceLog.Interface, synceLog.NetworkOption, synceLog.Device, float64(int(synceLog.QL)+int(synceLog.ExtQL)))
 			} else {
-				UpdateSyncEQLMetrics(processName, configName, synceLog.Interface, synceLog.NetworkOption, synceLog.Device, "Extended SSM", 0xFF) // default
+				UpdateSyncEQLMetrics(processName, configName, synceLog.Interface, synceLog.NetworkOption, synceLog.Device, "Extended SSM", 0xFF)
+				UpdateSyncEClockQlMetrics(processName, configName, synceLog.Interface, synceLog.NetworkOption, synceLog.Device, float64(int(synceLog.QL)+0xFF)) // default
 			}
 		}
 	}
