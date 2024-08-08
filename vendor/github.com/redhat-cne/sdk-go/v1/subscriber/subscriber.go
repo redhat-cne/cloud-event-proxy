@@ -63,8 +63,8 @@ func GetAPIInstance(storeFilePath string) *API {
 			storeFilePath: storeFilePath,
 		}
 		hasDir(storeFilePath)
-		instance.ReloadStore()
 	})
+	instance.ReloadStore()
 	return instance
 }
 
@@ -88,9 +88,11 @@ func (p *API) ReloadStore() {
 							log.Errorf("subscriber data from file %s is not valid", f)
 						}
 					} else {
-						log.Errorf("error parsing subscriber %s \n %s", string(b), err2.Error())
+						log.Errorf("error parsing subscriber %s\n %s", string(b), err2.Error())
 					}
 				}
+			} else {
+				log.Errorf("error loading file %s\n %s", fmt.Sprintf("%s/%s", p.storeFilePath, f), err1.Error())
 			}
 		}
 	}
