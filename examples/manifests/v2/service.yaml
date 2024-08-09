@@ -3,7 +3,6 @@ kind: Service
 metadata:
   annotations:
     prometheus.io/scrape: "true"
-    service.alpha.openshift.io/serving-cert-secret-name: sidecar-consumer-secret
   name: consumer-events-subscription-service
   namespace: cloud-events
   labels:
