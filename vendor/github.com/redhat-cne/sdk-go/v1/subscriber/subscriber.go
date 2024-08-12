@@ -328,19 +328,32 @@ func (p *API) DeleteSubscription(clientID uuid.UUID, subscriptionID string) erro
 	return nil
 }
 
-// DeleteAllSubscriptions  delete all subscriptionOne information
-func (p *API) DeleteAllSubscriptions(clientID uuid.UUID) error {
-	if subStore, ok := p.SubscriberStore.Get(clientID); ok {
-		if err := deleteAllFromFile(fmt.Sprintf("%s/%s", p.storeFilePath, fmt.Sprintf("%s.json", clientID))); err != nil {
-			return err
+// DeleteAllSubscriptionsForClient delete all subscriptions for the client
+func (p *API) DeleteAllSubscriptionsForClient(clientID uuid.UUID) (int, error) {
+	var err error
+	var numSubDeleted, numSubToDelete int
+	if sub, ok := p.SubscriberStore.Get(clientID); ok {
+		numSubToDelete = len(sub.SubStore.Store)
+		if err = p.DeleteClient(clientID); err != nil {
+			return 0, err
 		}
-		subStore.SubStore = &store.PubSubStore{
-			RWMutex: sync.RWMutex{},
-			Store:   map[string]*pubsub.PubSub{},
-		}
-		p.SubscriberStore.Set(clientID, subStore)
+		numSubDeleted += numSubToDelete
 	}
-	return nil
+	return numSubDeleted, nil
+}
+
+// DeleteAllSubscriptions delete all subscriptions in store
+func (p *API) DeleteAllSubscriptions() (int, error) {
+	var err error
+	var numSubDeleted, numSubToDelete int
+	for clientID, subs := range p.SubscriberStore.Store {
+		numSubToDelete = len(subs.SubStore.Store)
+		if err = p.DeleteClient(clientID); err != nil {
+			return numSubDeleted, err
+		}
+		numSubDeleted += numSubToDelete
+	}
+	return numSubDeleted, nil
 }
 
 // DeleteClient  delete all subscriptionOne information
@@ -380,6 +393,14 @@ func (p *API) IncFailCountToFail(clientID uuid.UUID) bool {
 		}
 	}
 	return false
+}
+
+// ResetFailCount ..reset fail count
+func (p *API) ResetFailCount(clientID uuid.UUID) {
+	if subStore, ok := p.SubscriberStore.Get(clientID); ok {
+		subStore.ResetFailCount()
+		p.SubscriberStore.Set(clientID, subStore)
+	}
 }
 
 // FailCountThreshold .. get threshold
