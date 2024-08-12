@@ -55,52 +55,49 @@ func (r *Rest) PostEvent(url *types.URI, e event.Event) error {
 		log.Errorf("error marshalling event %v", e)
 		return err
 	}
-
-	if status := r.Post(url, b); status == http.StatusBadRequest {
-		return fmt.Errorf("post returned status %d", status)
-	}
-	return nil
+	_, err = r.Post(url, b)
+	return err
 }
 
 // PostCloudEvent post an Cloud Event to the give url and check for error
-func (r *Rest) PostCloudEvent(url *types.URI, e ce.Event) error {
+func (r *Rest) PostCloudEvent(url *types.URI, e ce.Event) (int, error) {
 	b, err := json.Marshal(e)
 	if err != nil {
 		log.Errorf("error marshalling event %v", e)
-		return err
+		return http.StatusBadRequest, err
 	}
-
-	if status := r.Post(url, b); status == http.StatusBadRequest {
-		return fmt.Errorf("post returned status %d", status)
-	}
-	return nil
+	return r.Post(url, b)
 }
 
 // Post with data
-func (r *Rest) Post(url *types.URI, data []byte) int {
+func (r *Rest) Post(url *types.URI, data []byte) (int, error) {
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, "POST", url.String(), bytes.NewBuffer(data))
 	if err != nil {
-		log.Errorf("error creating post request %v", err)
-		return http.StatusBadRequest
+		log.Error("error creating post request")
+		return http.StatusBadRequest, fmt.Errorf("error creating post request %v", err)
 	}
 	request.Header.Set("content-type", "application/json")
 	response, err := r.client.Do(request)
 	if err != nil {
-		log.Errorf("error in post response %v", err)
-		return http.StatusBadRequest
+		log.Error("error in post response")
+		return http.StatusBadRequest, err
 	}
 	if response.Body != nil {
 		defer response.Body.Close()
 		// read any content and print
 		body, readErr := io.ReadAll(response.Body)
-		if readErr == nil && len(body) > 0 {
+		if readErr != nil {
+			log.Error("error in reading response body")
+			return http.StatusBadRequest, err
+		}
+		if len(body) > 0 {
 			log.Debugf("%s return response %s\n", url.String(), string(body))
 		}
 	}
-	return response.StatusCode
+	return response.StatusCode, nil
 }
 
 // PostWithReturn post with data and return data

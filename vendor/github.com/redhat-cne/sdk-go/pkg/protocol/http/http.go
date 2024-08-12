@@ -586,6 +586,7 @@ func (h *Server) SendTo(wg *sync.WaitGroup, clientID uuid.UUID, clientAddress, r
 				}
 				log.Errorf("connection lost addressing %s", clientAddress)
 			} else {
+				h.subscriberAPI.ResetFailCount(clientID)
 				localmetrics.UpdateEventCreatedCount(resourceAddress, localmetrics.SUCCESS, 1)
 				h.DataOut <- &channel.DataChan{
 					Address: resourceAddress,
