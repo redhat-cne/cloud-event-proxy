@@ -233,17 +233,6 @@ func (s *Server) sendOut(eType channel.Type, sub *pubsub.PubSub) {
 	}
 }
 
-func (s *Server) sendOutToDelete(eType channel.Type, sub *pubsub.PubSub) {
-	// go ahead and create QDR to this address
-	s.dataOut <- &channel.DataChan{
-		ID:      sub.GetID(),
-		Address: sub.GetResource(),
-		Data:    &ce.Event{},
-		Type:    eType,
-		Status:  channel.DELETE,
-	}
-}
-
 func (s *Server) getSubscriptionByID(w http.ResponseWriter, r *http.Request) {
 	queries := mux.Vars(r)
 	subscriptionID, ok := queries["subscriptionid"]
@@ -340,9 +329,10 @@ func (s *Server) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 	for _, subs := range s.subscriberAPI.SubscriberStore.Store {
 		cevent, _ := subs.CreateCloudEvents()
 		out := channel.DataChan{
-			Data:   cevent,
-			Status: channel.SUCCESS,
-			Type:   channel.SUBSCRIBER,
+			ClientID: subs.GetClientID(),
+			Data:     cevent,
+			Status:   channel.SUCCESS,
+			Type:     channel.SUBSCRIBER,
 		}
 		s.dataOut <- &out
 	}
@@ -352,18 +342,36 @@ func (s *Server) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deleteAllSubscriptions(w http.ResponseWriter, _ *http.Request) {
-	size := len(s.pubSubAPI.GetSubscriptions())
-	if err := s.pubSubAPI.DeleteAllSubscriptions(); err != nil {
+	// update configMap
+	for _, subs := range s.subscriberAPI.SubscriberStore.Store {
+		cevent, _ := subs.CreateCloudEvents()
+		out := channel.DataChan{
+			ClientID: subs.GetClientID(),
+			Data:     cevent,
+			Status:   channel.DELETE,
+			Type:     channel.SUBSCRIBER,
+		}
+		s.dataOut <- &out
+	}
+
+	numSubDeleted, err := s.subscriberAPI.DeleteAllSubscriptions()
+
+	// Subscriptions could be partially deleted when there were errors
+	if numSubDeleted > 0 {
+		localmetrics.UpdateSubscriptionCount(localmetrics.ACTIVE, -(numSubDeleted))
+	}
+
+	if err != nil {
 		respondWithError(w, err.Error())
 		return
 	}
-	//update metrics
-	if size > 0 {
-		localmetrics.UpdateSubscriptionCount(localmetrics.ACTIVE, -(size))
+	// empty the store in memory
+	if err = s.pubSubAPI.DeleteAllSubscriptions(); err != nil {
+		respondWithError(w, err.Error())
+		return
 	}
-	// go ahead and create QDR to this address
-	s.sendOutToDelete(channel.SUBSCRIBER, &pubsub.PubSub{ID: "", Resource: "delete-all-subscriptions"})
-	respondWithMessage(w, http.StatusOK, "deleted all subscriptions")
+
+	respondWithStatusCode(w, http.StatusNoContent, "")
 }
 
 func (s *Server) deleteAllPublishers(w http.ResponseWriter, _ *http.Request) {

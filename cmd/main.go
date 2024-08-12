@@ -18,8 +18,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -233,7 +235,7 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 			if pub.EndPointURI != nil {
 				log.Debugf("posting acknowledgment with status: %s to publisher: %s", status, pub.EndPointURI)
 				restClient := restclient.New()
-				_ = restClient.Post(pub.EndPointURI,
+				restClient.Post(pub.EndPointURI,
 					[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, status)))
 			}
 		}
@@ -267,6 +269,7 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 							localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
 						}
 					} else if sub, ok := scConfig.PubSubAPI.HasSubscription(d.Address); ok {
+						// V1 only
 						if sub.EndPointURI != nil {
 							restClient := restclient.New()
 							event.ID = sub.ID // set ID to the subscriptionID
@@ -286,8 +289,41 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 									log.Infof("post events %s to subscriber %s", d.Address, endPointURI)
 									// make sure event ID is unique
 									event.ID = uuid.New().String()
-									err = restClient.PostCloudEvent(endPointURI, *d.Data)
-									postHandler(err, sub.EndPointURI, d.Address)
+									var status, numSubDeleted int
+									status, err = restClient.PostCloudEvent(endPointURI, *d.Data)
+									if err != nil {
+										log.Errorf("error posting event at %s : %s", endPointURI, err)
+										localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
+
+										// POST return DNSError if server is not reachable
+										var dnsError *net.DNSError
+										// Capture DNS error "lookup consumer-events-subscription-service.cloud-events.svc.cluster.local: no such host"
+										// or timeout error "context deadline exceeded (Client.Timeout exceeded while awaiting headers)"
+										// or connection refused error "dial tcp <ip>:9043: connect: connection refused"
+										if errors.As(err, &dnsError) || os.IsTimeout(err) || errors.Is(err, syscall.ECONNREFUSED) {
+											// has subscriber failed to connect for 10 times delete the subscribers
+											if scConfig.SubscriberAPI.IncFailCountToFail(clientID) {
+												log.Errorf("connection lost for address %s, proceed to clean up subscription", d.Address)
+												if numSubDeleted, err = scConfig.SubscriberAPI.DeleteAllSubscriptionsForClient(clientID); err != nil {
+													log.Errorf("failed to delete all subscriptions for client %s: %s", clientID.String(), err.Error())
+												} else {
+													cleanupConfigMap(d.ClientID)
+												}
+												apiMetrics.UpdateSubscriptionCount(apiMetrics.ACTIVE, -(numSubDeleted))
+											} else {
+												log.Errorf("client %s not responding, waiting %d times before marking to delete subscriber",
+													d.Address, scConfig.SubscriberAPI.FailCountThreshold()-scConfig.SubscriberAPI.GetFailCount(clientID))
+											}
+										}
+									} else {
+										scConfig.SubscriberAPI.ResetFailCount(clientID)
+										if status == http.StatusNoContent {
+											localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.SUCCESS)
+										} else {
+											log.Errorf("posting event at %s returned invalid status %d", endPointURI, status)
+											localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
+										}
+									}
 								} else {
 									// this should not happen
 									log.Errorf("endPointURI is nil for ResourceAddress %s clientID %s", d.Address, clientID)
@@ -295,7 +331,7 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 								}
 							}
 						} else {
-							log.Warnf("subscription not found, posting event %#v to log for address %s\n", event, d.Address)
+							log.Warnf("subscription not found, posting event to log for address %s", d.Address)
 							localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
 						}
 					}
@@ -326,14 +362,7 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 						log.Infof("subscriber saved in configmap %s", obj.String())
 					}
 				} else if d.Status == channel.DELETE {
-					var obj subscriber.Subscriber
-					obj.Action = channel.DELETE
-					obj.ClientID = d.ClientID
-					if err := scConfig.K8sClient.UpdateConfigMap(context.Background(), []subscriber.Subscriber{obj}, nodeName, namespace); err != nil {
-						log.Errorf("failed to delete subscription in configmap %s", err.Error())
-					} else {
-						log.Infof("deleted subscription %s ", obj.ClientID.String())
-					}
+					cleanupConfigMap(d.ClientID)
 				}
 			}
 		case <-scConfig.CloseCh:
@@ -462,4 +491,15 @@ func updateHTTPPublishers(nodeIP, nodeName string, addr ...string) (httpPublishe
 		log.Infof("publisher endpoint updated from %s to %s", s, publisherServiceName)
 	}
 	return httpPublishers
+}
+
+func cleanupConfigMap(clientID uuid.UUID) {
+	var obj subscriber.Subscriber
+	obj.Action = channel.DELETE
+	obj.ClientID = clientID
+	if err := scConfig.K8sClient.UpdateConfigMap(context.Background(), []subscriber.Subscriber{obj}, nodeName, namespace); err != nil {
+		log.Errorf("failed to delete subscription in configmap %s", err.Error())
+	} else {
+		log.Infof("deleted subscription %s ", obj.ClientID.String())
+	}
 }
