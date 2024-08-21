@@ -19,7 +19,7 @@ spec:
     spec:
       nodeSelector:
         node-role.kubernetes.io/worker: ""
-      serviceAccountName: sidecar-consumer-sa
+      serviceAccountName: consumer-sa
       containers:
         - name: cloud-event-consumer
           image: cloud-event-consumer
@@ -39,28 +39,6 @@ spec:
               value: "PTP"
             - name: ENABLE_STATUS_CHECK
               value: "true"
-        - name: kube-rbac-proxy
-          image: quay.io/openshift/origin-kube-rbac-proxy:4.16
-          args:
-            - --logtostderr
-            - --secure-listen-address=:8443
-            - --tls-cipher-suites=TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_RSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
-            - --upstream=http://127.0.0.1:9091/
-            - --tls-private-key-file=/etc/metrics/tls.key
-            - --tls-cert-file=/etc/metrics/tls.crt
-          ports:
-            - containerPort: 8443
-              name: https
-          resources:
-            requests:
-              cpu: 10m
-              memory: 20Mi
-          volumeMounts:
-            - name: sidecar-certs
-              mountPath: /etc/metrics
       volumes:
         - name: pubsubstore
           emptyDir: {}
-        - name: sidecar-certs
-          secret:
-            secretName: sidecar-consumer-secret
