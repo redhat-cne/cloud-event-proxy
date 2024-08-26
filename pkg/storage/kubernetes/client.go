@@ -113,7 +113,6 @@ func (sClient *Client) UpdateConfigMap(ctx context.Context, data []subscriber.Su
 			return err
 		}
 	}
-	log.Infof("updating configmap ")
 
 	existingData := cm.Data
 	if existingData == nil {
@@ -139,12 +138,12 @@ func (sClient *Client) UpdateConfigMap(ctx context.Context, data []subscriber.Su
 	}
 
 	cm.Data = existingData
-	cm, err = sClient.clientSet.CoreV1().ConfigMaps(namespace).Update(ctx, cm, metav1.UpdateOptions{})
+	_, err = sClient.clientSet.CoreV1().ConfigMaps(namespace).Update(ctx, cm, metav1.UpdateOptions{})
 	if err != nil {
 		log.Errorf("error updating configmap %s", err.Error())
 		return err
 	}
-	log.Infof("updated configmap with %#v", cm.Data)
+	log.Info("configmap updated")
 	return nil
 }
 
