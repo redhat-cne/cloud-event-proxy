@@ -8,18 +8,25 @@ VERSION ?=latest
 IMG ?= quay.io/openshift/origin-cloud-event-proxy:$(VERSION)
 CONSUMER_IMG ?= quay.io/redhat-cne/cloud-event-consumer:$(VERSION)
 
-# Export GO111MODULE=on to enable project to be built from within GOPATH/src
 export GO111MODULE=on
 export CGO_ENABLED=1
 export GOFLAGS=-mod=vendor
 export COMMON_GO_ARGS=-race
+
+OS := $(shell uname -s)
+ifeq ($(OS), Darwin)
+export GOOS=darwin
+else
 export GOOS=linux
+endif
 
 ifeq (,$(shell go env GOBIN))
   GOBIN=$(shell go env GOPATH)/bin
 else
   GOBIN=$(shell go env GOBIN)
 endif
+
+export GOPATH=$(shell go env GOPATH)
 
 ##@ Build Dependencies
 
@@ -31,8 +38,8 @@ $(LOCALBIN):
 ## Tool Versions
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 KUSTOMIZE_VERSION ?= v4.5.7
-
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
+
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
 $(KUSTOMIZE): $(LOCALBIN)
@@ -63,13 +70,9 @@ lint:
 	golangci-lint run
 
 build-plugins:
-	go build -a -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 	go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 	go build -a -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
 	go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
-
-build-amqp-plugin:
-	go build -a -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 
 build-ptp-operator-plugin:
 	go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
@@ -104,11 +107,15 @@ undeploy-consumer:kustomize
 
 # For GitHub Actions CI
 gha:
-	go build -a -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
-	go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
-	go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
-	go build -a -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
-	go test ./... --tags=unittests -coverprofile=cover.out
+	mkdir -p $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy
+	rm -rf $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy/*
+	cp -r cmd examples pkg plugins test $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy
+	cp -r vendor/* $(GOPATH)/src
+	GO111MODULE=off go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
+	GO111MODULE=off go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
+	GO111MODULE=off go build -a -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
+	rm -rf /tmp/sub-store && mkdir -p /tmp/sub-store
+	GO111MODULE=off STORE_PATH=/tmp/sub-store go test ./... --tags=unittests -coverprofile=cover.out
 
 docker-build: #test ## Build docker image with the manager.
 	docker build --no-cache -t ${IMG} .

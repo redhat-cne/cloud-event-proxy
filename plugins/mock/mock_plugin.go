@@ -16,7 +16,6 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
-	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 	log "github.com/sirupsen/logrus"
 )
@@ -48,7 +47,7 @@ var (
 )
 
 // Start mock plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
-func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e interface{}) error) error { //nolint:deadcode,unused
+func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e interface{}) error) error { //nolint:deadcode,unused
 	config = configuration
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
@@ -82,10 +81,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, fn func(e 
 		}
 		return nil
 	}
-	// create amqp listener
-	if config.TransportHost.Type == common.AMQ {
-		v1amqp.CreateNewStatusListener(config.EventInCh, fmt.Sprintf("%s/%s", pub.Resource, "status"), onCurrentStateFn, fn)
-	} else if httpInstance, ok := config.TransPortInstance.(*v1http.HTTP); ok {
+	if httpInstance, ok := config.TransPortInstance.(*v1http.HTTP); ok {
 		httpInstance.SetOnStatusReceiveOverrideFn(onCurrentStateFn)
 	} else {
 		log.Error("could not set receiver for http ")
