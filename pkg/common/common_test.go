@@ -33,11 +33,8 @@ func TestTransportHost_ParseTransportHost(t *testing.T) {
 		want  common.TransportHost
 	}
 	tests := []test{
-		{input: &common.TransportHost{URL: "amqp:localhost:5671"}, desc: "valid amqp", want: common.TransportHost{Type: common.AMQ, URL: "amqp:localhost:5671", Host: "amqp:localhost:5671", Scheme: "amqp", Err: nil}},
-		{input: &common.TransportHost{URL: "amqp://router.router.svc.cluster.local"}, desc: "valid amqp", want: common.TransportHost{Type: common.AMQ, URL: "amqp://router.router.svc.cluster.local",
-			Host: "amqp://router.router.svc.cluster.local", Scheme: "amqp", Err: nil}},
 		{input: &common.TransportHost{URL: "localhost:5672"}, desc: "valid http", want: common.TransportHost{Type: common.HTTP, URL: "localhost:5672", Scheme: "http", Port: 5672, URI: types.ParseURI("http://localhost:5672"), Host: "localhost", Err: nil}},
-		{input: &common.TransportHost{URL: "invalid"}, desc: "invalid http/amqp", want: common.TransportHost{Type: common.UNKNOWN, URL: "invalid", URI: types.ParseURI("http://invalid"), Scheme: "http", Err: &net.AddrError{
+		{input: &common.TransportHost{URL: "invalid"}, desc: "invalid http", want: common.TransportHost{Type: common.UNKNOWN, URL: "invalid", URI: types.ParseURI("http://invalid"), Scheme: "http", Err: &net.AddrError{
 			Err:  "missing port in address",
 			Addr: "invalid",
 		}}},

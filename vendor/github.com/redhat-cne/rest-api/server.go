@@ -61,7 +61,7 @@ const (
 type Server struct {
 	port    int
 	apiPath string
-	//data out is amqp in channel
+	//data out is transport in channel
 	dataOut    chan<- *channel.DataChan
 	closeCh    <-chan struct{}
 	HTTPClient *http.Client

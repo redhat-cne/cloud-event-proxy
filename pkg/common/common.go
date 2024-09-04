@@ -48,15 +48,13 @@ import (
 type TransportType int
 
 const (
-	// AMQ ...
-	AMQ TransportType = iota
 	// HTTP ...
-	HTTP
+	HTTP TransportType = iota
 	// UNKNOWN ...
 	UNKNOWN
 )
 
-var transportTypes = [...]string{"AMQ", "HTTP", "UNKNOWN"}
+var transportTypes = [...]string{"HTTP", "UNKNOWN"}
 
 // ToString ...
 func (t TransportType) ToString() string {
@@ -122,7 +120,7 @@ func (t *TransportHost) ParseTransportHost() {
 	)
 	t.Type = UNKNOWN
 	uri = t.URL
-	if !strings.Contains(t.URL, "http") && !strings.Contains(t.URL, "amqp:") {
+	if !strings.Contains(t.URL, "http") {
 		uri = fmt.Sprintf("http://%s", t.URL)
 	}
 	if parsedURL, err = url.Parse(uri); err != nil {
@@ -132,14 +130,8 @@ func (t *TransportHost) ParseTransportHost() {
 
 	t.Scheme = parsedURL.Scheme
 	switch t.Scheme {
-	case "amqp":
-		t.Type = AMQ
 	case "http", "https":
 		t.Type = HTTP
-	}
-	if t.Type == AMQ { // no need to parse further host and port doesn't mean anything
-		t.Host = t.URL
-		return
 	}
 	t.URI = types.ParseURI(uri)
 

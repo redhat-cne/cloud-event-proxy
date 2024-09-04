@@ -1,9 +1,5 @@
 ## Running examples locally
 
-### Install and run Apache Qpid Dispach Router
-sudo dnf install qpid-dispatch-router
-qdrouterd &
-
 ### Side car
 ```shell
 make build-plugins
@@ -61,26 +57,6 @@ mv kustomize /usr/local/bin/
 export version=latest 
 export IMG=quay.io/openshift/origin-cloud-event-proxy
 export  CONSUMER_IMG=quay.io/redhat-cne/cloud-event-consumer
-```
-
-### Setup AMQ Interconnect
-
-Install the `Red Hat Integration - AMQ Interconnect` operator in a new namespace `<AMQP_NAMESPAVCE>` namespace from the OpenShift Web Console.
-
-Open the `Red Hat Integration - AMQ Interconnect` operator, click `Create Interconnect` from the `Red Hat Integration - AMQ Interconnect` tab. Use default values and make sure the name is `amq-interconnect`.
-
-Make sure amq-interconnect pods are running before the next step.
-```shell
-oc get pods -n `<AMQP_NAMESPAVCE>`
-```
-
-In consumer.yaml, change the `transport-host` args for `cloud-event-sidecar` container from
-```
-- "--transport-host=amqp://amq-interconnect"
-```
-to
-```
-- "--transport-host=amqp://amq-interconnect.<AMQP_NAMESPAVCE>.svc.cluster.local"
 ```
 
 ### Deploy examples

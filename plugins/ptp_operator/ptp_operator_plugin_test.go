@@ -15,7 +15,7 @@
 //go:build unittests
 // +build unittests
 
-package main_test
+package main
 
 import (
 	"fmt"
@@ -23,7 +23,6 @@ import (
 	"os"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/plugins"
@@ -32,11 +31,9 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	ptpEvent "github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	"github.com/redhat-cne/sdk-go/pkg/types"
-	v1amqp "github.com/redhat-cne/sdk-go/v1/amqp"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
 	"github.com/stretchr/testify/assert"
 
-	ptpPlugin "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 )
 
@@ -46,7 +43,6 @@ var (
 	scConfig          *common.SCConfiguration
 	channelBufferSize int = 10
 	storePath             = "../../.."
-	resourcePrefix        = "/cluster/node/%s%s"
 	apiPort           int = 8990
 	c                 chan os.Signal
 	pubsubTypes       map[ptpEvent.EventType]*ptpTypes.EventPublisherType
@@ -75,7 +71,7 @@ func TestMain(m *testing.M) {
 	server, _ = common.StartPubSubService(scConfig)
 	scConfig.APIPort = server.Port()
 	scConfig.BaseURL = server.GetHostPath()
-	pubsubTypes = ptpPlugin.InitPubSubTypes()
+	pubsubTypes = InitPubSubTypes()
 	cleanUP()
 	os.Exit(m.Run())
 }
@@ -84,123 +80,7 @@ func cleanUP() {
 	_ = scConfig.PubSubAPI.DeleteAllSubscriptions()
 }
 
-// Test_StartWithAMQP this is integration test skips if QDR is not connected
-func Test_StartWithAMQP(t *testing.T) {
-	os.Setenv("NODE_NAME", "test_node")
-	defer cleanUP()
-	scConfig.CloseCh = make(chan struct{})
-	scConfig.PubSubAPI.EnableTransport()
-	scConfig.TransportHost = &common.TransportHost{
-		Type:   common.AMQ,
-		URL:    "amqp:localhost:5672",
-		Host:   "",
-		Port:   0,
-		Scheme: "",
-		Err:    nil,
-	}
-	scConfig.TransportHost.ParseTransportHost()
-	amqInitTimeout := 1 * time.Second
-	log.Printf("loading amqp with host %s, amqInitTimeout set to %v", scConfig.TransportHost.URL, amqInitTimeout)
-	amqpInstance, err := v1amqp.GetAMQPInstance(scConfig.TransportHost.URL, scConfig.EventInCh, scConfig.EventOutCh, scConfig.CloseCh, amqInitTimeout)
-	if err != nil {
-		t.Skipf("ampq.Dial(%#v): %v", amqpInstance, err)
-	}
-	wg.Add(1)
-	amqpInstance.Start(&wg)
-	// build your client
-	// SUBSCRIPTION: create a subscription to consume events
-	endpointURL := fmt.Sprintf("%s%s", scConfig.BaseURL, "dummy")
-	for _, pTypes := range pubsubTypes {
-		sub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), fmt.Sprintf(resourcePrefix, "test_node", string(pTypes.Resource)))
-		sub, _ = common.CreateSubscription(scConfig, sub)
-		assert.NotEmpty(t, sub.ID)
-		assert.NotEmpty(t, sub.URILocation)
-		//create a status ping sender object
-		v1amqp.CreateSender(scConfig.EventInCh, fmt.Sprintf("%s/%s", sub.Resource, "status"))
-		pTypes.PubID = sub.ID
-		pTypes.Pub = &sub
-	}
-
-	// start ptp plugin
-	err = ptpPlugin.Start(&wg, scConfig, nil)
-	assert.Nil(t, err)
-
-	//status sender object, this wast you can send data to that channel
-	for _, pTypes := range pubsubTypes {
-		e := v1event.CloudNativeEvent()
-		ce, _ := v1event.CreateCloudEvents(e, *pTypes.Pub)
-		ce.SetSource(pTypes.Pub.Resource)
-		v1event.SendNewEventToDataChannel(scConfig.EventInCh, fmt.Sprintf("%s/%s", pTypes.Pub.Resource, "status"), ce)
-	}
-
-	statusEvent := <-scConfig.EventOutCh // status updated
-	assert.Equal(t, channel.SUCCESS, statusEvent.Status)
-	log.Printf("got events from channel statusEvent 1%#v\n", statusEvent)
-	log.Printf("Closing the channels")
-	close(scConfig.CloseCh) // close the channel
-	pubs := scConfig.PubSubAPI.GetPublishers()
-	assert.Equal(t, 4, len(pubs))
-}
-
-func Test_StartWithOutAMQP(t *testing.T) {
-	os.Setenv("NODE_NAME", "test_node")
-	defer cleanUP()
-	scConfig.CloseCh = make(chan struct{})
-	scConfig.PubSubAPI.DisableTransport()
-	scConfig.TransportHost = &common.TransportHost{
-		Type:   common.AMQ,
-		URL:    "amqp://nohup",
-		Host:   "",
-		Port:   0,
-		Scheme: "",
-		Err:    nil,
-	}
-	scConfig.TransportHost.ParseTransportHost()
-	log.Printf("loading amqp with host %s", scConfig.TransportHost.Host)
-	go ProcessInChannel()
-
-	// build your client
-	//CLIENT SUBSCRIPTION: create a subscription to consume events
-	endpointURL := fmt.Sprintf("%s%s", scConfig.BaseURL, "dummy")
-	for _, pTypes := range pubsubTypes {
-		sub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), fmt.Sprintf(resourcePrefix, "test_node", string(pTypes.Resource)))
-		sub, _ = common.CreateSubscription(scConfig, sub)
-		assert.NotEmpty(t, sub.ID)
-		assert.NotEmpty(t, sub.URILocation)
-		//create a status ping sender object
-		v1amqp.CreateSender(scConfig.EventInCh, fmt.Sprintf("%s/%s", sub.Resource, "status"))
-		pTypes.PubID = sub.ID
-		pTypes.Pub = &sub
-	}
-
-	// start ptp plugin
-	err := ptpPlugin.Start(&wg, scConfig, nil)
-	assert.Nil(t, err)
-	time.Sleep(2 * time.Second)
-
-	//status sender object, client requesting for an event
-	for _, pTypes := range pubsubTypes {
-		e := v1event.CloudNativeEvent()
-		ce, _ := v1event.CreateCloudEvents(e, *pTypes.Pub)
-		ce.SetSource(pTypes.Pub.Resource)
-		log.Printf("sending event to data channel %v", ce)
-		v1event.SendNewEventToDataChannel(scConfig.EventInCh, fmt.Sprintf("%s/%s", pTypes.Pub.Resource, "status"), ce)
-	}
-
-	EventData := <-scConfig.EventOutCh // status updated
-	assert.Equal(t, channel.EVENT, EventData.Type)
-	log.Printf("got events from channel publisherData %v\n", EventData)
-
-	log.Printf("Closing the channels")
-	close(scConfig.CloseCh) // close the channel
-	pubs := scConfig.PubSubAPI.GetPublishers()
-	assert.Equal(t, 4, len(pubs))
-	subs := scConfig.PubSubAPI.GetSubscriptions()
-	assert.Equal(t, 4, len(subs))
-
-}
-
-// Test_StartWithAMQP this is integration test skips if QDR is not connected
+// Test_StartWithHTTP ...
 func Test_StartWithHTTP(t *testing.T) {
 	os.Setenv("NODE_NAME", "test_node")
 	scConfig.TransportHost = &common.TransportHost{
@@ -238,7 +118,7 @@ func Test_StartWithHTTP(t *testing.T) {
 	log.Printf("created subscriptions")
 
 	// start ptp plugin
-	//err = ptpPlugin.Start(&wg, scConfig, nil)
+	//err = Start(&wg, scConfig, nil)
 	err = pl.LoadPTPPlugin(&wg, scConfig, nil)
 	assert.Nil(t, err)
 	log.Printf("started ptpPlugin")
@@ -265,7 +145,7 @@ func ProcessInChannel() {
 		select {
 		case d := <-scConfig.EventInCh:
 			if d.Type == channel.SUBSCRIBER {
-				log.Printf("amqp disabled,no action taken: request to create listener address %s was called,but transport is not enabled", d.Address)
+				log.Printf("transport disabled,no action taken: request to create listener address %s was called,but transport is not enabled", d.Address)
 			} else if d.Type == channel.PUBLISHER {
 				log.Printf("no action taken: request to create sender for address %s was called,but transport is not enabled", d.Address)
 			} else if d.Type == channel.EVENT && d.Status == channel.NEW {

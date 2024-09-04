@@ -14,6 +14,3 @@ COPY --from=builder  /go/src/github.com/redhat-cne/cloud-event-proxy/build/librt
 COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/build/cloud-event-proxy /
 COPY --from=builder go/src/github.com/redhat-cne/cloud-event-proxy/plugins/*.so /plugins/
 ENTRYPOINT ["./cloud-event-proxy"]
-
-
-
