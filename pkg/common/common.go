@@ -274,7 +274,7 @@ func CreateSubscription(config *SCConfiguration, subscription pubsub.PubSub) (su
 }
 
 // CreateEvent create an event
-func CreateEvent(pubSubID, eventType, resourceAddress string, data ceevent.Data) (ceevent.Event, error) {
+func CreateEvent(pubSubID, eventType, source string, data ceevent.Data) (ceevent.Event, error) {
 	// create an event
 	if pubSubID == "" {
 		return ceevent.Event{}, fmt.Errorf("id is a required field")
@@ -285,7 +285,7 @@ func CreateEvent(pubSubID, eventType, resourceAddress string, data ceevent.Data)
 	event := v1event.CloudNativeEvent()
 	event.ID = pubSubID
 	event.Type = eventType
-	event.SetSource(resourceAddress)
+	event.SetSource(source)
 	event.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
 	event.SetDataContentType(ceevent.ApplicationJSON)
 	event.SetData(data)
@@ -330,7 +330,7 @@ func GetPublishingCloudEvent(scConfig *SCConfiguration, cneEvent ceevent.Event) 
 	pub, err := scConfig.PubSubAPI.GetPublisher(cneEvent.ID)
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(cneEvent.ID, localmetrics.FAIL, 1)
-		return nil, fmt.Errorf("no publisher data for id %s found to publish event for", cneEvent.ID)
+		return nil, err
 	}
 	ceEvent, err := cneEvent.NewCloudEvent(&pub)
 	if err != nil {
