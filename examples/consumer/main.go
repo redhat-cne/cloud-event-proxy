@@ -168,7 +168,7 @@ func createSubscription(resourceAddress string) (sub pubsub.PubSub, err error) {
 	if subB, err = json.Marshal(&sub); err == nil {
 		rc := restclient.New()
 		if status, subB = rc.PostWithReturn(subURL, subB); status != http.StatusCreated {
-			err = fmt.Errorf("error subscription creation api at %s, returned status %d", subURL, status)
+			err = fmt.Errorf("api at %s returned status %d for %s", subURL, status, resourceAddress)
 		} else {
 			err = json.Unmarshal(subB, &sub)
 		}
@@ -248,6 +248,7 @@ func initSubscribers(cType ConsumerTypeEnum) map[string]string {
 		subscribeTo[string(ptpEvent.PtpClockClassChange)] = string(ptpEvent.PtpClockClass)
 		subscribeTo[string(ptpEvent.PtpStateChange)] = string(ptpEvent.PtpLockState)
 		subscribeTo[string(ptpEvent.GnssStateChange)] = string(ptpEvent.GnssSyncStatus)
+		subscribeTo[string(ptpEvent.SyncStateChange)] = string(ptpEvent.SyncStatusState)
 	case MOCK:
 		subscribeTo[mockResourceKey] = mockResource
 	case HW:
