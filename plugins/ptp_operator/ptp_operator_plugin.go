@@ -308,9 +308,8 @@ func getOverallState(current, new ptp.SyncState) ptp.SyncState {
 	case ptp.HOLDOVER:
 		if current == ptp.FREERUN {
 			return current
-		} else {
-			return new
 		}
+		return new
 	case ptp.LOCKED:
 		return current
 	default:
