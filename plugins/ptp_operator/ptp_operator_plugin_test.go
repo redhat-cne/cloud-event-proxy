@@ -194,9 +194,9 @@ func Test_StartWithOutAMQP(t *testing.T) {
 	log.Printf("Closing the channels")
 	close(scConfig.CloseCh) // close the channel
 	pubs := scConfig.PubSubAPI.GetPublishers()
-	assert.Equal(t, 4, len(pubs))
+	assert.Equal(t, 5, len(pubs))
 	subs := scConfig.PubSubAPI.GetSubscriptions()
-	assert.Equal(t, 4, len(subs))
+	assert.Equal(t, 5, len(subs))
 
 }
 
