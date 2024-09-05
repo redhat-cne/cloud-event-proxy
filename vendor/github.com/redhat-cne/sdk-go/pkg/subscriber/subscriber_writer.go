@@ -42,6 +42,6 @@ func (s *Subscriber) SetStatus(status Status) {
 // AddSubscription ...
 func (s *Subscriber) AddSubscription(subs ...pubsub.PubSub) {
 	for _, ss := range subs {
-		s.SubStore.Store[ss.GetID()] = &ss
+		s.SubStore.Store[ss.GetID()] = &ss // #nosec G601
 	}
 }
