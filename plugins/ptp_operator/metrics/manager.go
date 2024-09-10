@@ -392,7 +392,17 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 				oStats.SetLastOffset(ptpOffset)
 			}
 		case ptp.HOLDOVER:
-			// do nothing, the timeout will switch holdover to FREE-RUN
+			// previous state was HOLDOVER, now it is in LOCKED state, cancel any HOLDOVER
+			if isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
+				log.Infof("interface %s is in LOCKED state, cancel any holdover states", eventResourceName)
+				threshold.SafeClose()
+				log.Infof(" publishing event for ( profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
+					ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
+				p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType) // change to locked
+				oStats.SetLastSyncState(clockState)
+				oStats.SetLastOffset(ptpOffset)
+				oStats.AddValue(ptpOffset) // update off set when its in locked state and hold over only/ update off set when its in locked state and hold over only
+			} // else continue to stay in HOLDOVER
 		default: // not yet used states
 			log.Warnf("%s sync state %s, last ptp state is unknown: %s", eventResourceName, clockState, lastClockState)
 			if !isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
@@ -405,7 +415,8 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 			oStats.SetLastOffset(ptpOffset)
 		}
 	case ptp.FREERUN:
-		if lastClockState != ptp.FREERUN { // within range
+		if lastClockState != ptp.HOLDOVER {
+			// within range
 			log.Infof(" publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
 				ptpProfileName, eventResourceName, oStats.LastSyncState(), clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
 			p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType) // change to locked
