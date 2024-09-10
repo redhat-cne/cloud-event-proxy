@@ -82,26 +82,12 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			// based on its last role  as slave port  we should make sure we report HOLDOVER event
 			if lastRole == types.FAULTY { // recovery
 				if role == types.SLAVE { // cancel any HOLDOVER timeout, if new role is slave
-					if masterOffsetSource == ptp4lProcessName {
-						if t, ok := p.PtpConfigMapUpdates.EventThreshold[profileName]; ok { // only if offset was reported by ptp4l process
-							log.Infof("interface %s is not anymore faulty, cancel any holdover states", ptpIFace)
-							t.SafeClose() // close any holdover go routines
-						}
-						alias := ptpStats[master].Alias()
-						if alias == "" {
-							alias = ptp4lCfg.GetAliasByInterface(ptpInterface) // this is default to any interface
-						}
-						masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
-						p.GenPTPEvent(profileName, ptpStats[master], masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
-						UpdateSyncStateMetrics(ptpStats[master].ProcessName(), alias, ptp.FREERUN)
-						// Send os clock sync state only if os clock is synced via phc
-						if t, ok := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && t.Phc2SysEnabled() {
-							p.GenPTPEvent(profileName, ptpStats[ClockRealTime], ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
-							UpdateSyncStateMetrics(phc2sysProcessName, ClockRealTime, ptp.FREERUN)
-						} else {
-							log.Infof("phc2sys is not enabled for profile %s, skiping os clock syn state ", profileName)
-						}
+					// Do not cancel any HOLDOVER until holodover times out or PTP sync state is back in locked state
+					if masterOffsetSource == ptp4lProcessName && ptpStats[master].LastSyncState() == ptp.HOLDOVER {
+						log.Infof("Interface %s is no longer faulty. The holdover state will remain active until the PTP sync state is detected as LOCKED or the holdover times out.", ptpIFace)
+						// No events or metrics will  be generated instead will remain in Holdover state, when net iteration finds it in locked state
 					}
+
 					ptpStats[master].SetRole(role)
 				}
 			}
@@ -165,7 +151,7 @@ func handleHoldOverState(ptpManager *PTPEventManager,
 		log.Infof("time expired for interface %s", ptpIFace)
 		ptpStats := ptpManager.GetStats(types.ConfigName(configName))
 		if mStats, found := ptpStats[master]; found {
-			if mStats.LastSyncState() == ptp.HOLDOVER {
+			if mStats.LastSyncState() == ptp.HOLDOVER { // if it was still in holdover while timing out then switch to FREERUN
 				log.Infof("HOLDOVER timeout after %d secs,setting clock state to FREERUN from HOLDOVER state for %s",
 					holdoverTimeout, master)
 				masterResource := fmt.Sprintf("%s/%s", mStats.Alias(), MasterClockType)
