@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path"
 	"strings"
 	"sync"
 
@@ -62,7 +63,7 @@ const (
 )
 
 var (
-	resourcePrefix         = "/cluster/node/%s%s"
+	resourcePrefix         = "/cluster/node"
 	publishers             = map[ptp.EventType]*ptpTypes.EventPublisherType{}
 	config                 *common.SCConfiguration
 	eventManager           *ptpMetrics.PTPEventManager
@@ -88,7 +89,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 	var err error
 	for _, publisherType := range publishers {
 		var pub pubsub.PubSub
-		if pub, err = createPublisher(fmt.Sprintf(resourcePrefix, nodeName, string(publisherType.Resource))); err != nil {
+		if pub, err = createPublisher(path.Join(resourcePrefix, nodeName, string(publisherType.Resource))); err != nil {
 			log.Errorf("failed to create a publisher %v", err)
 			return err
 		}
