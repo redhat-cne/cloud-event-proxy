@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"fmt"
+	"path"
 	"strings"
 	"sync"
 
@@ -177,7 +178,7 @@ func (p *PTPEventManager) PublishClockClassEvent(clockClass float64, source stri
 		return
 	}
 	data := p.GetPTPEventsData(ptp.LOCKED, int64(clockClass), source, eventType)
-	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
+	resourceAddress := path.Join(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
 	p.publish(*data, resourceAddress, eventType)
 }
 
@@ -197,7 +198,7 @@ func (p *PTPEventManager) publishGNSSEvent(state int64, offset float64, syncStat
 		ValueType: ceevent.DECIMAL,
 		Value:     state,
 	})
-	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
+	resourceAddress := path.Join(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
 	p.publish(*data, resourceAddress, eventType)
 }
 
@@ -208,7 +209,7 @@ func (p *PTPEventManager) GetPTPEventsData(state ptp.SyncState, ptpOffset int64,
 		return nil
 	}
 	// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
-	eventSource := fmt.Sprintf(p.resourcePrefix, p.nodeName, fmt.Sprintf("/%s", source))
+	eventSource := path.Join(p.resourcePrefix, p.nodeName, source)
 	data := ceevent.Data{
 		Version: "v1",
 		Values:  []ceevent.DataValue{},
@@ -237,7 +238,7 @@ func (p *PTPEventManager) GetPTPCloudEvents(data ceevent.Data, eventType ptp.Eve
 	if pubs, ok := p.publisherTypes[eventType]; ok {
 		cneEvent, cneErr := common.CreateEvent(
 			pubs.PubID, string(eventType),
-			fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource)),
+			path.Join(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource)),
 			data)
 		if cneErr != nil {
 			return nil, fmt.Errorf("failed to create ptp event, %s", cneErr)
@@ -265,7 +266,7 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, sou
 
 	// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
 	data := p.GetPTPEventsData(state, ptpOffset, source, eventType)
-	resourceAddress := fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
+	resourceAddress := path.Join(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
 	p.publish(*data, resourceAddress, eventType)
 	// publish the event again as overall sync state
 	// SyncStateChange is the overall sync state including PtpStateChange and OsClockSyncStateChange
@@ -273,7 +274,7 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, sou
 		if state != p.lastOverallSyncState {
 			eventType = ptp.SyncStateChange
 			data = p.GetPTPEventsData(state, ptpOffset, source, eventType)
-			resourceAddress = fmt.Sprintf(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
+			resourceAddress = path.Join(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
 			p.publish(*data, resourceAddress, eventType)
 			p.lastOverallSyncState = state
 		}
