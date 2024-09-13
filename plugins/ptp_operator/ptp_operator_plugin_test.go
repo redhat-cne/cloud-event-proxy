@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
 	"sync"
 	"testing"
 
@@ -107,7 +108,7 @@ func Test_StartWithHTTP(t *testing.T) {
 	//CLIENT SUBSCRIPTION: create a subscription to consume events
 	endpointURL := fmt.Sprintf("%s%s", scConfig.BaseURL, "dummy")
 	for _, pTypes := range pubsubTypes {
-		sub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), fmt.Sprintf(resourcePrefix, "test_node", string(pTypes.Resource)), scConfig.APIVersion)
+		sub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), path.Join(resourcePrefix, "test_node", string(pTypes.Resource)), scConfig.APIVersion)
 		sub, _ = common.CreateSubscription(scConfig, sub)
 		assert.NotEmpty(t, sub.ID)
 		assert.NotEmpty(t, sub.URILocation)
