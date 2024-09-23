@@ -32,9 +32,10 @@ const (
 	gmProcessName      = "GM"
 	syncE4lProcessName = "synce4l"
 
-	unLocked  = "s0"
-	clockStep = "s1"
-	locked    = "s2"
+	unLocked     = "s0"
+	clockStep    = "s1"
+	locked       = "s2"
+	lockedStable = "s3"
 
 	// FreeRunOffsetValue when sync state is FREERUN
 	FreeRunOffsetValue = -9999999999999999
@@ -187,6 +188,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			// ts2phc[82674.465]: [ts2phc.0.cfg] nmea delay: 88403525 ns
 			// ts2phc[82674.465]: [ts2phc.0.cfg] ens2f1 extts index 0 at 1673031129.000000000 corr 0 src 1673031129.911642976 diff 0
 			// ts2phc[82674.465]: [ts2phc.0.cfg] ens2f1 master offset          0 s2 freq      -0
+			// ts2phc[82674.465]: ts2phc.0.config] ens7f0       offset         1  s3 freq      +1 holdover
 			// Use threshold to CLOCK_REALTIME==SLAVE, rest send clock state to metrics no events
 			// db                      | oc/bc/dual | ts2phc wo/GNSS     | ts2phc w/GNSS       | two card
 			// --------------------------------------------------------------------------------------------
@@ -296,7 +298,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 						p.GenPTPEvent(profileName, ptpStats[types.IFace(interfaceName)], masterResource, int64(ptpOffset), syncState, ptp.PtpStateChange)
 					} else {
 						threshold := p.PtpThreshold(profileName, false)
-						if !isOffsetInRange(int64(ptpOffset), threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
+						if syncState != ptp.HOLDOVER && !isOffsetInRange(int64(ptpOffset), threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
 							syncState = ptp.FREERUN
 						}
 						ptpStats[types.IFace(interfaceName)].SetLastSyncState(syncState)
