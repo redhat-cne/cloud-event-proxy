@@ -103,12 +103,14 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 	// ts2phc[82674.465]: [ts2phc.0.config] ens2f1 extts index 0 at 1673031129.000000000 corr 0 src 1673031129.911642976 diff 0
 	// ts2phc[82674.465]: [ts2phc.0.config] ens2f1 master offset          0 s2 freq      -0
 	// ts2phc[521734.693]: [ts2phc.0.config:6] /dev/ptp6 offset          0 s2 freq      -0
+	// s2phc[82674.465]: ts2phc.0.config]    ens7f0       offset         1  s3 freq     +1 holdover
 
 	// 0     1            2              3       4         5    6   7     8         9   10       11
 	//                                  1       2           3   4   5     6        7    8         9
 	// ptp4l 5196819.100 ptp4l.0.config master offset   -2162130 s2 freq +22451884 path delay    374976
 	//
 	// ts2phc 522946.693    ts2phc.0.config  ens7f0 offset          0 s2 freq      -0
+	// ts2phc 82674.465     ts2phc.0.config  ens7f0 offset         1  s3 freq      +1 holdover
 	index := FindInLogForCfgFileIndex(output)
 	if index == -1 {
 		log.Errorf("config name is not found in log output %s", output)
@@ -127,8 +129,9 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 	//       0           1      2          3     4   5    6          7     8
 	// ptp4l.0.config   master offset   -2162130 s2 freq +22451884  delay 374976
 	// ts2phc.0.config  ens2f1  master    offset  0  s2   freq      -0
-	//       0           1      2          3      4     5        6
+	//       0           1      2          3      4     5        6    7
 	// ts2phc.0.config  ens7f0  offset     0     s2    freq      -0
+	// ts2phc.0.config  ens7f0 offset       1    s3    freq      +1 holdover
 	//       0             1              2          3     4        5    6       7
 	// ptp4l.0.config  CLOCK_REALTIME  offset       -62 s0 freq  -78368 delay   1100
 	if len(fields) < 7 {
@@ -169,13 +172,17 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 		clockState = ptp.FREERUN
 	case clockStep:
 		clockState = ptp.FREERUN
-	case locked:
+	case locked, lockedStable:
 		clockState = ptp.LOCKED
 	default:
 		log.Errorf("%s -  failed to parse clock state output `%s` ", processName, fields[4])
 	}
 
-	if len(fields) >= 8 {
+	//   0                1     2           3    4       5        6    7
+	// ts2phc.0.config  ens7f0 offset       1    s3    freq      +1 holdover
+	if len(fields) >= 8 && processName == ts2phcProcessName && fields[7] == "holdover" {
+		clockState = ptp.HOLDOVER
+	} else if len(fields) >= 8 { // anything new we ignor
 		delay, err = strconv.ParseFloat(fields[8], 64)
 		if err != nil {
 			log.Errorf("%s failed to parse delay from master output %s error %v", processName, fields[8], err)
@@ -226,7 +233,7 @@ func extractNmeaMetrics(processName, output string) (interfaceName string, statu
 		clockState = ptp.FREERUN
 	case clockStep:
 		clockState = ptp.FREERUN
-	case locked:
+	case locked, lockedStable:
 		clockState = ptp.LOCKED
 	default:
 		log.Errorf("%s -  failed to parse clock state output `%s` ", processName, fields[6])

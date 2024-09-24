@@ -415,6 +415,8 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 			oStats.SetLastSyncState(clockState)
 			oStats.SetLastOffset(ptpOffset)
 		}
+	case ptp.HOLDOVER:
+		return // do nothing for holdover
 	case ptp.FREERUN:
 		if lastClockState != ptp.HOLDOVER {
 			// within range
