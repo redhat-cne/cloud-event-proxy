@@ -246,7 +246,7 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 		}
 	}).Methods(http.MethodGet)
 
-	r.HandleFunc("/health", func(w http.ResponseWriter, req *http.Request) {
+	r.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	})
@@ -254,7 +254,7 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 	r.Handle("/event", eventHandler)
 	r.Handle("/subscription", subscriptionHandler)
 
-	err = r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
+	err = r.Walk(func(route *mux.Route, _ *mux.Router, _ []*mux.Route) error {
 		var pathTemplate, pathRegexp string
 		var queriesTemplates, queriesRegexps, methods []string
 		pathTemplate, err = route.GetPathTemplate()
@@ -393,7 +393,8 @@ func (h *Server) HTTPProcessor(wg *sync.WaitGroup) {
 	wg.Add(1)
 	go func(h *Server, wg *sync.WaitGroup) {
 		defer wg.Done()
-		for { //nolint:gosimple    Producer: Sender Object--->Event       Default Listener:Consumer
+		// Producer: Sender Object--->Event       Default Listener:Consumer
+		for { //nolint:gosimple
 			select {
 			case d := <-h.DataIn: //skips publisher object processing
 				if d.Type == channel.SUBSCRIBER && (d.Status == channel.NEW || d.Status == channel.DELETE) { // Listener  means subscriber aka sender
