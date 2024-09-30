@@ -1,3 +1,17 @@
+// Copyright 2024 The Cloud Native Events Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Package restapi Pub/Sub Rest API.
 //
 // Rest API spec .
@@ -5,7 +19,8 @@
 // Terms Of Service:
 //
 //	Schemes: http, https
-//	Host: localhost:8080
+//	Host: localhost:8089
+//	basePath: /api/ocloudNotifications/v1
 //	Version: 1.0.0
 //	Contact: Aneesh Puttur<aputtur@redhat.com>
 //
@@ -25,12 +40,14 @@ import (
 
 	"sync"
 
+	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/gorilla/mux"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	"github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	pubsubv1 "github.com/redhat-cne/sdk-go/v1/pubsub"
+	subscriberApi "github.com/redhat-cne/sdk-go/v1/subscriber"
 
 	"io"
 	"net/http"
@@ -48,26 +65,33 @@ var healthCheckPause = 2 * time.Second
 
 type serverStatus int
 
-const HTTPReadHeaderTimeout = 2 * time.Second
+const (
+	API_VERSION           = "2.0"
+	HTTPReadHeaderTimeout = 2 * time.Second
+)
 
 const (
 	starting = iota
 	started
 	notReady
 	failed
+	CURRENTSTATE = "CurrentState"
 )
 
 // Server defines rest routes server object
 type Server struct {
 	port    int
+	apiHost string
 	apiPath string
-	//data out is transport in channel
-	dataOut    chan<- *channel.DataChan
-	closeCh    <-chan struct{}
-	HTTPClient *http.Client
-	httpServer *http.Server
-	pubSubAPI  *pubsubv1.API
-	status     serverStatus
+	//use dataOut chanel to write to configMap
+	dataOut                 chan<- *channel.DataChan
+	closeCh                 <-chan struct{}
+	HTTPClient              *http.Client
+	httpServer              *http.Server
+	pubSubAPI               *pubsubv1.API
+	subscriberAPI           *subscriberApi.API
+	status                  serverStatus
+	statusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error
 }
 
 // publisher/subscription data model
@@ -115,10 +139,13 @@ type swaggReqAccepted struct { //nolint:deadcode,unused
 }
 
 // InitServer is used to supply configurations for rest routes server
-func InitServer(port int, apiPath, storePath string, dataOut chan<- *channel.DataChan, closeCh <-chan struct{}) *Server {
+func InitServer(port int, apiHost, apiPath, storePath string,
+	dataOut chan<- *channel.DataChan, closeCh <-chan struct{},
+	onStatusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error) *Server {
 	once.Do(func() {
 		ServerInstance = &Server{
 			port:    port,
+			apiHost: apiHost,
 			apiPath: apiPath,
 			dataOut: dataOut,
 			closeCh: closeCh,
@@ -129,7 +156,9 @@ func InitServer(port int, apiPath, storePath string, dataOut chan<- *channel.Dat
 				},
 				Timeout: 10 * time.Second,
 			},
-			pubSubAPI: pubsubv1.GetAPIInstance(storePath),
+			pubSubAPI:               pubsubv1.GetAPIInstance(storePath),
+			subscriberAPI:           subscriberApi.GetAPIInstance(storePath),
+			statusReceiveOverrideFn: onStatusReceiveOverrideFn,
 		}
 	})
 	// singleton
@@ -196,7 +225,7 @@ func (s *Server) Start() {
 	api := r.PathPrefix(s.apiPath).Subrouter()
 
 	// createSubscription create subscription and send it to a channel that is shared by middleware to process
-	// swagger:operation POST /subscriptions/ subscription createSubscription
+	// swagger:operation POST /subscriptions subscription createSubscription
 	// ---
 	// summary: Creates a new subscription.
 	// description: If subscription creation is success(or if already exists), subscription will be returned with Created (201).
@@ -237,6 +266,17 @@ func (s *Server) Start() {
 		404 Subscription resources are not available (not created).
 	*/
 	api.HandleFunc("/subscriptions", s.getSubscriptions).Methods(http.MethodGet)
+	//publishers create publisher and send it to a channel that is shared by middleware to process
+	// swagger:operation GET /publishers/ publishers getPublishers
+	// ---
+	// summary: Get publishers.
+	// description: If publisher creation is success(or if already exists), publisher will be returned with Created (201).
+	// parameters:
+	// responses:
+	//   "200":
+	//     "$ref": "#/responses/publishers"
+	//   "404":
+	//     "$ref": "#/responses/notFound"
 	api.HandleFunc("/publishers", s.getPublishers).Methods(http.MethodGet)
 	// 200 and 404
 	api.HandleFunc("/subscriptions/{subscriptionid}", s.getSubscriptionByID).Methods(http.MethodGet)
@@ -322,8 +362,7 @@ func (s *Server) Start() {
 		fmt.Fprintln(w, r)
 	})
 
-	log.Info("starting rest api server")
-	log.Infof("endpoint %s", s.apiPath)
+	log.Infof("starting v2 rest api server at port %d, endpoint %s", s.port, s.apiPath)
 	go wait.Until(func() {
 		s.status = started
 		s.httpServer = &http.Server{
@@ -343,4 +382,14 @@ func (s *Server) Start() {
 func (s *Server) Shutdown() {
 	log.Warnf("trying to shutdown rest api sever, please use close channel to shutdown ")
 	s.httpServer.Close()
+}
+
+// SetOnStatusReceiveOverrideFn ... sets receiver function
+func (s *Server) SetOnStatusReceiveOverrideFn(fn func(e cloudevents.Event, dataChan *channel.DataChan) error) {
+	s.statusReceiveOverrideFn = fn
+}
+
+// GetSubscriberAPI ...
+func (s *Server) GetSubscriberAPI() *subscriberApi.API {
+	return s.subscriberAPI
 }

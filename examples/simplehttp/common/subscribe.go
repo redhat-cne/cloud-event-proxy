@@ -30,7 +30,6 @@ func Subscribe(clientID uuid.UUID, subs []pubsub.PubSub, nodeName, publisherURL,
 	eventSubscriber.AddSubscription(subs...)
 	log.Infof("subscription data%s", eventSubscriber.String())
 	ce, _ := eventSubscriber.CreateCloudEvents()
-	ce.SetSubject(channel.NEW.String())
 	ce.SetSource(returnEndPoint)
 	log.Infof("posting %s for node %s", ce.String(), nodeName)
 	_, err := Post(publisherURL, *ce)
@@ -45,7 +44,6 @@ func DeleteSubscription(publisherURL string, clientID uuid.UUID) error {
 	eventSubscriber.Action = channel.DELETE //2 == delete
 	eventSubscriber.Status = subscriber.InActive
 	ce, _ := eventSubscriber.CreateCloudEvents()
-	ce.SetSubject(channel.DELETE.String())
 	_, err := Post(publisherURL, *ce)
 	return err
 }

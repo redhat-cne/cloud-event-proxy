@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -62,8 +63,8 @@ func GetAPIInstance(storeFilePath string) *API {
 			storeFilePath: storeFilePath,
 		}
 		hasDir(storeFilePath)
-		instance.ReloadStore()
 	})
+	instance.ReloadStore()
 	return instance
 }
 
@@ -73,16 +74,25 @@ func (p *API) ReloadStore() {
 	log.Infof("reloading subscribers from the store %s", p.storeFilePath)
 	if files, err := loadFileNamesFromDir(p.storeFilePath); err == nil {
 		for _, f := range files {
-			if b, err1 := loadFromFile(fmt.Sprintf("%s/%s", p.storeFilePath, f)); err1 == nil {
+			// valid subscription filename is <uuid>.json
+			if uuid.Validate(strings.Split(f, ".")[0]) != nil {
+				continue
+			} else if b, err1 := loadFromFile(fmt.Sprintf("%s/%s", p.storeFilePath, f)); err1 == nil {
 				if len(b) > 0 {
 					var sub subscriber.Subscriber
 					var err2 error
 					if err2 = json.Unmarshal(b, &sub); err2 == nil {
-						p.SubscriberStore.Set(sub.ClientID, sub)
+						if sub.ClientID != uuid.Nil {
+							p.SubscriberStore.Set(sub.ClientID, sub)
+						} else {
+							log.Errorf("subscriber data from file %s is not valid", f)
+						}
 					} else {
-						log.Errorf("error parsing subscriber %s \n %s", string(b), err2.Error())
+						log.Errorf("error parsing subscriber %s\n %s", string(b), err2.Error())
 					}
 				}
+			} else {
+				log.Errorf("error loading file %s\n %s", fmt.Sprintf("%s/%s", p.storeFilePath, f), err1.Error())
 			}
 		}
 	}
@@ -118,6 +128,7 @@ func (p *API) GetSubFromSubscriptionsStore(clientID uuid.UUID, address string) (
 		for _, sub := range subscriber.SubStore.Store {
 			if sub.GetResource() == address {
 				return pubsub.PubSub{
+					Version:     sub.Version,
 					ID:          sub.ID,
 					EndPointURI: sub.EndPointURI,
 					URILocation: sub.URILocation,
@@ -175,7 +186,6 @@ func (p *API) CreateSubscription(clientID uuid.UUID, sub subscriber.Subscriber) 
 	}
 	p.SubscriberStore.Set(clientID, *subscriptionClient)
 	// persist the subscriptionOne -
-	//TODO:might want to use PVC to live beyond pod crash
 	err = writeToFile(*subscriptionClient, fmt.Sprintf("%s/%s", p.storeFilePath, fmt.Sprintf("%s.json", clientID)))
 	if err != nil {
 		log.Errorf("error writing to a store %v\n", err)
@@ -201,21 +211,33 @@ func (p *API) GetSubscriptionsFromFile(clientID uuid.UUID) ([]byte, error) {
 	return b, err
 }
 
-// GetSubscriptions  get all subscriptionOne inforamtions
-func (p *API) GetSubscriptions(clientID uuid.UUID) (sub map[string]*pubsub.PubSub) {
+// GetSubscriptionsFromClientID get all subs from the client
+func (p *API) GetSubscriptionsFromClientID(clientID uuid.UUID) (sub map[string]*pubsub.PubSub) {
 	if subs, ok := p.SubscriberStore.Get(clientID); ok {
 		sub = subs.SubStore.Store
 	}
-
 	return
 }
 
-// GetSubscription  get  subscriptionOne inforamtions
-func (p *API) GetSubscription(clientID uuid.UUID, subID string) pubsub.PubSub {
-	if subs, ok := p.SubscriberStore.Get(clientID); ok {
-		return subs.Get(subID)
+// GetSubscriptions get all subs
+func (p *API) GetSubscriptions() ([]byte, error) {
+	p.SubscriberStore.RLock()
+	defer p.SubscriberStore.RUnlock()
+	var allSubs []pubsub.PubSub
+	for _, s := range p.SubscriberStore.Store {
+		for _, sub := range s.SubStore.Store {
+			allSubs = append(allSubs, *sub)
+		}
 	}
-	return pubsub.PubSub{}
+	return json.MarshalIndent(&allSubs, "", " ")
+}
+
+// GetSubscription get sub info from clientID and subID
+func (p *API) GetSubscription(clientID uuid.UUID, subID string) (pubsub.PubSub, error) {
+	if subs, ok := p.SubscriberStore.Get(clientID); ok {
+		return subs.Get(subID), nil
+	}
+	return pubsub.PubSub{}, fmt.Errorf("subscription data was not found for id %s", subID)
 }
 
 // GetSubscriberURLByResourceAndClientID  get  subscription information by client id/resource
@@ -251,17 +273,31 @@ func (p *API) GetSubscriberURLByResource(resource string) (urls []string) {
 }
 
 // GetClientIDByResource  get  subscriptionOne information
-func (p *API) GetClientIDByResource(resource string) (clientIds []uuid.UUID) {
+func (p *API) GetClientIDByResource(resource string) (clientIDs []uuid.UUID) {
 	p.SubscriberStore.RLock()
 	defer p.SubscriberStore.RUnlock()
 	for _, subs := range p.SubscriberStore.Store {
 		for _, sub := range subs.SubStore.Store {
-			if sub.GetResource() == resource {
-				clientIds = append(clientIds, subs.ClientID)
+			if strings.Contains(sub.GetResource(), resource) {
+				clientIDs = append(clientIDs, subs.ClientID)
 			}
 		}
 	}
-	return clientIds
+	return clientIDs
+}
+
+// GetClientIDBySubID ...
+func (p *API) GetClientIDBySubID(subID string) (clientIDs []uuid.UUID) {
+	p.SubscriberStore.RLock()
+	defer p.SubscriberStore.RUnlock()
+	for _, subs := range p.SubscriberStore.Store {
+		for _, sub := range subs.SubStore.Store {
+			if sub.GetID() == subID {
+				clientIDs = append(clientIDs, subs.ClientID)
+			}
+		}
+	}
+	return clientIDs
 }
 
 // GetClientIDAddressByResource  get  subscriptionOne information
@@ -292,19 +328,32 @@ func (p *API) DeleteSubscription(clientID uuid.UUID, subscriptionID string) erro
 	return nil
 }
 
-// DeleteAllSubscriptions  delete all subscriptionOne information
-func (p *API) DeleteAllSubscriptions(clientID uuid.UUID) error {
-	if subStore, ok := p.SubscriberStore.Get(clientID); ok {
-		if err := deleteAllFromFile(fmt.Sprintf("%s/%s", p.storeFilePath, fmt.Sprintf("%s.json", clientID))); err != nil {
-			return err
+// DeleteAllSubscriptionsForClient delete all subscriptions for the client
+func (p *API) DeleteAllSubscriptionsForClient(clientID uuid.UUID) (int, error) {
+	var err error
+	var numSubDeleted, numSubToDelete int
+	if sub, ok := p.SubscriberStore.Get(clientID); ok {
+		numSubToDelete = len(sub.SubStore.Store)
+		if err = p.DeleteClient(clientID); err != nil {
+			return 0, err
 		}
-		subStore.SubStore = &store.PubSubStore{
-			RWMutex: sync.RWMutex{},
-			Store:   map[string]*pubsub.PubSub{},
-		}
-		p.SubscriberStore.Set(clientID, subStore)
+		numSubDeleted += numSubToDelete
 	}
-	return nil
+	return numSubDeleted, nil
+}
+
+// DeleteAllSubscriptions delete all subscriptions in store
+func (p *API) DeleteAllSubscriptions() (int, error) {
+	var err error
+	var numSubDeleted, numSubToDelete int
+	for clientID, subs := range p.SubscriberStore.Store {
+		numSubToDelete = len(subs.SubStore.Store)
+		if err = p.DeleteClient(clientID); err != nil {
+			return numSubDeleted, err
+		}
+		numSubDeleted += numSubToDelete
+	}
+	return numSubDeleted, nil
 }
 
 // DeleteClient  delete all subscriptionOne information
@@ -344,6 +393,14 @@ func (p *API) IncFailCountToFail(clientID uuid.UUID) bool {
 		}
 	}
 	return false
+}
+
+// ResetFailCount ..reset fail count
+func (p *API) ResetFailCount(clientID uuid.UUID) {
+	if subStore, ok := p.SubscriberStore.Get(clientID); ok {
+		subStore.ResetFailCount()
+		p.SubscriberStore.Set(clientID, subStore)
+	}
 }
 
 // FailCountThreshold .. get threshold

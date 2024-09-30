@@ -113,7 +113,6 @@ func (sClient *Client) UpdateConfigMap(ctx context.Context, data []subscriber.Su
 			return err
 		}
 	}
-	log.Infof("updating configmap ")
 
 	existingData := cm.Data
 	if existingData == nil {
@@ -122,7 +121,6 @@ func (sClient *Client) UpdateConfigMap(ctx context.Context, data []subscriber.Su
 
 	for _, d := range data {
 		if d.Action == channel.DELETE {
-			//TODO: delete subscription by subscription
 			delete(existingData, d.ClientID.String())
 		} else {
 			// Marshal back to json (as original)
@@ -132,7 +130,6 @@ func (sClient *Client) UpdateConfigMap(ctx context.Context, data []subscriber.Su
 				log.Errorf("error marshalling subscriber %s", e.Error())
 				continue
 			}
-
 			log.Infof("persisting following contents %s ", string(out))
 
 			log.Infof("updating new subscriber in configmap")
@@ -141,12 +138,12 @@ func (sClient *Client) UpdateConfigMap(ctx context.Context, data []subscriber.Su
 	}
 
 	cm.Data = existingData
-	cm, err = sClient.clientSet.CoreV1().ConfigMaps(namespace).Update(ctx, cm, metav1.UpdateOptions{})
+	_, err = sClient.clientSet.CoreV1().ConfigMaps(namespace).Update(ctx, cm, metav1.UpdateOptions{})
 	if err != nil {
 		log.Errorf("error updating configmap %s", err.Error())
 		return err
 	}
-	log.Infof("updated configmap with %#v", cm.Data)
+	log.Info("configmap updated")
 	return nil
 }
 

@@ -39,6 +39,7 @@ import (
 var (
 	apiAddr                string
 	apiPath                string
+	apiVersion             string
 	localAPIAddr           string
 	resourceAddressSports  = "/news-service/sports"
 	resourceAddressFinance = "/news-service/finance"
@@ -50,6 +51,8 @@ func main() {
 	flag.StringVar(&apiPath, "api-path", "/api/ocloudNotifications/v1/", "The rest api path.")
 	flag.StringVar(&apiAddr, "api-addr", "localhost:8089", "The address the framework api endpoint binds to.")
 	flag.Parse()
+
+	apiVersion = "1.0"
 
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -90,7 +93,7 @@ RETRY:
 				event.SetTime(types.Timestamp{Time: time.Now().UTC()}.Time)
 				event.SetDataContentType(cneevent.ApplicationJSON)
 				data := cneevent.Data{
-					Version: "v1",
+					Version: cneevent.APISchemaVersion,
 					Values: []cneevent.DataValue{{
 						Resource:  pub.Resource,
 						DataType:  cneevent.NOTIFICATION,
@@ -99,7 +102,7 @@ RETRY:
 					},
 					},
 				}
-				data.SetVersion("v1") //nolint:errcheck
+				data.SetVersion(cneevent.APISchemaVersion) //nolint:errcheck
 				event.SetData(data)
 				publishEvent(event)
 			}
@@ -117,7 +120,7 @@ func createPublisher(resourceAddress string) []byte {
 		Host: localAPIAddr,
 		Path: "ack/event"}}
 	log.Infof("publisher endpoint %s", endpointURL.String())
-	pub := v1pubsub.NewPubSub(endpointURL, resourceAddress)
+	pub := v1pubsub.NewPubSub(endpointURL, resourceAddress, apiVersion)
 	if b, err := json.Marshal(&pub); err == nil {
 		var status int
 		rc := restclient.New()

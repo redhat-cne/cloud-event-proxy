@@ -3,11 +3,9 @@ run:
   deadline: 3m
   issues-exit-code: 1
   tests: true
-  skip-dirs:
-    - vendor
-    - .go
+
 output:
-  format: colored-line-number
+  formats: colored-line-number
   print-issued-lines: true
   print-linter-name: true
 
@@ -16,7 +14,8 @@ linters-settings:
     # minimal code complexity to report, 30 by default (but we recommend 10-20)
     min-complexity: 30
   govet:
-    check-shadowing: true
+    enable:
+      - shadow
   goconst:
     min-len: 3
     min-occurrences: 4
@@ -30,13 +29,12 @@ linters:
     - goconst
     - gocyclo
     - goimports
-    - revive
     - gosec
     - gosimple
     - govet
     - ineffassign
-    - megacheck
     - misspell
+    - revive
     - typecheck
     - unconvert
     - unparam
@@ -45,6 +43,9 @@ linters:
   fast: false
 
 issues:
+  exclude-dirs:
+    - vendor
+    - .git
   # Excluding configuration per-path, per-linter, per-text and per-source
   exclude-rules:
     - linters:
@@ -62,6 +63,3 @@ issues:
     - linters:
         - gosec
       text: "G107: Potential HTTP request made with variable url"
-
-
-

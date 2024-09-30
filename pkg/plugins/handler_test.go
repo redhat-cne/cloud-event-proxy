@@ -66,7 +66,7 @@ func TestLoadPTPPlugin(t *testing.T) {
 	os.Setenv("NODE_NAME", "test_node")
 	scConfig.CloseCh = make(chan struct{})
 	wg := &sync.WaitGroup{}
-	_, err := common.StartPubSubService(scConfig)
+	err := common.StartPubSubService(scConfig)
 	assert.Nil(t, err)
 
 	testCases := map[string]struct {
@@ -100,7 +100,7 @@ func TestLoadHTTPPlugin(t *testing.T) {
 	os.Setenv("NODE_NAME", "test_node")
 	scConfig.CloseCh = make(chan struct{})
 	wg := &sync.WaitGroup{}
-	_, err := common.StartPubSubService(scConfig)
+	err := common.StartPubSubService(scConfig)
 	assert.Nil(t, err)
 
 	testCases := map[string]struct {
