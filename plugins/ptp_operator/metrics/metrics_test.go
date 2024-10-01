@@ -280,6 +280,7 @@ var testCases = []TestCase{
 		expectedNmeaStatus:             SKIP,
 		expectedPpsStatus:              SKIP,
 		expectedClockClassMetrics:      SKIP,
+		expectedEvent:                  ptp.PtpStateChange,
 	},
 	{
 		log:                            "gnss[1000000500]:[ts2phc.0.config] ens2f1 gnss_status 3 offset 5 s2",
@@ -341,6 +342,7 @@ var testCases = []TestCase{
 		expectedNmeaStatus:             SKIP,
 		expectedPpsStatus:              SKIP,
 		expectedClockClassMetrics:      SKIP,
+		expectedEvent:                  ptp.OsClockSyncStateChange,
 	},
 	{
 		log:                            "phc2sys[1000000710]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -62 s0 freq  -78368 delay   1100",
