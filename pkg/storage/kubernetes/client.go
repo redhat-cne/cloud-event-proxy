@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/golang/glog"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
@@ -64,9 +65,12 @@ func NewClient() (*Client, error) {
 }
 
 // CreateConfigMap ... create configmap
-func (sClient *Client) CreateConfigMap(ctx context.Context, nodeName, namespace string) (cm *corev1.ConfigMap, err error) {
+func (sClient *Client) CreateConfigMap(ctx context.Context, apiVersion, nodeName, namespace string) (cm *corev1.ConfigMap, err error) {
 	cm, err = sClient.GetConfigMap(ctx, nodeName, namespace)
 	if err == nil {
+		if apiVersion != "" && !validateConfigMap(apiVersion, cm) {
+			return sClient.cleanupConfigMap(ctx, nodeName, namespace)
+		}
 		return cm, nil
 	}
 
@@ -108,7 +112,7 @@ func (sClient *Client) UpdateConfigMap(ctx context.Context, data []subscriber.Su
 	var err error
 	cm, err = sClient.GetConfigMap(ctx, nodeName, namespace)
 	if err != nil {
-		if cm, err = sClient.CreateConfigMap(ctx, nodeName, namespace); err != nil {
+		if cm, err = sClient.CreateConfigMap(ctx, "", nodeName, namespace); err != nil {
 			log.Errorf("Error fetching configmap %s", err.Error())
 			return err
 		}
@@ -148,10 +152,10 @@ func (sClient *Client) UpdateConfigMap(ctx context.Context, data []subscriber.Su
 }
 
 // InitConfigMap ... using configmap
-func (sClient *Client) InitConfigMap(storePath, nodeName, namespace string) error {
+func (sClient *Client) InitConfigMap(apiVersion, storePath, nodeName, namespace string) error {
 	var err error
 	var cm *corev1.ConfigMap
-	if cm, err = sClient.CreateConfigMap(context.Background(), nodeName, namespace); err == nil {
+	if cm, err = sClient.CreateConfigMap(context.Background(), apiVersion, nodeName, namespace); err == nil {
 		for clientID, subscriberData := range cm.Data {
 			var newSubscriberBytes []byte
 			var subscriberErr error
@@ -178,4 +182,48 @@ func (sClient *Client) InitConfigMap(storePath, nodeName, namespace string) erro
 		return err
 	}
 	return nil
+}
+
+func (sClient *Client) cleanupConfigMap(ctx context.Context, nodeName, namespace string) (*corev1.ConfigMap, error) {
+	var obj subscriber.Subscriber
+	if err := sClient.UpdateConfigMap(context.Background(), []subscriber.Subscriber{obj}, nodeName, namespace); err != nil {
+		return nil, err
+	}
+	return sClient.GetConfigMap(ctx, nodeName, namespace)
+}
+
+func validateSubscriberVersion(apiVersion string, sub subscriber.Subscriber) bool {
+	if sub.SubStore == nil || len(sub.SubStore.Store) == 0 {
+		return true
+	}
+
+	for _, v := range sub.SubStore.Store {
+		log.Infof("DZK validateSubscriberVersion got version=%s, expect version=%s", v.GetVersion(), apiVersion)
+		if !isVersionsCompatible(v.GetVersion(), apiVersion) {
+			return false
+		}
+	}
+	return true
+}
+
+func validateConfigMap(apiVersion string, cm *corev1.ConfigMap) bool {
+	for _, subscriberData := range cm.Data {
+		if subscriberData == "" {
+			continue
+		}
+		var subscriberErr error
+		subscriber := subscriber.Subscriber{}
+		if err := json.Unmarshal([]byte(subscriberData), &subscriber); err == nil {
+			_, subscriberErr = json.MarshalIndent(&subscriber, "", " ")
+			if subscriberErr != nil || !validateSubscriberVersion(apiVersion, subscriber) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// isVersionsCompatible compares major versions assuming inputs are valid
+func isVersionsCompatible(ver1, ver2 string) bool {
+	return strings.Split(ver1, ".")[0] == strings.Split(ver2, ".")[0]
 }
