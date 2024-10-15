@@ -100,9 +100,11 @@ func main() {
 	isV1Api = common.IsV1Api(apiVersion)
 
 	if !isV1Api {
-		apiAddr = "ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043"
-		apiAddr = common.SanitizeTransportHost(apiAddr, nodeIP, nodeName)
-
+		// get the first publisher and replace the apiAddr
+		apiAddr = getFirstHTTPPublishers(nodeIP, nodeName, httpEventPublisher)
+		if apiAddr == "" {
+			log.Error("cannot find publisher,setting to default `\"localhost:8089\"` address")
+		}
 		apiPath = "/api/ocloudNotifications/v2/"
 		log.Infof("apiVersion=%s, updated apiAddr=%s, apiPath=%s", apiVersion, apiAddr, apiPath)
 	}
@@ -383,4 +385,14 @@ func updateHTTPPublishers(nodeIP, nodeName string, addr ...string) {
 
 		log.Infof("publisher endpoint updated from %s to %s healthStatusOk %t", s, publisherServiceName, PublisherHealthOk)
 	}
+}
+
+func getFirstHTTPPublishers(nodeIP, nodeName string, addr ...string) string {
+	for _, s := range addr {
+		if s == "" {
+			continue
+		}
+		return common.SanitizeTransportHost(s, nodeIP, nodeName)
+	}
+	return ""
 }
