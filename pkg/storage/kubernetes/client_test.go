@@ -40,7 +40,7 @@ func Subscriptions() *v1.ConfigMap {
 
 func TestClient_InitConfigMap(t *testing.T) {
 	setupClient()
-	err := clients.InitConfigMap(".", nodeName, metav1.NamespaceSystem)
+	err := clients.InitConfigMap("1.0", ".", nodeName, metav1.NamespaceSystem)
 	assert.Nil(t, err)
 	cm, e := clients.GetConfigMap(context.Background(), nodeName, metav1.NamespaceSystem)
 	assert.Nil(t, e)
@@ -49,7 +49,7 @@ func TestClient_InitConfigMap(t *testing.T) {
 
 func TestClient_GetConfigMap(t *testing.T) {
 	setupClient()
-	err := clients.InitConfigMap(".", nodeName, metav1.NamespaceSystem)
+	err := clients.InitConfigMap("1.0", ".", nodeName, metav1.NamespaceSystem)
 	assert.Nil(t, err)
 	cm, e := clients.GetConfigMap(context.Background(), nodeName, metav1.NamespaceSystem)
 	assert.Nil(t, e)
@@ -59,7 +59,7 @@ func TestClient_GetConfigMap(t *testing.T) {
 
 func Test_LoadingSubscriptionFromFileToCache(t *testing.T) {
 	setupClient()
-	err := clients.InitConfigMap(".", nodeName, metav1.NamespaceSystem)
+	err := clients.InitConfigMap("1.0", ".", nodeName, metav1.NamespaceSystem)
 	assert.Nil(t, err)
 	cm, e := clients.GetConfigMap(context.Background(), nodeName, metav1.NamespaceSystem)
 	assert.Nil(t, e)

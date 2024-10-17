@@ -58,7 +58,7 @@ func TestSidecar_MainWithHTTP(t *testing.T) {
 	log.Infof("Configuration set to %#v", scConfig)
 
 	//start rest service
-	_, err := common.StartPubSubService(scConfig)
+	err := common.StartPubSubService(scConfig)
 	assert.Nil(t, err)
 
 	// imitate main process
@@ -78,7 +78,7 @@ func TestSidecar_MainWithHTTP(t *testing.T) {
 	//create publisher
 	// this is loopback on server itself. Since current pod does not create any server
 	endpointURL := fmt.Sprintf("%s%s", scConfig.BaseURL, "dummy")
-	createPub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), resourceAddress)
+	createPub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), resourceAddress, scConfig.APIVersion)
 	pub, err := common.CreatePublisher(scConfig, createPub)
 	assert.Nil(t, err)
 	assert.NotEmpty(t, pub.ID)
@@ -88,7 +88,7 @@ func TestSidecar_MainWithHTTP(t *testing.T) {
 	log.Infof("Publisher \n%s:", pub.String())
 
 	//Test subscription
-	createSub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), resourceAddress)
+	createSub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), resourceAddress, scConfig.APIVersion)
 	sub, err := common.CreateSubscription(scConfig, createSub)
 	assert.Nil(t, err)
 	assert.NotEmpty(t, sub.ID)
