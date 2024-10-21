@@ -20,3 +20,8 @@ func TestStats_SetPtpDependentEventState(t *testing.T) {
 	}, nil, nil)
 	assert.Equal(t, ptp.FREERUN, s.PtpDependentEventState().CurrentPTPStateEvent)
 }
+
+func TestNewStats_EmptyState(t *testing.T) {
+	s := stats.NewStats("testCfg")
+	assert.NotEqual(t, ptp.FREERUN, s.LastSyncState())
+}

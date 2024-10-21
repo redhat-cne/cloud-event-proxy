@@ -302,7 +302,7 @@ func (s *Stats) GetStateState(processName string, iface *string) (ptp.SyncState,
 			}
 		}
 	}
-	return ptp.FREERUN, fmt.Errorf("sync state not found %s", processName)
+	return "", fmt.Errorf("sync state not found %s", processName)
 }
 
 // GetDependsOnValueState ... get value offset and state
