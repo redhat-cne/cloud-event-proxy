@@ -12,8 +12,8 @@ require (
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.23.0
 	github.com/prometheus/client_golang v1.14.0
-	github.com/redhat-cne/rest-api v1.22.0
-	github.com/redhat-cne/sdk-go v1.22.0
+	github.com/redhat-cne/rest-api v1.22.0-new
+	github.com/redhat-cne/sdk-go v1.22.0-new
 	github.com/sirupsen/logrus v1.9.0
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/net v0.23.0
@@ -24,6 +24,10 @@ require (
 	k8s.io/utils v0.0.0-20221107191617-1a15be271d1d
 	sigs.k8s.io/controller-runtime v0.12.3
 )
+
+replace github.com/redhat-cne/sdk-go v1.22.0-new => ../sdk-go
+
+replace github.com/redhat-cne/rest-api v1.22.0-new => ../rest-api
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect

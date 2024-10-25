@@ -39,6 +39,11 @@ type API struct {
 	transportEnabled bool
 }
 
+const (
+	DeleteAllSubs string = "delete-all-subscriptions"
+	DeleteSub     string = "delete-subscription"
+)
+
 var instance *API
 var once sync.Once
 var mu sync.Mutex

@@ -349,12 +349,16 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 				if scConfig.StorageType != storageClient.ConfigMap {
 					continue
 				}
-				if d.Status == channel.SUCCESS && d.Data != nil {
-					var obj subscriber.Subscriber
-					if err := json.Unmarshal(d.Data.Data(), &obj); err != nil {
-						log.Infof("data is not subscriber object ignoring processing")
-						continue
-					}
+				if d.Data == nil {
+					log.Info("DZK data nil")
+					continue
+				}
+				var obj subscriber.Subscriber
+				if err := json.Unmarshal(d.Data.Data(), &obj); err != nil {
+					log.Infof("data is not subscriber object ignoring processing")
+					continue
+				}
+				if d.Status == channel.SUCCESS || d.Status == channel.UPDATE {
 					log.Infof("subscriber processed for %s", d.Address)
 					if err := scConfig.K8sClient.UpdateConfigMap(context.Background(), []subscriber.Subscriber{obj}, nodeName, namespace); err != nil {
 						log.Errorf("failed to update subscription in configmap %s", err.Error())
@@ -362,6 +366,12 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 						log.Infof("subscriber saved in configmap %s", obj.String())
 					}
 				} else if d.Status == channel.DELETE {
+					if err := scConfig.K8sClient.UpdateConfigMap(context.Background(), []subscriber.Subscriber{obj}, nodeName, namespace); err != nil {
+						log.Errorf("failed to update subscription in configmap %s", err.Error())
+					} else {
+						log.Infof("subscriber saved in configmap %s", obj.String())
+					}
+
 					cleanupConfigMap(d.ClientID)
 				}
 			}
