@@ -1,3 +1,6 @@
+//go:build unittests
+// +build unittests
+
 package metrics_test
 
 import (
@@ -65,7 +68,7 @@ func TestPTPEventManager_GenPTPEvent(t *testing.T) {
 			eventResourceName: "resource3",
 			ptpOffset:         500,
 			lastClockState:    ptp.HOLDOVER,
-			clockState:        ptp.FREERUN,
+			clockState:        ptp.FREERUN, // stays in HOLDOVER until times out
 			eventType:         ptp.PtpStateChange,
 			mock:              true,
 			wantLastSyncState: ptp.HOLDOVER,
@@ -81,6 +84,30 @@ func TestPTPEventManager_GenPTPEvent(t *testing.T) {
 			eventType:         ptp.PtpStateChange,
 			mock:              true,
 			wantLastSyncState: ptp.LOCKED,
+		},
+		{
+			name:              "holdover to locked state",
+			ptpProfileName:    "T-GM",
+			oStats:            stats.NewStats("T-GM"),
+			eventResourceName: "resource3",
+			ptpOffset:         50,
+			lastClockState:    ptp.LOCKED,
+			clockState:        ptp.HOLDOVER,
+			eventType:         ptp.PtpStateChange,
+			mock:              true,
+			wantLastSyncState: ptp.HOLDOVER,
+		},
+		{
+			name:              "holdover to locked state",
+			ptpProfileName:    "T-GM",
+			oStats:            stats.NewStats("T-GM"),
+			eventResourceName: "resource3",
+			ptpOffset:         50,
+			lastClockState:    ptp.HOLDOVER,
+			clockState:        ptp.HOLDOVER,
+			eventType:         ptp.PtpStateChange,
+			mock:              true,
+			wantLastSyncState: ptp.HOLDOVER,
 		},
 	}
 
