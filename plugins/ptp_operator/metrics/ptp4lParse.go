@@ -43,11 +43,13 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 				alias, _ = ptp4lCfg.GetUnknownAlias()
 			}
 			masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
-			ptpStats[master].SetClockClass(int64(clockClass))
+
 			ClockClassMetrics.With(prometheus.Labels{
 				"process": processName, "node": ptpNodeName}).Set(clockClass)
-
-			p.PublishClockClassEvent(clockClass, masterResource, ptp.PtpClockClassChange)
+			if ptpStats[master].ClockClass() != int64(clockClass) {
+				ptpStats[master].SetClockClass(int64(clockClass))
+				p.PublishClockClassEvent(clockClass, masterResource, ptp.PtpClockClassChange)
+			}
 		}
 	} else if strings.Contains(output, " port ") {
 		portID, role, syncState := extractPTP4lEventState(output)

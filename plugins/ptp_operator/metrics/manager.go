@@ -393,6 +393,8 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 				oStats.SetLastOffset(ptpOffset)
 			}
 		case ptp.HOLDOVER:
+			//FOR OC/BC  do nothing, the timeout will switch holdover to FREE-RUN OR LOCKED  if it is not within the holdover timeout
+			// FOR T-GM its handled differently
 			// previous state was HOLDOVER, now it is in LOCKED state, cancel any HOLDOVER
 			if isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
 				log.Infof("interface %s is in LOCKED state, cancel any holdover states", eventResourceName)
@@ -403,7 +405,8 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 				oStats.SetLastSyncState(clockState)
 				oStats.SetLastOffset(ptpOffset)
 				oStats.AddValue(ptpOffset) // update off set when its in locked state and hold over only/ update off set when its in locked state and hold over only
-			} // else continue to stay in HOLDOVER
+			} // else continue to stay in HOLDOVER UNTIL its really LOCKED state
+
 		default: // not yet used states
 			clockState = ptp.FREERUN
 			if isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
@@ -418,11 +421,19 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 			oStats.SetLastOffset(ptpOffset)
 		}
 	case ptp.HOLDOVER:
-		return // do nothing for holdover
+		if lastClockState != ptp.HOLDOVER { //send event only once
+			log.Infof(" publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d )",
+				ptpProfileName, eventResourceName, oStats.LastSyncState(), clockState, ptpOffset)
+			p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType)
+		}
+		oStats.SetLastSyncState(clockState)
+		oStats.SetLastOffset(ptpOffset)
+		oStats.AddValue(ptpOffset)
+		return
 	case ptp.FREERUN:
 		if lastClockState != ptp.HOLDOVER {
 			if lastClockState != ptp.FREERUN { // don't send event if last event was freerun
-				log.Infof(" publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
+				log.Infof("publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
 					ptpProfileName, eventResourceName, oStats.LastSyncState(), clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
 				p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType)
 			}
