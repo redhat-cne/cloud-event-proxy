@@ -214,7 +214,12 @@ func metricServer(address string) {
 	mux.Handle("/metrics", promhttp.Handler())
 
 	go wait.Until(func() {
-		err := http.ListenAndServe(address, mux)
+		server := &http.Server{
+			Addr:              address,
+			ReadHeaderTimeout: 5 * time.Second,
+			Handler:           mux,
+		}
+		err := server.ListenAndServe()
 		if err != nil {
 			log.Errorf("error with metrics server %s\n, will retry to establish", err.Error())
 		}
@@ -235,8 +240,10 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 			if pub.EndPointURI != nil {
 				log.Debugf("posting acknowledgment with status: %s to publisher: %s", status, pub.EndPointURI)
 				restClient := restclient.New()
-				restClient.Post(pub.EndPointURI,
-					[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, status)))
+				if _, err := restClient.Post(pub.EndPointURI,
+					[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, status))); err != nil {
+					log.Errorf("error posting acknowledgment at %s : %s", pub.EndPointURI, err)
+				}
 			}
 		}
 	}
