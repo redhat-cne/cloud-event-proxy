@@ -29,6 +29,7 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/localmetrics"
 	"github.com/redhat-cne/sdk-go/pkg/protocol"
 	"github.com/redhat-cne/sdk-go/pkg/subscriber"
+	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 	subscriberApi "github.com/redhat-cne/sdk-go/v1/subscriber"
 	log "github.com/sirupsen/logrus"
 )
@@ -154,11 +155,24 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 				}
 			} else if obj.Action == channel.DELETE {
 				if _, ok := h.Sender[obj.ClientID]; ok {
-					log.Infof("deleting subscribers")
-					_ = h.subscriberAPI.DeleteClient(obj.ClientID)
-					h.DeleteSender(obj.ClientID)
-					out.Status = channel.DELETE
-					out.ClientID = obj.ClientID
+					for subID, sub := range obj.SubStore.Store {
+						if sub.Resource == v1pubsub.DeleteAllSubs {
+							log.Infof("deleting all subscribers")
+							_ = h.subscriberAPI.DeleteClient(obj.ClientID)
+							h.DeleteSender(obj.ClientID)
+							out.Status = channel.DELETE
+							out.ClientID = obj.ClientID
+							break
+						} else if sub.Resource == v1pubsub.DeleteSub {
+							log.Infof("deleting sub with id %s", subID)
+							_ = h.subscriberAPI.DeleteSubscription(obj.ClientID, subID)
+							out.Status = channel.UPDATE
+							out.ClientID = obj.ClientID
+						} else {
+							log.Warnf("subscription deleting request with wrong resource %s", sub.Resource)
+							return
+						}
+					}
 				}
 			}
 		}

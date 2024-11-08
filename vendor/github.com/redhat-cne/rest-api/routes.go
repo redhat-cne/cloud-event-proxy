@@ -32,6 +32,7 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 
 	"github.com/redhat-cne/sdk-go/v1/event"
+	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -256,6 +257,7 @@ func (s *Server) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 	}
 
 	localmetrics.UpdateSubscriptionCount(localmetrics.ACTIVE, -1)
+	s.sendOutToDelete(channel.SUBSCRIBER, &pubsub.PubSub{ID: subscriptionID, Resource: v1pubsub.DeleteSub})
 	respondWithMessage(w, http.StatusOK, "OK")
 }
 
@@ -270,7 +272,7 @@ func (s *Server) deleteAllSubscriptions(w http.ResponseWriter, _ *http.Request) 
 		localmetrics.UpdateSubscriptionCount(localmetrics.ACTIVE, -(size))
 	}
 	// go ahead and create QDR to this address
-	s.sendOutToDelete(channel.SUBSCRIBER, &pubsub.PubSub{ID: "", Resource: "delete-all-subscriptions"})
+	s.sendOutToDelete(channel.SUBSCRIBER, &pubsub.PubSub{ID: "", Resource: v1pubsub.DeleteAllSubs})
 	respondWithMessage(w, http.StatusOK, "deleted all subscriptions")
 }
 

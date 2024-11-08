@@ -24,6 +24,8 @@ const (
 	SUCCESS
 	//DELETE if the event is to delete
 	DELETE
+	//UPDATE if the event is to update (i.e. partial delete)
+	UPDATE
 	//FAILED if the event  failed to post
 	FAILED
 )
