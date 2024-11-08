@@ -125,8 +125,8 @@ func Test_Config(t *testing.T) {
 	}
 
 	closeCh := make(chan struct{})
-	os.Setenv("PTP_PROFILE_PATH", "../_testprofile")
-	os.Setenv("CONFIG_UPDATE_INTERVAL", "1")
+	_ = os.Setenv("PTP_PROFILE_PATH", "../_testprofile")
+	_ = os.Setenv("CONFIG_UPDATE_INTERVAL", "1")
 	for name, tc := range testCases {
 		t.Run(name, func(t *testing.T) {
 			ptpUpdate := ptpConfig.NewLinuxPTPConfUpdate()

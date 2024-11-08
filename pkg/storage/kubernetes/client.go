@@ -124,21 +124,20 @@ func (sClient *Client) UpdateConfigMap(ctx context.Context, data []subscriber.Su
 		existingData = make(map[string]string)
 	}
 
-	for _, d := range data {
-		if d.Action == channel.DELETE {
-			delete(existingData, d.ClientID.String())
+	for i := 0; i < len(data); i++ {
+		if data[i].Action == channel.DELETE {
+			delete(existingData, data[i].ClientID.String())
 		} else {
 			// Marshal back to json (as original)
 			var out []byte
 			var e error
-			if out, e = json.MarshalIndent(&d, "", " "); e != nil {
+			if out, e = json.MarshalIndent(&data[i], "", " "); e != nil {
 				log.Errorf("error marshalling subscriber %s", e.Error())
 				continue
 			}
 			log.Infof("persisting following contents %s ", string(out))
-
 			log.Infof("updating new subscriber in configmap")
-			existingData[d.ClientID.String()] = string(out)
+			existingData[data[i].ClientID.String()] = string(out)
 		}
 	}
 
@@ -166,7 +165,7 @@ func (sClient *Client) InitConfigMap(apiVersion, storePath, nodeName, namespace 
 				if subscriberErr == nil {
 					filePath := fmt.Sprintf("%s/%s", storePath, fmt.Sprintf("%s.json", clientID))
 					log.Infof("persisting following contents %s to a file %s\n", string(newSubscriberBytes), filePath)
-					if subscriberErr = os.WriteFile(filePath, newSubscriberBytes, 0666); subscriberErr != nil {
+					if subscriberErr = os.WriteFile(filePath, newSubscriberBytes, 0600); subscriberErr != nil {
 						log.Errorf("error writing subscription to a file %s", subscriberErr.Error())
 					}
 				} else {
