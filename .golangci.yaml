@@ -33,7 +33,6 @@ linters-settings:
         # Whether to be strict about shadowing; can be noisy.
         # Default: false
         strict: true
-
   gocyclo:
     # minimal code complexity to report, 30 by default (but we recommend 10-20)
     min-complexity: 50
@@ -48,7 +47,14 @@ linters-settings:
       - const
       - var
       - func
-
+  revive:
+    rules:
+      - name: dot-imports
+        arguments:
+          - allowedPackages:
+              - "github.com/onsi/ginkgo"
+              - "github.com/onsi/ginkgo/v2"
+              - "github.com/onsi/gomega"
 linters:
   disable-all: true
   enable: # NOTE: please keep this list alphabetically sorted

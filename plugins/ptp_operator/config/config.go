@@ -22,6 +22,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -415,6 +416,11 @@ func (l *LinuxPTPConfigMapUpdate) updatePtpConfig(nodeName string) (updated bool
 			return
 		}
 		log.Errorf("error finding node profile %v: %v", nodeName, err)
+		return
+	}
+	nodeProfile = filepath.Clean(nodeProfile)
+	if !strings.HasPrefix(nodeProfile, l.profilePath) {
+		log.Errorf("reading nodeProfile %s from unknon path ", nodeProfile)
 		return
 	}
 	nodeProfilesJSON, err := os.ReadFile(nodeProfile)

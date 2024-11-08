@@ -67,7 +67,7 @@ build-examples:
 	go build -o ./build/cloud-event-consumer ./examples/consumer/main.go
 
 lint:
-	golangci-lint run
+	golangci-lint --enable gosec run
 
 build-plugins:
 	go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
