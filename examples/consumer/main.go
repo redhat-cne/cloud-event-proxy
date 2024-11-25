@@ -109,7 +109,7 @@ func main() {
 		log.Infof("apiVersion=%s, updated apiAddr=%s, apiPath=%s", apiVersion, apiAddr, apiPath)
 	}
 
-	subscribeTo := initSubscribers(consumerType)
+	subscribeTo := initSubscribers(consumerType, isV1Api)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go server() // spin local api
@@ -329,12 +329,15 @@ func processEventV2(data []byte) error {
 	return nil
 }
 
-func initSubscribers(cType ConsumerTypeEnum) map[string]string {
+func initSubscribers(cType ConsumerTypeEnum, v1Api bool) map[string]string {
 	subscribeTo := make(map[string]string)
 	switch cType {
 	case PTP:
 		subscribeTo[string(ptpEvent.OsClockSyncStateChange)] = string(ptpEvent.OsClockSyncState)
 		subscribeTo[string(ptpEvent.PtpClockClassChange)] = string(ptpEvent.PtpClockClass)
+		if v1Api {
+			subscribeTo[string(ptpEvent.PtpClockClassChange)] = string(ptpEvent.PtpClockClassV1)
+		}
 		subscribeTo[string(ptpEvent.PtpStateChange)] = string(ptpEvent.PtpLockState)
 		subscribeTo[string(ptpEvent.GnssStateChange)] = string(ptpEvent.GnssSyncStatus)
 		subscribeTo[string(ptpEvent.SyncStateChange)] = string(ptpEvent.SyncStatusState)
