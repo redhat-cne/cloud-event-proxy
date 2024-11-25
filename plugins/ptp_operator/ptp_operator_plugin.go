@@ -83,7 +83,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 	config = configuration
 	// register metrics type
 	ptpMetrics.RegisterMetrics(nodeName)
-	publishers = InitPubSubTypes()
+	publishers = InitPubSubTypes(config)
 
 	// 1. Create event Publication
 	var err error
@@ -201,6 +201,9 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 		} else if strings.Contains(e.Source(), string(ptp.PtpClockClass)) {
 			eventType = ptp.PtpClockClassChange
 			eventSource = ptp.PtpClockClass
+		} else if strings.Contains(e.Source(), string(ptp.PtpClockClassV1)) {
+			eventType = ptp.PtpClockClassChange
+			eventSource = ptp.PtpClockClassV1
 		} else if strings.Contains(e.Source(), string(ptp.GnssSyncStatus)) {
 			eventType = ptp.GnssStateChange
 			eventSource = ptp.GnssSyncStatus
@@ -633,7 +636,7 @@ func HasEqualInterface(a []*string, b []*ptp4lconf.PTPInterface) bool {
 }
 
 // InitPubSubTypes ... initialize types of publishers for ptp operator
-func InitPubSubTypes() map[ptp.EventType]*ptpTypes.EventPublisherType {
+func InitPubSubTypes(scConfig *common.SCConfiguration) map[ptp.EventType]*ptpTypes.EventPublisherType {
 	InitPubs := make(map[ptp.EventType]*ptpTypes.EventPublisherType)
 	InitPubs[ptp.SyncStateChange] = &ptpTypes.EventPublisherType{
 		EventType: ptp.SyncStateChange,
@@ -643,9 +646,16 @@ func InitPubSubTypes() map[ptp.EventType]*ptpTypes.EventPublisherType {
 		EventType: ptp.OsClockSyncStateChange,
 		Resource:  ptp.OsClockSyncState,
 	}
-	InitPubs[ptp.PtpClockClassChange] = &ptpTypes.EventPublisherType{
-		EventType: ptp.PtpClockClassChange,
-		Resource:  ptp.PtpClockClass,
+	if !common.IsV1Api(scConfig.APIVersion) {
+		InitPubs[ptp.PtpClockClassChange] = &ptpTypes.EventPublisherType{
+			EventType: ptp.PtpClockClassChange,
+			Resource:  ptp.PtpClockClass,
+		}
+	} else {
+		InitPubs[ptp.PtpClockClassChange] = &ptpTypes.EventPublisherType{
+			EventType: ptp.PtpClockClassChange,
+			Resource:  ptp.PtpClockClassV1,
+		}
 	}
 	InitPubs[ptp.PtpStateChange] = &ptpTypes.EventPublisherType{
 		EventType: ptp.PtpStateChange,
