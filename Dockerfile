@@ -1,4 +1,4 @@
-FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.22-openshift-4.18 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.23-openshift-4.19 AS builder
 ENV GO111MODULE=off
 ENV CGO_ENABLED=1
 ENV COMMON_GO_ARGS=-race
@@ -10,7 +10,7 @@ COPY . .
 
 RUN hack/build-go.sh
 
-FROM registry.ci.openshift.org/ocp/4.18:base-rhel9 AS bin
+FROM registry.ci.openshift.org/ocp/4.19:base-rhel9 AS bin
 COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/build/cloud-event-proxy /
 COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/plugins/*.so /plugins/
 
