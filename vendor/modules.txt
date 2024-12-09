@@ -190,7 +190,7 @@ github.com/redhat-cne/rest-api
 github.com/redhat-cne/rest-api/pkg/localmetrics
 github.com/redhat-cne/rest-api/pkg/restclient
 github.com/redhat-cne/rest-api/v2
-# github.com/redhat-cne/sdk-go v1.22.0
+# github.com/redhat-cne/sdk-go v1.22.1
 ## explicit; go 1.22
 github.com/redhat-cne/sdk-go/pkg/channel
 github.com/redhat-cne/sdk-go/pkg/common
