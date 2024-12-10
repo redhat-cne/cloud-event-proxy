@@ -71,7 +71,7 @@ func TestMain(m *testing.M) {
 
 	c = make(chan os.Signal)
 	common.StartPubSubService(scConfig)
-	pubsubTypes = InitPubSubTypes()
+	pubsubTypes = InitPubSubTypes(scConfig)
 	cleanUP()
 	os.Exit(m.Run())
 }
