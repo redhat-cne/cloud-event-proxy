@@ -338,6 +338,7 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 			}
 		case ptp.HOLDOVER:
 			// do nothing, the timeout will switch holdover to FREE-RUN
+
 		default: // not yet used states
 			log.Warnf("%s sync state %s, last ptp state is unknown: %s", eventResourceName, clockState, lastClockState)
 			if !isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
