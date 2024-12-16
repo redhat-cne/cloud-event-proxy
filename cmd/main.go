@@ -194,7 +194,7 @@ func main() {
 	// assume this depends on rest plugin, or you can use api to create subscriptions
 	if common.GetBoolEnv("PTP_PLUGIN") {
 		if ptpPluginError := pluginHandler.LoadPTPPlugin(&wg, scConfig, nil); ptpPluginError != nil {
-			log.Fatalf("error loading ptp plugin %v", err)
+			log.Fatalf("error loading ptp plugin %v", ptpPluginError)
 		}
 	}
 

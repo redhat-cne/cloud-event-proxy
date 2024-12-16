@@ -15,6 +15,7 @@
 package ptp4lconf
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -79,6 +80,49 @@ func (p *PtpConfigUpdate) GetAllInterface() []*string {
 	return interfaces
 }
 
+// GetAllSections returns a map indexed by section name.
+// each section map is a key value pair representing parameters
+// stored in each section
+func (p *PtpConfigUpdate) GetAllSections() map[string]map[string]string {
+	result := make(map[string]map[string]string)
+	var currentSection string
+
+	scanner := bufio.NewScanner(strings.NewReader(*p.Ptp4lConf))
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+
+		// Skip empty lines and comments
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Check for section headers
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			currentSection = strings.Trim(line, "[]")
+			if _, exists := result[currentSection]; !exists {
+				result[currentSection] = make(map[string]string)
+			}
+			continue
+		}
+
+		// Parse key-value pairs in the current section
+		if currentSection != "" {
+			parts := strings.SplitN(line, " ", 2)
+			if len(parts) == 2 {
+				key := strings.TrimSpace(parts[0])
+				value := strings.TrimSpace(parts[1])
+				result[currentSection][key] = value
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		fmt.Println("Error reading config:", err)
+	}
+
+	return result
+}
+
 // PTPInterface ... ptp interfaces from ptpConfig
 type PTPInterface struct {
 	Name     string
@@ -92,6 +136,7 @@ type PTP4lConfig struct {
 	Name       string
 	Profile    string
 	Interfaces []*PTPInterface
+	Sections   map[string]map[string]string
 }
 
 // ByRole ... get interface name by ptp port role

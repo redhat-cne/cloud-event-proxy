@@ -402,6 +402,7 @@ func processPtp4lConfigFileUpdates() {
 				ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
 				// read all interface names from the config
 				newInterfaces := ptpConfigEvent.GetAllInterface()
+				allSections := ptpConfigEvent.GetAllSections()
 				ptp4lConfig := eventManager.GetPTPConfig(ptpConfigFileName)
 
 				if ptp4lConfig.Profile == "" {
@@ -457,6 +458,7 @@ func processPtp4lConfigFileUpdates() {
 					Name:       string(ptpConfigFileName),
 					Profile:    *ptpConfigEvent.Profile,
 					Interfaces: ptpInterfaces,
+					Sections:   allSections,
 				}
 				// add to eventManager
 				eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
