@@ -252,7 +252,7 @@ func extractNmeaMetrics(processName, output string) (interfaceName string, statu
 //		"FAULTY to SLAVE on INIT_COMPLETE"
 //		"SLAVE to UNCALIBRATED on SYNCHRONIZATION_FAULT"
 //	     "MASTER to PASSIVE"
-func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
+func extractPTP4lEventState(output string, isFollowerOnly bool) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
 	// This makes the out to equal
 	// phc2sys[187248.740]:[ens5f0] CLOCK_REALTIME phc offset        12 s2 freq   +6879 delay    49
 	// phc2sys[187248.740]:[ens5f1] CLOCK_REALTIME phc offset        12 s2 freq   +6879 delay    49
@@ -307,6 +307,8 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 	} else if strings.Contains(output, "SLAVE to LISTENING") {
 		role = types.LISTENING
 		clockState = ptp.HOLDOVER
+	} else if strings.Contains(output, "FAULTY to LISTENING") && isFollowerOnly {
+		role = types.LISTENING
 	}
 	return
 }
