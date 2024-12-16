@@ -304,3 +304,6 @@ Cloud native events rest API comes with following metrics collectors .
 ## Plugin
 [Plugin details](plugins/README.md)
 
+## Supported PTP configurations
+[Supported configurations](docs/configurations.md)
+

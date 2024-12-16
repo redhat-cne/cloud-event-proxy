@@ -12,9 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//go:build unittests
-// +build unittests
-
 package metrics_test
 
 import (
@@ -22,7 +19,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/config"
@@ -35,12 +31,8 @@ import (
 )
 
 const (
-	s0     = 0.0
-	s1     = 2.0
-	s2     = 1.0
 	MYNODE = "mynode"
 	// SKIP skip the verification of the metric
-	SKIP    = 101010101
 	CLEANUP = -1
 )
 
@@ -63,11 +55,38 @@ var logPtp4lConfig = &ptp4lconf.PTP4lConfig{
 	},
 }
 
+// DualFollower
+var logPtp4lConfigDualFollower = &ptp4lconf.PTP4lConfig{
+	Name:    "ptp4l.1.config",
+	Profile: "dualFollower",
+	Interfaces: []*ptp4lconf.PTPInterface{
+		{
+			Name:     "ens3f0",
+			PortID:   1,
+			PortName: "port 4",
+			Role:     1, // slave
+		},
+		{
+			Name:     "ens3f1",
+			PortID:   2,
+			PortName: "port 5",
+			Role:     5, // listening
+		},
+	},
+	Sections: map[string]map[string]string{
+		"ens3f0": {
+			"masterOnly": "0",
+		},
+		"ens3f1": {"masterOnly": "0"},
+		"global": {
+			"slaveOnly": "1",
+		},
+	},
+}
+
 var ptpEventManager *metrics.PTPEventManager
 var scConfig *common.SCConfiguration
 var resourcePrefix = ""
-var registry *prometheus.Registry
-var ptpStats *stats.Stats
 
 // InitPubSubTypes ... initialize types of publishers for ptp operator
 func InitPubSubTypes() map[ptp.EventType]*types.EventPublisherType {
@@ -173,6 +192,41 @@ func statsAddValue(iface string, val int64, ptp4lconfName string) {
 }
 
 var testCases = []TestCase{
+	{
+		log:                "ptp4l[4270543.688]: [ptp4l.1.config:5] port 1 (ens3f0): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)",
+		from:               "master",
+		process:            "ptp4l",
+		iface:              "ens3f0",
+		lastSyncState:      ptp.FREERUN,
+		expectedRoleCheck:  true,
+		expectedRole:       types.FAULTY,
+		logPtp4lConfigName: logPtp4lConfigDualFollower.Name,
+		expectedEvent:      []ptp.EventType{ptp.PtpStateChange, ptp.SyncStateChange},
+		skipCleanupMetrics: true,
+	},
+	{
+		log:                "ptp4l[4270544.036]: [ptp4l.1.config:5] port 2 (ens3f1): UNCALIBRATED to SLAVE on MASTER_CLOCK_SELECTED",
+		from:               "master",
+		process:            "ptp4l",
+		iface:              "ens3f1",
+		expectedRoleCheck:  true,
+		expectedRole:       types.SLAVE,
+		logPtp4lConfigName: logPtp4lConfigDualFollower.Name,
+		expectedEvent:      []ptp.EventType{},
+		skipCleanupMetrics: true,
+	},
+	{
+		log:                    "ptp4l[4270543.688]: [ptp4l.1.config:5] port 2 (ens3f1): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)",
+		from:                   "master",
+		process:                "ptp4l",
+		iface:                  "ens3fx",
+		logPtp4lConfigName:     logPtp4lConfigDualFollower.Name,
+		expectedSyncStateCheck: true,
+		expectedSyncState:      float64(types.HOLDOVER),
+		expectedEvent:          []ptp.EventType{ptp.PtpStateChange, ptp.SyncStateChange},
+		skipCleanupMetrics:     true,
+		skipSetLastSyncState:   true,
+	},
 	{
 		log:                    "dpll[1000000100]:[ts2phc.0.config] ens7f0 frequency_status 3 offset 5 phase_status 3 pps_status 1 s2",
 		from:                   "master",
@@ -349,11 +403,19 @@ func setup() {
 	statsSlave.SetLastSyncState("LOCKED")
 	statsSlave.SetClockClass(0)
 
-	stats_slave := stats.NewStats(logPtp4lConfig.Name)
-	stats_slave.SetOffsetSource("phc")
-	stats_slave.SetProcessName("phc2sys")
-	stats_slave.SetLastSyncState("LOCKED")
-	stats_slave.SetClockClass(0)
+	// DualFollower
+	ptpEventManager.AddPTPConfig(types.ConfigName(logPtp4lConfigDualFollower.Name), logPtp4lConfigDualFollower)
+	statsPHCDualFollower := stats.NewStats(logPtp4lConfigDualFollower.Name)
+	statsPHCDualFollower.SetOffsetSource("master")
+	statsPHCDualFollower.SetProcessName("ptp4l")
+	statsPHCDualFollower.SetLastSyncState("LOCKED")
+	statsPHCDualFollower.SetAlias("ens3fx")
+
+	statsRTDualFollower := stats.NewStats(logPtp4lConfigDualFollower.Name)
+	statsRTDualFollower.SetOffsetSource("phc")
+	statsRTDualFollower.SetProcessName("phc2sys")
+	statsRTDualFollower.SetLastSyncState("LOCKED")
+	statsRTDualFollower.SetClockClass(0)
 
 	ptpEventManager.Stats[types.ConfigName(logPtp4lConfig.Name)] = make(stats.PTPStats)
 	ptpEventManager.Stats[types.ConfigName(logPtp4lConfig.Name)][types.IFace("master")] = statsMaster
@@ -361,6 +423,12 @@ func setup() {
 	ptpEventManager.Stats[types.ConfigName(logPtp4lConfig.Name)][types.IFace("ens2f0")] = statsMaster
 	ptpEventManager.Stats[types.ConfigName(logPtp4lConfig.Name)][types.IFace("ens7f0")] = statsSlave
 
+	// DualFollower
+	ptpEventManager.Stats[types.ConfigName(logPtp4lConfigDualFollower.Name)] = make(stats.PTPStats)
+	ptpEventManager.Stats[types.ConfigName(logPtp4lConfigDualFollower.Name)][types.IFace("master")] = statsPHCDualFollower
+	ptpEventManager.Stats[types.ConfigName(logPtp4lConfigDualFollower.Name)][types.IFace("CLOCK_REALTIME")] = statsRTDualFollower
+	ptpEventManager.Stats[types.ConfigName(logPtp4lConfigDualFollower.Name)][types.IFace("ens3f0")] = statsPHCDualFollower
+	ptpEventManager.Stats[types.ConfigName(logPtp4lConfigDualFollower.Name)][types.IFace("ens3f1")] = statsPHCDualFollower
 	ptpEventManager.PtpConfigMapUpdates = config.NewLinuxPTPConfUpdate()
 
 	metrics.RegisterMetrics("mynode")
@@ -376,7 +444,6 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 func Test_ExtractMetrics(t *testing.T) {
-
 	assert := assert.New(t)
 	for _, tc := range testCases {
 		tc := tc

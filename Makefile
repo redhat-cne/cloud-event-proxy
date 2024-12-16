@@ -157,13 +157,19 @@ docker-push-consumer:
 podman-build:
 	podman build --no-cache -t ${IMG} .
 
-podman-push:
+podman-build-dlv: #test ## Build docker image with the manager.
+	podman build -f Dockerfile.dlv --no-cache -t ${IMG} .
+
+podman-push: ## Push docker image with the manager.
 	podman push ${IMG}
 
 podman-build-consumer:
 	podman build -f ./examples/consumer.Dockerfile -t ${CONSUMER_IMG} .
 
-podman-push-consumer:
+podman-build-consumer-dlv: #test ## Build docker image with the manager.
+	podman build -f ./examples/consumer.Dockerfile.dlv -t ${CONSUMER_IMG} .
+
+podman-push-consumer: ## Push docker image with the manager.
 	podman push ${CONSUMER_IMG}
 
 fmt: ## Go fmt your code
