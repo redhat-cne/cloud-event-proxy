@@ -309,7 +309,10 @@ func (s *Server) Start() {
 		io.WriteString(w, "OK") //nolint:errcheck
 	}).Methods(http.MethodGet)
 
+	// for internal test
 	api.HandleFunc("/dummy", dummy).Methods(http.MethodPost)
+	// for internal test: test multiple clients
+	api.HandleFunc("/dummy2", dummy).Methods(http.MethodPost)
 	api.HandleFunc("/log", s.logEvent).Methods(http.MethodPost)
 
 	//publishEvent create event and send it to a channel that is shared by middleware to process

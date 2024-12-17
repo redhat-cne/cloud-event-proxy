@@ -272,20 +272,6 @@ func (p *API) GetSubscriberURLByResource(resource string) (urls []string) {
 	return urls
 }
 
-// GetClientIDByResource  get  subscriptionOne information
-func (p *API) GetClientIDByResource(resource string) (clientIDs []uuid.UUID) {
-	p.SubscriberStore.RLock()
-	defer p.SubscriberStore.RUnlock()
-	for _, subs := range p.SubscriberStore.Store {
-		for _, sub := range subs.SubStore.Store {
-			if strings.Contains(sub.GetResource(), resource) {
-				clientIDs = append(clientIDs, subs.ClientID)
-			}
-		}
-	}
-	return clientIDs
-}
-
 // GetClientIDBySubID ...
 func (p *API) GetClientIDBySubID(subID string) (clientIDs []uuid.UUID) {
 	p.SubscriberStore.RLock()
@@ -300,7 +286,7 @@ func (p *API) GetClientIDBySubID(subID string) (clientIDs []uuid.UUID) {
 	return clientIDs
 }
 
-// GetClientIDAddressByResource  get  subscriptionOne information
+// GetClientIDAddressByResource get subscriptionOne information
 func (p *API) GetClientIDAddressByResource(resource string) map[uuid.UUID]*types.URI {
 	clients := map[uuid.UUID]*types.URI{}
 	p.SubscriberStore.RLock()
