@@ -381,10 +381,28 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 
 	// If GM is locked/Freerun/Holdover then ptp state change event
 	masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
+	lastClockState := ptpStats[masterType].LastSyncState()
 
-	// When GM is enabled there is only event happening at GM level for now
-	p.GenPTPEvent(processName, ptpStats[masterType], masterResource, 0, clockState.State, ptp.PtpStateChange)
-	UpdateSyncStateMetrics(processName, alias, ptpStats[masterType].LastSyncState())
+	// When GM is enabled, there is only one event happening at the GM level for now, so it is not being sent to the state decision routine.
+	// LOCKED -->FREERUN
+	//LOCKED->HOLDOVER
+	/// HOLDOVER-->FREERUN
+	// HOLDOVER-->LOCKED
+
+	_, phaseOffset, _, err := ptpStats[types.IFace(iface)].GetDependsOnValueState(dpllProcessName, pointer.String(iface), phaseStatus)
+	if err != nil {
+		log.Errorf("error parsing phase offset %s", err.Error())
+	}
+	ptpStats[masterType].SetLastOffset(int64(phaseOffset))
+	lastOffset := ptpStats[masterType].LastOffset()
+
+	if clockState.State != lastClockState { // publish directly here
+		log.Infof("%s sync state %s, last ptp state is : %s", masterResource, clockState.State, lastClockState)
+		p.PublishEvent(clockState.State, lastOffset, masterResource, ptp.PtpStateChange)
+		ptpStats[masterType].SetLastSyncState(clockState.State)
+		UpdateSyncStateMetrics(processName, alias, ptpStats[masterType].LastSyncState())
+		UpdatePTPOffsetMetrics(processName, processName, alias, float64(lastOffset))
+	}
 }
 
 // ParseDPLLLogs ... parse logs for various events
