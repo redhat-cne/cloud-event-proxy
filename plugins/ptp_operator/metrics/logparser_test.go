@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/event"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
 
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
@@ -262,5 +263,57 @@ func TestParseSyncELogs(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func Test_ParseGmLogs(t *testing.T) {
+	var ptpEventManager *metrics.PTPEventManager
+	tc := []testCase{
+		{
+			processName:   "GM",
+			output:        "GM 1689014431 ts2phc.0.config ens2f1 T-GM-STATUS s0",
+			expectedState: ptp.FREERUN,
+			interfaceName: "ens2f1",
+		},
+		{
+			processName:   "GM",
+			output:        "GM 1689014431 ts2phc.0.config ens2f1 T-GM-STATUS s1",
+			expectedState: ptp.HOLDOVER,
+			interfaceName: "ens2f1",
+		},
+		{
+			processName:   "GM",
+			output:        "GM 1689014431 ts2phc.0.config ens2f1 T-GM-STATUS s2",
+			expectedState: ptp.LOCKED,
+			interfaceName: "ens2f1",
+		},
+	}
+	ptpEventManager = metrics.NewPTPEventManager("", initPubSubTypes(), "tetsnode", nil)
+	ptpEventManager.MockTest(true)
+	ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)] = make(stats.PTPStats)
+	ptpStats := ptpEventManager.GetStats(types.ConfigName(configName))
+	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
+	for _, tt := range tc {
+		output := replacer.Replace(tt.output)
+		fields := strings.Fields(output)
+		ptpStats[types.IFace(tt.interfaceName)] = &stats.Stats{}
+		ptpStats[types.IFace(tt.interfaceName)].SetPtpDependentEventState(
+			event.ClockState{
+				State:       metrics.GetSyncState("s2"),
+				Offset:      pointer.Float64(0),
+				IFace:       &tt.interfaceName,
+				Process:     "dpll",
+				ClockSource: event.DPLL,
+				Value:       map[string]int64{"frequency_status": 2, "phase_status": int64(0), "pps_status": int64(2)},
+				Metric:      map[string]*event.PMetric{},
+				NodeName:    "tetsnode",
+				HelpText:    map[string]string{"phase_status": "-1=UNKNOWN, 0=INVALID, 1=FREERUN, 2=LOCKED, 3=LOCKED_HO_ACQ, 4=HOLDOVER", "frequency_status": "-1=UNKNOWN, 0=INVALID, 1=FREERUN, 2=LOCKED, 3=LOCKED_HO_ACQ, 4=HOLDOVER", "pps_status": "0=UNAVAILABLE, 1=AVAILABLE"},
+			}, ptpStats.HasMetrics("dpll"), ptpStats.HasMetricHelp("dpll"))
+		masterType := types.IFace(metrics.MasterClockType)
+		ptpStats[masterType] = &stats.Stats{}
+		ptpEventManager.ParseGMLogs(tt.processName, configName, output, fields, ptpStats)
+		lastState, errState := ptpStats[masterType].GetStateState(tt.processName, pointer.String(tt.interfaceName))
+		assert.Equal(t, errState, nil)
+		assert.Equal(t, tt.expectedState, lastState)
 	}
 }
