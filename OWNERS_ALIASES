@@ -3,12 +3,15 @@
 aliases:
   cloud-event-proxy-reviewers:
     - aneeshkp
-    - jzding
     - atyronesmith
-    - vitus133
     - josephdrichard
+    - jzding
+    - rdavid
+    - vitus133
+
   cloud-event-proxy-approvers:
     - aneeshkp
-    - jzding
-    - vitus133
     - josephdrichard
+    - jzding
+    - rdavid
+    - vitus133
