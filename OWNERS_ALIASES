@@ -4,8 +4,11 @@ aliases:
   cloud-event-proxy-reviewers:
     - aneeshkp
     - jzding
-    - nishant-parekh
     - atyronesmith
+    - vitus133
+    - josephdrichard
   cloud-event-proxy-approvers:
     - aneeshkp
     - jzding
+    - vitus133
+    - josephdrichard
