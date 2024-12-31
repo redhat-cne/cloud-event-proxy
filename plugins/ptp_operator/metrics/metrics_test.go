@@ -280,6 +280,7 @@ var testCases = []TestCase{
 		expectedNmeaStatus:             SKIP,
 		expectedPpsStatus:              SKIP,
 		expectedClockClassMetrics:      SKIP,
+		expectedEvent:                  ptp.PtpStateChange,
 	},
 	{
 		log:                            "gnss[1000000500]:[ts2phc.0.config] ens2f1 gnss_status 3 offset 5 s2",
