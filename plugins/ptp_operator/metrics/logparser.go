@@ -394,7 +394,6 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 	SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": alias}).Set(GetSyncStateID(syncState))
 	// status metrics
 	ptpStats[masterType].SetPtpDependentEventState(clockState, ptpStats.HasMetrics(processName), ptpStats.HasMetricHelp(processName))
-	ptpStats[masterType].SetLastSyncState(clockState.State)
 	ptpStats[masterType].SetAlias(alias)
 
 	// If GM is locked/Freerun/Holdover then ptp state change event
