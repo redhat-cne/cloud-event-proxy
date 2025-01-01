@@ -64,6 +64,7 @@ func initPubSubTypes() map[ptp.EventType]*types.EventPublisherType {
 	}
 	return InitPubs
 }
+
 func Test_ParseGNSSLogs(t *testing.T) {
 	var ptpEventManager *metrics.PTPEventManager
 	tc := []testCase{
