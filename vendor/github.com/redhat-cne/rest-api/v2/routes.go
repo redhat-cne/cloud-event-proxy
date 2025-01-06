@@ -68,12 +68,13 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
 		return
 	}
-	clientIDs := s.subscriberAPI.GetClientIDByResource(sub.GetResource())
-	if len(clientIDs) != 0 {
-		respondWithStatusCode(w, http.StatusConflict,
-			fmt.Sprintf("subscription (clientID: %s) with same resource already exists, skipping creation",
-				clientIDs[0]))
-		return
+	for id, address := range s.subscriberAPI.GetClientIDAddressByResource(sub.GetResource()) {
+		if address.String() == endPointURI {
+			respondWithStatusCode(w, http.StatusConflict,
+				fmt.Sprintf("subscription (clientID: %s) with same resource already exists, skipping creation",
+					id))
+			return
+		}
 	}
 
 	id := uuid.New().String()
