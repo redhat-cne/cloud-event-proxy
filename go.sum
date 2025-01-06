@@ -419,10 +419,10 @@ github.com/prometheus/procfs v0.7.3/go.mod h1:cz+aTbrPOrUb4q7XlbU9ygM+/jj0fzG6c1
 github.com/prometheus/procfs v0.8.0 h1:ODq8ZFEaYeCaZOJlZZdJA2AbQR98dSHSM1KW/You5mo=
 github.com/prometheus/procfs v0.8.0/go.mod h1:z7EfXMXOkbkqb9IINtpCn86r/to3BnA0uaxHdg830/4=
 github.com/prometheus/tsdb v0.7.1/go.mod h1:qhTCs0VvXwvX/y3TZrWD7rabWM+ijKTux40TwIPHuXU=
-github.com/redhat-cne/rest-api v1.21.0 h1:Nh/0K2q6Aov5WvnRcevWOIOR6Jzh9YDrDXIM2Gfp80o=
-github.com/redhat-cne/rest-api v1.21.0/go.mod h1:P4+xDa4l9NjBMLeslRXqaWm+iLA/wWJaScEPcfcHcKM=
-github.com/redhat-cne/sdk-go v1.21.1 h1:ifyH8Ci3hezxTBNFSAONFxI0HqeTBMpKT8YItrrYrqk=
-github.com/redhat-cne/sdk-go v1.21.1/go.mod h1:1fq4KGbPiUgj65/rZCD217uV04Qz3mVjODUNrP02FkQ=
+github.com/redhat-cne/rest-api v1.21.1 h1:lswHPhzMqrYL6JUcn44myZU4hi/Q4qoS2p60Tbv88uM=
+github.com/redhat-cne/rest-api v1.21.1/go.mod h1:5f6Y9eq3aFXuElyiHj78Jzq/L54z+QHjsNM+so/g69A=
+github.com/redhat-cne/sdk-go v1.21.3 h1:5XmuYR0LAAMJmU+UynLpmLNQDy2869P5zmkbxOybldw=
+github.com/redhat-cne/sdk-go v1.21.3/go.mod h1:1fq4KGbPiUgj65/rZCD217uV04Qz3mVjODUNrP02FkQ=
 github.com/rogpeppe/fastuuid v0.0.0-20150106093220-6724a57986af/go.mod h1:XWv6SoW27p1b0cqNHllgS5HIMJraePCO15w5zCzIWYg=
 github.com/rogpeppe/fastuuid v1.2.0/go.mod h1:jVj6XXZzXRy/MSR5jhDC/2q6DgLz+nrA6LYCDYWNEvQ=
 github.com/rogpeppe/go-internal v1.3.0/go.mod h1:M8bDsm7K2OlrFYOpmOWEs/qY81heoFRclV5y23lUDJ4=
