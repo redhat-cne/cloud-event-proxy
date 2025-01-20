@@ -8,20 +8,31 @@
  [![Go Report Card](https://goreportcard.com/badge/github.com/redhat-cne/cloud-event-proxy)](https://goreportcard.com/report/github.com/redhat-cne/cloud-event-proxy)
  [![LICENSE](https://img.shields.io/github/license/redhat-cne/cloud-event-proxy.svg)](https://github.com/redhat-cne/cloud-event-proxy/blob/main/LICENSE)
 ## Contents
-* [Transport Protocol](#event-transporter)
-    * [HTTP Protocol](#http-protocol)
-* [Publishers](#creating-publisher)
-    * [JSON Example](#publisher-json-example)
-    * [Go Example](#creating-publisher-golang-example)
-* [Subscriptions](#creating-subscriptions)
-    * [JSON Example](#subscription-json-example)
-    * [GO Example](#creating-subscription-golang-example)
-* [Rest API](#rest-api)
-* [Cloud Native Events](#cloud-native-events)
-  * [Event via sdk](#publisher-event-create-via-go-sdk)
-  * [Event via rest api](#publisher-event-create-via-rest-api)
-* [Metrics](#metrics)
-* [Plugin](#plugin)
+- [cloud-event-proxy](#cloud-event-proxy)
+  - [Contents](#contents)
+  - [Event Transporter](#event-transporter)
+    - [HTTP Protocol](#http-protocol)
+      - [Producer](#producer)
+      - [Consumer](#consumer)
+  - [Creating Publisher](#creating-publisher)
+    - [Publisher JSON Example](#publisher-json-example)
+    - [Creating Publisher Golang Eexample](#creating-publisher-golang-eexample)
+      - [Creating publisher golang example with HTTP as transporter protocol](#creating-publisher-golang-example-with-http-as-transporter-protocol)
+  - [Creating Subscriptions](#creating-subscriptions)
+    - [Subscription JSON Example](#subscription-json-example)
+    - [Creating Subscription Golang Example](#creating-subscription-golang-example)
+      - [Creating subscription golang example with HTTP as transporter protocol](#creating-subscription-golang-example-with-http-as-transporter-protocol)
+  - [Rest-API](#rest-api)
+    - [Rest-API to create a Publisher and Subscription](#rest-api-to-create-a-publisher-and-subscription)
+  - [Cloud Native Events](#cloud-native-events)
+    - [Publisher event create via go-sdk](#publisher-event-create-via-go-sdk)
+    - [Publisher event create via rest-api](#publisher-event-create-via-rest-api)
+  - [Metrics](#metrics)
+    - [sdk-go metrics](#sdk-go-metrics)
+    - [rest-api metrics](#rest-api-metrics)
+    - [cloud-event-proxy metrics](#cloud-event-proxy-metrics)
+  - [Plugin](#plugin)
+  - [Supported PTP configurations](#supported-ptp-configurations)
   
 ## Event Transporter
 Cloud event proxy currently support one type of transport protocol
@@ -303,4 +314,7 @@ Cloud native events rest API comes with following metrics collectors .
 [Metrics details ](docs/metrics.md)
 ## Plugin
 [Plugin details](plugins/README.md)
+
+## Supported PTP configurations
+[Supported configurations](docs/configurations.md)
 
