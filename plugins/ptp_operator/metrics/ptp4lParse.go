@@ -52,12 +52,13 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			}
 		}
 	} else if strings.Contains(output, " port ") {
-		portID, role, syncState := extractPTP4lEventState(output, isFollowerOnly(ptp4lCfg))
+		followerOnly := isFollowerOnly(ptp4lCfg)
+		portID, role, syncState := extractPTP4lEventState(output, followerOnly)
 		if portID == 0 || role == types.UNKNOWN {
 			return
 		}
 
-		if isFollowerOnly(ptp4lCfg) {
+		if followerOnly {
 			syncState = followerOnlySyncState(role, portID, ptp4lCfg)
 		}
 
@@ -183,7 +184,7 @@ func handleHoldOverState(ptpManager *PTPEventManager,
 func isFollowerOnly(ptp4lCfg *ptp4lconf.PTP4lConfig) bool {
 	if section, ok1 := ptp4lCfg.Sections["global"]; ok1 {
 		if value, ok2 := section["slaveOnly"]; ok2 {
-			log.Errorf("FollowerOnly scenario detected")
+			log.Info("FollowerOnly scenario detected")
 			return value == "1"
 		}
 	}
