@@ -52,10 +52,16 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			}
 		}
 	} else if strings.Contains(output, " port ") {
-		portID, role, syncState := extractPTP4lEventState(output)
+		followerOnly := isFollowerOnly(ptp4lCfg)
+		portID, role, syncState := extractPTP4lEventState(output, followerOnly)
 		if portID == 0 || role == types.UNKNOWN {
 			return
 		}
+
+		if followerOnly {
+			syncState = followerOnlySyncState(role, portID, ptp4lCfg)
+		}
+
 		if ptpInterface, err = ptp4lCfg.ByPortID(portID); err != nil {
 			log.Error(err)
 			log.Errorf("possible error due to file watcher not updated")
@@ -173,4 +179,31 @@ func handleHoldOverState(ptpManager *PTPEventManager,
 			log.Errorf("failed to switch from holdover, could not find ptpStats for interface %s", ptpIFace)
 		}
 	}
+}
+
+func isFollowerOnly(ptp4lCfg *ptp4lconf.PTP4lConfig) bool {
+	if section, ok1 := ptp4lCfg.Sections["global"]; ok1 {
+		if value, ok2 := section["slaveOnly"]; ok2 {
+			log.Info("FollowerOnly scenario detected")
+			return value == "1"
+		}
+	}
+	return false
+}
+
+func followerOnlySyncState(role types.PtpPortRole, portID int, ptp4lCfg *ptp4lconf.PTP4lConfig) (outClockState ptp.SyncState) {
+	activeFollower, err := ptp4lCfg.ByRole(types.SLAVE)
+	activeFollowerPresent := err == nil
+	var listeningFollower ptp4lconf.PTPInterface
+	listeningFollower, err = ptp4lCfg.ByRole(types.LISTENING)
+	listeningFollowerPresent := err == nil
+
+	// If there is no port in FOLLOWING or SLAVE state after this transition then
+	// syncstate is holdover
+	if (!activeFollowerPresent || (activeFollower.PortID == portID && role == types.FAULTY)) &&
+		(!listeningFollowerPresent || (listeningFollower.PortID == portID && role == types.FAULTY)) {
+		return ptp.HOLDOVER
+	}
+
+	return ptp.FREERUN
 }
