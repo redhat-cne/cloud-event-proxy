@@ -60,8 +60,8 @@ const (
 
 var (
 	apiAddr            = "localhost:8089"
-	apiPath            = "/api/ocloudNotifications/v1/"
-	apiVersion         = "1.0"
+	apiPath            = "/api/ocloudNotifications/v2/"
+	apiVersion         = "2.0"
 	localAPIAddr       = "localhost:8989"
 	resourcePrefix     = "/cluster/node/%s%s"
 	mockResource       = "/mock"
@@ -75,9 +75,9 @@ var (
 func main() {
 	common.InitLogger()
 	flag.StringVar(&localAPIAddr, "local-api-addr", "localhost:8989", "The address the local api binds to .")
-	flag.StringVar(&apiPath, "api-path", "/api/ocloudNotifications/v1/", "The rest api path.")
+	flag.StringVar(&apiPath, "api-path", "/api/ocloudNotifications/v2/", "The rest api path.")
 	flag.StringVar(&apiAddr, "api-addr", "localhost:8089", "The address the framework api endpoint binds to.")
-	flag.StringVar(&apiVersion, "api-version", "1.0", "The version of Cloud Events Rest Api.")
+	flag.StringVar(&apiVersion, "api-version", "2.0", "The version of Cloud Events Rest Api.")
 	flag.StringVar(&httpEventPublisher, "http-event-publishers", "", "Comma separated address of the publishers available.")
 	flag.Parse()
 
@@ -98,6 +98,9 @@ func main() {
 	}
 
 	isV1Api = common.IsV1Api(apiVersion)
+	if isV1Api {
+		log.Fatalf("APIv1 is not supported since OCP v4.19L %s.", apiVersion)
+	}
 
 	if !isV1Api {
 		// get the first publisher and replace the apiAddr

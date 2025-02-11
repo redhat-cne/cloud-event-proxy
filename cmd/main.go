@@ -86,7 +86,7 @@ func main() {
 	flag.StringVar(&storePath, "store-path", ".", "The path to store publisher and subscription info.")
 	flag.StringVar(&transportHost, "transport-host", "http://ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043", "The transport bus hostname or service name.")
 	flag.IntVar(&apiPort, "api-port", 8089, "The address the rest api endpoint binds to.")
-	flag.StringVar(&apiVersion, "api-version", "1.0", "The address the rest api endpoint binds to.")
+	flag.StringVar(&apiVersion, "api-version", "2.0", "The address the rest api endpoint binds to.")
 	flag.StringVar(&httpEventPublisher, "http-event-publishers", "", "Comma separated address of the publishers available.")
 
 	flag.Parse()
@@ -159,6 +159,10 @@ func main() {
 
 	pluginHandler = plugins.Handler{Path: "./plugins"}
 	isV1Api = common.IsV1Api(scConfig.APIVersion)
+	if isV1Api {
+		log.Fatalf("APIv1 is not supported since OCP v4.19: %s.", scConfig.APIVersion)
+	}
+
 	// make PubSub REST API accessible by event service ptp-event-publisher-service-NODE_NAME
 	if !isV1Api {
 		// switch between Internal API port and PubSub port
