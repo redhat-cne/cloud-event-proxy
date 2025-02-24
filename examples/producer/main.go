@@ -102,7 +102,10 @@ RETRY:
 					},
 					},
 				}
-				data.SetVersion(cneevent.APISchemaVersion) //nolint:errcheck
+				if err := data.SetVersion(cneevent.APISchemaVersion); err != nil {
+					log.Errorf("failed to set APISchemaVersion %v\n", err)
+					return
+				}
 				event.SetData(data)
 				publishEvent(event)
 			}
@@ -151,7 +154,13 @@ func publishEvent(e cneevent.Event) {
 
 func server() {
 	http.HandleFunc("/ack/event", ackEvent)
-	http.ListenAndServe(localAPIAddr, nil)
+	server := &http.Server{
+		Addr:              localAPIAddr,
+		ReadHeaderTimeout: 3 * time.Second,
+	}
+	if err := server.ListenAndServe(); err != nil {
+		log.Errorf("error starting server on %s: %v", localAPIAddr, err)
+	}
 }
 
 func ackEvent(w http.ResponseWriter, req *http.Request) {
