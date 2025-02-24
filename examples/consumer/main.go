@@ -263,7 +263,12 @@ func server() {
 		url = ":9043"
 	}
 	log.Infof("Starting local API listening to %s", url)
-	err := http.ListenAndServe(url, nil)
+	server := &http.Server{
+		Addr:              url,
+		ReadHeaderTimeout: 3 * time.Second,
+	}
+
+	err := server.ListenAndServe()
 	if err != nil {
 		log.Errorf("error creating event server %s", err)
 	}
