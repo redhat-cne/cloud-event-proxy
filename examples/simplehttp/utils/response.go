@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"runtime/debug"
 )
 
 // RecoverFunc ...
 func RecoverFunc(rw http.ResponseWriter, callback func()) {
 	if err := recover(); err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "panic: %v\n%s", err, debug.Stack())
+		_, _ = fmt.Fprintf(os.Stderr, "panic: %v\n", err)
 		rw.Header().Set(
 			"X-Faas-Response-Error-Code", "function_panic",
 		)
