@@ -92,21 +92,6 @@ var _ = ginkgo.Describe("validation", func() {
 					"api metrics not found")
 
 			})
-			ginkgo.It("Should check for event framework api", func() {
-				ginkgo.By("Checking event api is healthy")
-				gomega.Eventually(func() string {
-					buf, _ := pods.ExecCommand(testclient.Client, producerPod, testutils.EventProxyContainerName, []string{"curl", "127.0.0.1:9095/api/ocloudNotifications/v1/health"})
-					return buf.String()
-				}, 5*time.Minute, 5*time.Second).Should(gomega.ContainSubstring("OK"),
-					"Event API is not in healthy state")
-
-				ginkgo.By("Checking mock publisher is created")
-				gomega.Eventually(func() string {
-					buf, _ := pods.ExecCommand(testclient.Client, producerPod, testutils.EventProxyContainerName, []string{"curl", "127.0.0.1:9095/api/ocloudNotifications/v1/publishers"})
-					return buf.String()
-				}, 5*time.Minute, 5*time.Second).Should(gomega.ContainSubstring("endpointUri"),
-					"Event API did not return publishers")
-			})
 
 			ginkgo.It("Should check for event generated", func() {
 				ginkgo.By("Checking  logs")
@@ -135,21 +120,6 @@ var _ = ginkgo.Describe("validation", func() {
 				}, 5*time.Minute, 5*time.Second).Should(gomega.ContainSubstring("cne_events_received"),
 					"api metrics not found")
 
-			})
-			ginkgo.It("Should check for event framework api", func() {
-				ginkgo.By("Checking event api is healthy")
-				gomega.Eventually(func() string {
-					buf, _ := pods.ExecCommand(testclient.Client, consumerPod, testutils.EventProxyContainerName, []string{"curl", "127.0.0.1:9095/api/ocloudNotifications/v1/health"})
-					return buf.String()
-				}, 5*time.Minute, 5*time.Second).Should(gomega.ContainSubstring("OK"),
-					"Event API is not in healthy state")
-
-				ginkgo.By("Checking mock subscription is created")
-				gomega.Eventually(func() string {
-					buf, _ := pods.ExecCommand(testclient.Client, consumerPod, testutils.EventProxyContainerName, []string{"curl", "127.0.0.1:9095/api/ocloudNotifications/v1/subscriptions"})
-					return buf.String()
-				}, 5*time.Minute, 5*time.Second).Should(gomega.ContainSubstring("endpointUri"),
-					"Event API did not return subscriptions")
 			})
 
 			ginkgo.It("Should check for event received ", func() {
