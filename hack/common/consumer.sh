@@ -53,8 +53,8 @@ spec:
           imagePullPolicy: Always
           args:
             - "--local-api-addr=127.0.0.1:9089"
-            - "--api-path=/api/ocloudNotifications/v1/"
-            - "--api-addr=127.0.0.1:9095"
+            - "--api-path=/api/ocloudNotifications/v2/"
+            - "--api-addr=127.0.0.1:9043"
             - "--http-event-publishers=$http_event_publishers"
           env:
             - name: NODE_NAME
@@ -72,7 +72,7 @@ spec:
             - "--store-path=/store"
             - "--transport-host=$transport_host"
             - "--http-event-publishers=$http_event_publishers"
-            - "--api-port=9095"
+            - "--api-port=9043"
           env:
             - name: NODE_NAME
               valueFrom:
