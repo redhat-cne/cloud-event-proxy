@@ -68,10 +68,10 @@ var (
 	scConfig                *common.SCConfiguration
 	metricsAddr             string
 	apiPath                 = "/api/ocloudNotifications/v2/"
-	pluginHandler      plugins.Handler
-	nodeName           string
-	namespace          string
-	isV1Api            bool
+	pluginHandler           plugins.Handler
+	nodeName                string
+	namespace               string
+	isV1Api                 bool
 )
 
 func main() {
