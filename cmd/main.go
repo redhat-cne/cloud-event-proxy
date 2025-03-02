@@ -71,7 +71,6 @@ var (
 	pluginHandler           plugins.Handler
 	nodeName                string
 	namespace               string
-	isV1Api                 bool
 )
 
 func main() {
@@ -150,16 +149,14 @@ func main() {
 	}()
 
 	pluginHandler = plugins.Handler{Path: "./plugins"}
-	isV1Api = common.IsV1Api(scConfig.APIVersion)
-	if isV1Api {
+	if common.IsV1Api(scConfig.APIVersion) {
 		log.Fatal("APIv1 is not supported since OCP v4.19.")
 	}
 	log.Infof(
-		"REST API config: version=%s, port=%d, path=%s, TransportHost.Port=%d.",
+		"REST API config: version=%s, port=%d, path=%s.",
 		scConfig.APIVersion,
 		scConfig.APIPort,
-		scConfig.APIPath,
-		scConfig.TransportHost.Port)
+		scConfig.APIPath)
 
 	// Enable pub/sub services
 	err = common.StartPubSubService(scConfig)
