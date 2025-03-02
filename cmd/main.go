@@ -67,10 +67,7 @@ var (
 	statusChannelBufferSize = 50
 	scConfig                *common.SCConfiguration
 	metricsAddr             string
-	apiPath                 = "/api/ocloudNotifications/v1/"
-	// Event API Version 2 is O-RAN V3.0 Compliant
-	apiPathV2          = "/api/ocloudNotifications/v2/"
-	httpEventPublisher string
+	apiPath                 = "/api/ocloudNotifications/v2/"
 	pluginHandler      plugins.Handler
 	nodeName           string
 	namespace          string
@@ -82,10 +79,10 @@ func main() {
 	common.InitLogger()
 	flag.StringVar(&metricsAddr, "metrics-addr", ":9091", "The address the metric endpoint binds to.")
 	flag.StringVar(&storePath, "store-path", ".", "The path to store publisher and subscription info.")
+	// TODO: Rename transportHost to apiHost, which requires changes in PTP Operator.
 	flag.StringVar(&transportHost, "transport-host", "http://ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043", "The transport bus hostname or service name.")
-	flag.IntVar(&apiPort, "api-port", 8089, "The address the rest api endpoint binds to.")
+	flag.IntVar(&apiPort, "api-port", 9043, "The address the rest api endpoint binds to.")
 	flag.StringVar(&apiVersion, "api-version", "2.0", "The address the rest api endpoint binds to.")
-	flag.StringVar(&httpEventPublisher, "http-event-publishers", "", "Comma separated address of the publishers available.")
 
 	flag.Parse()
 
@@ -157,10 +154,6 @@ func main() {
 	if isV1Api {
 		log.Fatal("APIv1 is not supported since OCP v4.19.")
 	}
-	tmpPort := scConfig.APIPort
-	scConfig.APIPort = scConfig.TransportHost.Port
-	scConfig.TransportHost.Port = tmpPort
-	scConfig.APIPath = apiPathV2
 	log.Infof(
 		"REST API config: version=%s, port=%d, path=%s, TransportHost.Port=%d.",
 		scConfig.APIVersion,
