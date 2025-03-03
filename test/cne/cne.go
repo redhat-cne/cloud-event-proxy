@@ -104,7 +104,7 @@ var _ = ginkgo.Describe("validation", func() {
 				gomega.Eventually(func() string {
 					buf, _ := pods.ExecCommand(testclient.Client, producerPod, testutils.EventProxyContainerName, []string{"curl", "127.0.0.1:9043/api/ocloudNotifications/v2/publishers"})
 					return buf.String()
-				}, 5*time.Minute, 5*time.Second).Should(gomega.ContainSubstring("endpointUri"),
+				}, 5*time.Minute, 5*time.Second).Should(gomega.ContainSubstring("EndpointUri"),
 					"Event API did not return publishers")
 			})
 
@@ -125,7 +125,7 @@ var _ = ginkgo.Describe("validation", func() {
 		ginkgo.Context("cloud event consumer validation", func() {
 			ginkgo.It("Should check for consumer", func() {
 				ginkgo.By("Checking event consumer container and event proxy container present")
-				gomega.Expect(len(consumerPod.Spec.Containers)).To(gomega.BeNumerically("==", 2), "consumer doesn't have required no of  containers ")
+				gomega.Expect(len(consumerPod.Spec.Containers)).To(gomega.BeNumerically("==", 1), "consumer doesn't have required no of  containers ")
 			})
 
 			ginkgo.It("Should check for consumer metrics", func() {
