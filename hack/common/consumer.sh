@@ -52,9 +52,10 @@ spec:
           image: "$CONSUMER_IMG"
           imagePullPolicy: Always
           args:
-            - "--local-api-addr=127.0.0.1:9089"
-            - "--api-path=/api/ocloudNotifications/v1/"
+            - "--local-api-addr=consumer-events-subscription-service.$consumer_namespace.svc.cluster.local:9043"
+            - "--api-path=/api/ocloudNotifications/v2/"
             - "--api-addr=127.0.0.1:9095"
+            - "--api-version=2.0"
             - "--http-event-publishers=$http_event_publishers"
           env:
             - name: NODE_NAME
@@ -65,29 +66,6 @@ spec:
               value: "$CONSUMER_TYPE"
             - name: ENABLE_STATUS_CHECK
               value: "true"
-        - name: cloud-event-proxy
-          image: "$CNE_IMG"
-          args:
-            - "--metrics-addr=127.0.0.1:9091"
-            - "--store-path=/store"
-            - "--transport-host=$transport_host"
-            - "--http-event-publishers=$http_event_publishers"
-            - "--api-port=9095"
-          env:
-            - name: NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-          volumeMounts:
-            - name: pubsubstore
-              mountPath: /store
-          ports:
-            - name: metrics-port
-              containerPort: 9091
-          resources:
-            requests:
-              cpu: 10m
-              memory: 20Mi
       volumes:
         - name: pubsubstore
           emptyDir: {}

@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	v1http "github.com/redhat-cne/sdk-go/v1/http"
 	"k8s.io/utils/pointer"
 
 	v2 "github.com/cloudevents/sdk-go/v2"
@@ -82,10 +81,8 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 		}
 		return nil
 	}
-	if httpInstance, ok := config.TransPortInstance.(*v1http.HTTP); ok {
-		httpInstance.SetOnStatusReceiveOverrideFn(onCurrentStateFn)
-	} else {
-		log.Error("could not set receiver for http ")
+	if !common.IsV1Api(config.APIVersion) {
+		config.RestAPI.SetOnStatusReceiveOverrideFn(onCurrentStateFn)
 	}
 
 	// create events periodically
