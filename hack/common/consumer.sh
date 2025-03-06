@@ -52,9 +52,10 @@ spec:
           image: "$CONSUMER_IMG"
           imagePullPolicy: Always
           args:
-            - "--local-api-addr=consumer-events-subscription-service.${NamespaceConsumerTesting}.svc.cluster.local:9043"
+            - "--local-api-addr=consumer-events-subscription-service.$consumer_namespace.svc.cluster.local:9043"
             - "--api-path=/api/ocloudNotifications/v2/"
-            - "--api-addr=127.0.0.1:9043"
+            - "--api-addr=127.0.0.1:9095"
+            - "--api-version=2.0"
             - "--http-event-publishers=$http_event_publishers"
           env:
             - name: NODE_NAME
