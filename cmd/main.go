@@ -150,7 +150,9 @@ func main() {
 
 	pluginHandler = plugins.Handler{Path: "./plugins"}
 	if common.IsV1Api(scConfig.APIVersion) {
-		log.Fatal("APIv1 is not supported since OCP v4.19.")
+		log.Fatal(
+			"REST API v1 is no longer supported. " +
+			"Please update the API version to 2.0.")
 	}
 	log.Infof(
 		"REST API config: version=%s, port=%d, path=%s.",
