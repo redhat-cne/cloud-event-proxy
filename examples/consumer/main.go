@@ -44,9 +44,6 @@ type ConsumerTypeEnum string
 
 var consumerType ConsumerTypeEnum
 
-// PublisherHealthOk ... check if publisher is oka assuming nly one publisher available
-var PublisherHealthOk bool
-
 const (
 	// PTP consumer
 	PTP ConsumerTypeEnum = "PTP"
@@ -54,8 +51,12 @@ const (
 	HW ConsumerTypeEnum = "HW"
 	// MOCK consumer
 	MOCK ConsumerTypeEnum = "MOCK"
-	// StatusCheckInterval for consumer to pull for status
-	StatusCheckInterval = 60
+	// HealthCheckInterval interval in seconds to ping publisher API health status
+	HealthCheckInterval = 30
+	// HealthCheckRetryInterval for each ping to publisher API health status, retry at this interval in seconds
+	HealthCheckRetryInterval = 2
+	// eventPullInterval interval in seconds for pulling events
+	eventPullInterval = 60
 )
 
 var (
@@ -67,9 +68,10 @@ var (
 	mockResource       = "/mock"
 	mockResourceKey    = "mock"
 	httpEventPublisher string
-	eventPublishers    = make(map[string]bool)
-	subs               []*pubsub.PubSub
-	isV1Api            bool
+	// map to track if subscriptions were created successfully for each publisher service
+	subscribed = make(map[string]bool)
+	subs       []*pubsub.PubSub
+	isV1Api    bool
 )
 
 func main() {
@@ -88,7 +90,7 @@ func main() {
 		nodeName = mockResourceKey
 	}
 
-	enableStatusCheck := common.GetBoolEnv("ENABLE_STATUS_CHECK")
+	enableEventPull := common.GetBoolEnv("ENABLE_STATUS_CHECK")
 
 	consumerTypeEnv := os.Getenv("CONSUMER_TYPE")
 	if consumerTypeEnv == "" {
@@ -127,45 +129,26 @@ func main() {
 	}
 
 	updateHTTPPublishers(nodeIP, nodeName, httpEventPublisher)
+	subscribeToEvents()
 
-	// ping for status every n secs
-	wg.Add(1)
-	go func() { // in this example there will be only one publisher
-		defer wg.Done()
-		for range time.Tick(StatusCheckInterval * time.Second) {
-			for p, currenStatus := range eventPublishers {
-				newStatus := publisherHealthCheck(p)
-				PublisherHealthOk = newStatus
-				eventPublishers[p] = newStatus
-				if newStatus && !currenStatus {
-					log.Info("subscribing to events")
-					subscribeToEvents()
-				} else if !newStatus && currenStatus {
-					deleteAllSubscriptions()
-					log.Info("delete subscription.")
-				}
-			}
-		}
-	}()
-
+	// ping publisher API health status
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if enableStatusCheck {
+		for range time.Tick(HealthCheckInterval * time.Second) {
+			subscribeToEvents()
+		}
+	}()
+
+	// if enabled, pull events periodically
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if enableEventPull {
 			time.Sleep(5 * time.Second)
-			if PublisherHealthOk {
-				for _, s := range subs {
-					getCurrentState(s.Resource)
-				}
-			}
-			for range time.Tick(StatusCheckInterval * time.Second) {
-				if PublisherHealthOk {
-					for _, s := range subs {
-						getCurrentState(s.Resource)
-					}
-				} else {
-					log.Info("skipping since publisher not available ")
-				}
+			pullEvents()
+			for range time.Tick(eventPullInterval * time.Second) {
+				pullEvents()
 			}
 		}
 	}()
@@ -182,6 +165,9 @@ func deleteAllSubscriptions() {
 		Path: fmt.Sprintf("%s%s", apiPath, "subscriptions")}}
 	rc := restclient.New()
 	rc.Delete(deleteURL)
+	for p := range subscribed {
+		subscribed[p] = false
+	}
 }
 
 func checkConsumerSidecarAPIHealth() {
@@ -195,26 +181,45 @@ RETRY:
 }
 
 func subscribeToEvents() {
-	// if AMQ enabled the subscription will create an AMQ listener client
-	// IF HTTP enabled, the subscription will post a subscription  requested to all
-	// publishers that are defined in http-event-publisher variable
-	for _, status := range eventPublishers {
-		if status {
-			for _, s := range subs {
-				su, e := createSubscription(s.Resource)
-				if e != nil {
-					log.Errorf("failed to create subscription: %v", e)
-				} else {
-					log.Infof("created subscription: %s", su.String())
-					s.URILocation = su.URILocation
-					s.ID = su.ID
-				}
+RETRY:
+	for p, subOK := range subscribed {
+		healthOK := publisherHealthCheck(p)
+		if subOK {
+			if !healthOK {
+				deleteAllSubscriptions()
+				log.Info("delete all subscriptions due to publisher health failure")
+				return
+			}
+			continue
+		}
+		if !healthOK {
+			continue
+		}
+		for _, s := range subs {
+			su, status, e := createSubscription(s.Resource)
+			if status == http.StatusConflict {
+				// if subscription for the resource already exist, current O-RAN REST API
+				// does not return subscription info. In order to find out which subscription
+				// has this resource we have to retrieve all subscriptions and search against
+				// the resource to find out the subscription ID.
+				// Delete all subscriptions and resubscribe to keep the example code simple.
+				log.Warnf("%s", e)
+				log.Infof("Delete and resubscribe")
+				deleteAllSubscriptions()
+				goto RETRY
+			} else if e != nil {
+				log.Errorf("failed to create subscription: %v", e)
+			} else {
+				log.Infof("created subscription: %s", su.String())
+				s.URILocation = su.URILocation
+				s.ID = su.ID
+				subscribed[p] = true
 			}
 		}
 	}
 }
-func createSubscription(resourceAddress string) (sub pubsub.PubSub, err error) {
-	var status int
+
+func createSubscription(resourceAddress string) (sub pubsub.PubSub, status int, err error) {
 	subURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
 		Path: fmt.Sprintf("%s%s", apiPath, "subscriptions")}}
@@ -227,13 +232,17 @@ func createSubscription(resourceAddress string) (sub pubsub.PubSub, err error) {
 
 	if subB, err = json.Marshal(&sub); err == nil {
 		rc := restclient.New()
-		if status, subB = rc.PostWithReturn(subURL, subB); status != http.StatusCreated {
-			err = fmt.Errorf("api at %s returned status %d for %s", subURL, status, resourceAddress)
-		} else {
+		status, subB = rc.PostWithReturn(subURL, subB)
+		if status == http.StatusCreated {
 			err = json.Unmarshal(subB, &sub)
+		} else {
+			err = fmt.Errorf("api at %s returned status %d for %s", subURL, status, resourceAddress)
+			if status == http.StatusConflict {
+				return
+			}
 		}
 	} else {
-		err = fmt.Errorf("failed to marshal subscription or %s", resourceAddress)
+		err = fmt.Errorf("failed to marshal subscription for %s", resourceAddress)
 	}
 	return
 }
@@ -366,6 +375,18 @@ func getUUID(s string) uuid.UUID {
 	return uuid.NewMD5(namespace, url)
 }
 
+func pullEvents() {
+	for _, subOK := range subscribed {
+		if !subOK {
+			log.Info("skipping getCurrentState() since publisher not available")
+			return
+		}
+	}
+	for _, s := range subs {
+		getCurrentState(s.Resource)
+	}
+}
+
 func publisherHealthCheck(apiAddr string) bool {
 	path := "health"
 	if !isV1Api {
@@ -374,7 +395,7 @@ func publisherHealthCheck(apiAddr string) bool {
 	healthURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
 		Path: path}}
-	ok, _ := common.APIHealthCheck(healthURL, 2*time.Second)
+	ok, _ := common.APIHealthCheck(healthURL, HealthCheckRetryInterval*time.Second)
 	return ok
 }
 
@@ -384,14 +405,8 @@ func updateHTTPPublishers(nodeIP, nodeName string, addr ...string) {
 			continue
 		}
 		publisherServiceName := common.SanitizeTransportHost(s, nodeIP, nodeName)
-		PublisherHealthOk = publisherHealthCheck(publisherServiceName)
-		eventPublishers[publisherServiceName] = PublisherHealthOk
-		if PublisherHealthOk {
-			log.Info("healthy publisher; subscribing to events")
-			subscribeToEvents()
-		}
-
-		log.Infof("publisher endpoint updated from %s to %s healthStatusOk %t", s, publisherServiceName, PublisherHealthOk)
+		subscribed[publisherServiceName] = false
+		log.Infof("publisher endpoint updated from %s to %s", s, publisherServiceName)
 	}
 }
 
