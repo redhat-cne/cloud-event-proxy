@@ -54,7 +54,7 @@ const (
 	// HealthCheckInterval interval in seconds to ping publisher API health status
 	HealthCheckInterval = 30
 	// HealthCheckRetryInterval for each ping to publisher API health status, retry at this interval in seconds
-	HealthCheckRetryInterval = 16
+	HealthCheckRetryInterval = 2
 	// eventPullInterval interval in seconds for pulling events
 	eventPullInterval = 60
 )
