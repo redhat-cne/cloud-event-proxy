@@ -214,6 +214,7 @@ RETRY:
 				s.URILocation = su.URILocation
 				s.ID = su.ID
 				subscribed[p] = true
+				pullEvents()
 			}
 		}
 	}
