@@ -52,7 +52,7 @@ spec:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
             - "--transport-host=$transport_host"
-            - "--api-port=9043"
+            - "--api-port=9045"
           env:
             - name: NODE_NAME
               valueFrom:
