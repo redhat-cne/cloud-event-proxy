@@ -26,7 +26,7 @@ var _ = ginkgo.Describe("validation", func() {
 	})
 
 	ginkgo.Context("cne", func() {
-		ginkgo.It("should have the all test  namespaces", func() {
+		ginkgo.It("should have the all test namespaces", func() {
 			_, err := testclient.Client.Namespaces().Get(context.Background(), testutils.NamespaceProducerTesting, metav1.GetOptions{})
 			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 			_, err = testclient.Client.Namespaces().Get(context.Background(), testutils.NamespaceConsumerTesting, metav1.GetOptions{})
@@ -34,29 +34,34 @@ var _ = ginkgo.Describe("validation", func() {
 		})
 
 		ginkgo.It("should have the event producer deployment in running state", func() {
-			deploy, err := testclient.Client.Deployments(testutils.NamespaceProducerTesting).Get(context.Background(), testutils.CloudEventProducerDeploymentName, metav1.GetOptions{})
-			gomega.Expect(err).ToNot(gomega.HaveOccurred())
-			gomega.Expect(deploy.Status.Replicas).To(gomega.Equal(deploy.Status.ReadyReplicas))
+			gomega.Eventually(func() corev1.PodPhase {
+				deploy, err := testclient.Client.Deployments(testutils.NamespaceProducerTesting).Get(context.Background(), testutils.CloudEventProducerDeploymentName, metav1.GetOptions{})
+				gomega.Expect(err).ToNot(gomega.HaveOccurred())
+				gomega.Expect(deploy.Status.Replicas).To(gomega.Equal(deploy.Status.ReadyReplicas))
 
-			pods, err := testclient.Client.Pods(testutils.NamespaceProducerTesting).List(context.Background(), metav1.ListOptions{
-				LabelSelector: "app=producer"})
-			gomega.Expect(err).ToNot(gomega.HaveOccurred())
+				pods, err := testclient.Client.Pods(testutils.NamespaceProducerTesting).List(context.Background(), metav1.ListOptions{
+					LabelSelector: "app=producer"})
+				gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
-			gomega.Expect(len(pods.Items)).To(gomega.Equal(1))
-			gomega.Expect(pods.Items[0].Status.Phase).To(gomega.Equal(corev1.PodRunning))
+				gomega.Expect(len(pods.Items)).To(gomega.Equal(1))
+				return pods.Items[0].Status.Phase
+			}, 5*time.Minute, 2*time.Second).Should(gomega.Equal(corev1.PodRunning))
 
 		})
 		ginkgo.It("should have the event consumer deployment in running state", func() {
-			deploy, err := testclient.Client.Deployments(testutils.NamespaceConsumerTesting).Get(context.Background(), testutils.CloudEventConsumerDeploymentName, metav1.GetOptions{})
-			gomega.Expect(err).ToNot(gomega.HaveOccurred())
-			gomega.Expect(deploy.Status.Replicas).To(gomega.Equal(deploy.Status.ReadyReplicas))
+			gomega.Eventually(func() corev1.PodPhase {
+				deploy, err := testclient.Client.Deployments(testutils.NamespaceConsumerTesting).Get(context.Background(), testutils.CloudEventConsumerDeploymentName, metav1.GetOptions{})
+				gomega.Expect(err).ToNot(gomega.HaveOccurred())
+				gomega.Expect(deploy.Status.Replicas).To(gomega.Equal(deploy.Status.ReadyReplicas))
 
-			pods, err := testclient.Client.Pods(testutils.NamespaceConsumerTesting).List(context.Background(), metav1.ListOptions{
-				LabelSelector: "app=consumer"})
-			gomega.Expect(err).ToNot(gomega.HaveOccurred())
+				pods, err := testclient.Client.Pods(testutils.NamespaceConsumerTesting).List(context.Background(), metav1.ListOptions{
+					LabelSelector: "app=consumer"})
+				gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
-			gomega.Expect(len(pods.Items)).To(gomega.BeNumerically(">", 0), "consumer is not deployed in the cluster")
-			gomega.Expect(pods.Items[0].Status.Phase).To(gomega.Equal(corev1.PodRunning))
+				gomega.Expect(len(pods.Items)).To(gomega.Equal(1))
+				return pods.Items[0].Status.Phase
+			}, 5*time.Minute, 2*time.Second).Should(gomega.Equal(corev1.PodRunning))
+
 		})
 	})
 
