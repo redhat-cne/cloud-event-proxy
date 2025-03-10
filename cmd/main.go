@@ -25,7 +25,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path"
 	"sync"
 	"syscall"
 	"time"
@@ -55,7 +54,6 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	sdkMetrics "github.com/redhat-cne/sdk-go/pkg/localmetrics"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
-	v1http "github.com/redhat-cne/sdk-go/v1/http"
 	subscriberApi "github.com/redhat-cne/sdk-go/v1/subscriber"
 )
 
@@ -69,14 +67,10 @@ var (
 	statusChannelBufferSize = 50
 	scConfig                *common.SCConfiguration
 	metricsAddr             string
-	apiPath                 = "/api/ocloudNotifications/v1/"
-	// Event API Version 2 is O-RAN V3.0 Compliant
-	apiPathV2          = "/api/ocloudNotifications/v2/"
-	httpEventPublisher string
-	pluginHandler      plugins.Handler
-	nodeName           string
-	namespace          string
-	isV1Api            bool
+	apiPath                 = "/api/ocloudNotifications/v2/"
+	pluginHandler           plugins.Handler
+	nodeName                string
+	namespace               string
 )
 
 func main() {
@@ -84,10 +78,10 @@ func main() {
 	common.InitLogger()
 	flag.StringVar(&metricsAddr, "metrics-addr", ":9091", "The address the metric endpoint binds to.")
 	flag.StringVar(&storePath, "store-path", ".", "The path to store publisher and subscription info.")
+	// TODO: Rename transportHost to apiHost, which requires changes in PTP Operator.
 	flag.StringVar(&transportHost, "transport-host", "http://ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043", "The transport bus hostname or service name.")
-	flag.IntVar(&apiPort, "api-port", 8089, "The address the rest api endpoint binds to.")
-	flag.StringVar(&apiVersion, "api-version", "1.0", "The address the rest api endpoint binds to.")
-	flag.StringVar(&httpEventPublisher, "http-event-publishers", "", "Comma separated address of the publishers available.")
+	flag.IntVar(&apiPort, "api-port", 9043, "The address the rest api endpoint binds to.")
+	flag.StringVar(&apiVersion, "api-version", "2.0", "The address the rest api endpoint binds to.")
 
 	flag.Parse()
 
@@ -103,10 +97,7 @@ func main() {
 	nodeIP := os.Getenv("NODE_IP")
 	nodeName = os.Getenv("NODE_NAME")
 	namespace = os.Getenv("NAME_SPACE")
-
 	transportHost = common.SanitizeTransportHost(transportHost, nodeIP, nodeName)
-	eventPublishers := updateHTTPPublishers(nodeIP, nodeName, httpEventPublisher)
-
 	parsedTransportHost := &common.TransportHost{URL: transportHost}
 
 	parsedTransportHost.ParseTransportHost()
@@ -158,39 +149,22 @@ func main() {
 	}()
 
 	pluginHandler = plugins.Handler{Path: "./plugins"}
-	isV1Api = common.IsV1Api(scConfig.APIVersion)
-	// make PubSub REST API accessible by event service ptp-event-publisher-service-NODE_NAME
-	if !isV1Api {
-		// switch between Internal API port and PubSub port
-		tmpPort := scConfig.APIPort
-		scConfig.APIPort = scConfig.TransportHost.Port
-		scConfig.TransportHost.Port = tmpPort
-		scConfig.APIPath = apiPathV2
-		log.Infof("v2 rest api set scConfig.APIPort=%d, scConfig.APIPath=%s, scConfig.TransportHost.Port=%d", scConfig.APIPort, scConfig.APIPath, scConfig.TransportHost.Port)
+	if common.IsV1Api(scConfig.APIVersion) {
+		log.Fatal("REST API v1 is no longer supported. " +
+			"Please update the API version to 2.0.")
 	}
+	log.Infof(
+		"REST API config: version=%s, port=%d, path=%s.",
+		scConfig.APIVersion,
+		scConfig.APIPort,
+		scConfig.APIPath)
 
-	var transportEnabled bool
-	if scConfig.TransportHost.Type == common.HTTP && isV1Api {
-		transportEnabled = enableHTTPTransport(&wg, eventPublishers)
-	} else {
-		transportEnabled = false
-	}
-
-	// if all transport types failed then process internally
-	if !transportEnabled && isV1Api {
-		log.Errorf("No transport is enabled for sending events %s", scConfig.TransportHost.String())
-		wg.Add(1)
-		go ProcessInChannel(&wg, scConfig)
-	}
-
-	/* Enable pub/sub services */
+	// Enable pub/sub services
 	err = common.StartPubSubService(scConfig)
 	if err != nil {
 		log.Fatal("pub/sub service API failed to start.")
 	}
 
-	// load all publishers or subscribers from the existing store files.
-	loadFromPubSubStore()
 	// assume this depends on rest plugin, or you can use api to create subscriptions
 	if common.GetBoolEnv("PTP_PLUGIN") {
 		if ptpPluginError := pluginHandler.LoadPTPPlugin(&wg, scConfig, nil); ptpPluginError != nil {
@@ -432,72 +406,6 @@ func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 			return
 		}
 	}
-}
-
-func loadFromPubSubStore() {
-	if scConfig.TransportHost.Type == common.HTTP {
-		subs := scConfig.PubSubAPI.GetSubscriptions() // the publisher won't have any subscription usually the consumer gets this publisher
-		for _, sub := range subs {
-			v1http.CreateSubscription(scConfig.EventInCh, sub.ID, sub.Resource)
-		}
-	}
-}
-
-func enableHTTPTransport(wg *sync.WaitGroup, eventPublishers []string) bool {
-	log.Infof("HTTP enabled as event transport %s", scConfig.TransportHost.String())
-	var httpServer *v1http.HTTP
-	httpServer, err := pluginHandler.LoadHTTPPlugin(wg, scConfig, nil, nil)
-	if err != nil {
-		log.Warnf("failed to load http plugin for tansport %s", err.Error())
-		scConfig.PubSubAPI.DisableTransport()
-		return false
-	}
-	/*** wait till you get the publisher service running  */
-	time.Sleep(5 * time.Second)
-RETRY:
-	tHost := types.ParseURI(scConfig.TransportHost.URI.String())
-	if ok := httpServer.IsReadyToServe(tHost); !ok {
-		goto RETRY
-	}
-
-	scConfig.TransPortInstance = httpServer
-	// TODO: Need a Better way to know if this publisher or consumer
-	if common.GetBoolEnv("PTP_PLUGIN") || common.GetBoolEnv("HW_PLUGIN") {
-		httpServer.RegisterPublishers(types.ParseURI(scConfig.TransportHost.URL))
-	}
-	for _, s := range eventPublishers {
-		if s == "" {
-			continue
-		}
-		th := common.TransportHost{URL: s}
-		th.ParseTransportHost()
-		if th.URI != nil {
-			s = th.URI.String()
-			th.URI.Path = path.Join(th.URI.Path, "health")
-			if ok, _ := common.HTTPTransportHealthCheck(th.URI, 2*time.Second); !ok {
-				log.Warningf("health check failed for transport %s", s)
-			}
-			log.Infof("Registering publisher %s", s)
-			httpServer.RegisterPublishers(types.ParseURI(s))
-		} else {
-			log.Errorf("failed to parse publisher url %s", s)
-		}
-	}
-
-	log.Infof("following publishers are registered %s", eventPublishers)
-	return true
-}
-
-func updateHTTPPublishers(nodeIP, nodeName string, addr ...string) (httpPublishers []string) {
-	for _, s := range addr {
-		if s == "" {
-			continue
-		}
-		publisherServiceName := common.SanitizeTransportHost(s, nodeIP, nodeName)
-		httpPublishers = append(httpPublishers, publisherServiceName)
-		log.Infof("publisher endpoint updated from %s to %s", s, publisherServiceName)
-	}
-	return httpPublishers
 }
 
 func cleanupConfigMap(clientID uuid.UUID) {
