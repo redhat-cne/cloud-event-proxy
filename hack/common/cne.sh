@@ -53,7 +53,7 @@ spec:
             - "--store-path=/store"
             - "--transport-host=$transport_host"
             - "--api-version=2.0"
-            - "--api-port=9095"
+            - "--api-port=9043"
           env:
             - name: NODE_NAME
               valueFrom:
