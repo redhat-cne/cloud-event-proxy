@@ -30,7 +30,6 @@ import (
 	ce "github.com/cloudevents/sdk-go/v2/event"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
-	"github.com/redhat-cne/sdk-go/pkg/event"
 	ptpEvent "github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	redfishEvent "github.com/redhat-cne/sdk-go/pkg/event/redfish"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
@@ -293,18 +292,6 @@ func ackEvent(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func processEvent(data []byte) {
-	var e event.Event
-	if err := json.Unmarshal(data, &e); err != nil {
-		log.Errorf("failed to unmarshal event, %v", err)
-		return
-	}
-	latency := time.Now().UnixMilli() - e.GetTime().UnixMilli()
-	// set log to Info level for performance measurement
-	log.Infof("Latency for the event: %v ms", latency)
-	log.Infof("Event: %s", e.String())
-}
-
 func processEventV2(data []byte) error {
 	var e ce.Event
 	if err := json.Unmarshal(data, &e); err != nil {
@@ -360,8 +347,7 @@ func pullEvents() {
 }
 
 func publisherHealthCheck(apiAddr string) bool {
-	path := "health"
-	path = fmt.Sprintf("%s%s", apiPath, "health")
+	path := fmt.Sprintf("%s%s", apiPath, "health")
 	healthURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
 		Path: path}}
