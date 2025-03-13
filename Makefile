@@ -123,34 +123,50 @@ gha:
 	rm -rf /tmp/sub-store && mkdir -p /tmp/sub-store
 	GO111MODULE=off STORE_PATH=/tmp/sub-store go test ./... --tags=unittests -coverprofile=cover.out
 
-docker-build: #test ## Build docker image with the manager.
-	docker build --no-cache -t ${IMG} .
 
-docker-push: ## Push docker image with the manager.
+docker-build:
+	# make sure build the right target when developer using a Mac
+	if [ "$(OS)" = "Darwin" ]; then \
+		sed 's|^FROM \(.*\) AS bin|FROM --platform=linux/x86_64 \1 AS bin|' Dockerfile > Dockerfile.tmp; \
+		docker build --no-cache -t ${IMG} -f Dockerfile.tmp .; \
+		rm Dockerfile.tmp; \
+	else \
+		docker build --no-cache -t ${IMG} .; \
+	fi
+
+docker-push:
 	docker push ${IMG}
 
-docker-build-consumer: #test ## Build docker image with the manager.
-	docker build -f ./examples/consumer.Dockerfile -t ${CONSUMER_IMG} .
+docker-build-consumer:
+	# make sure build the right target when developer using a Mac
+	if [ "$(OS)" = "Darwin" ]; then \
+		sed -e 's|^FROM \(.*\) AS builder|FROM --platform=linux/x86_64 \1 AS builder|' \
+		-e 's|^FROM \(.*\) AS bin|FROM --platform=linux/x86_64 \1 AS bin|' ./examples/consumer.Dockerfile > ./examples/Dockerfile.tmp; \
+		docker build -f ./examples/Dockerfile.tmp -t ${CONSUMER_IMG} .; \
+		rm ./examples/Dockerfile.tmp; \
+	else \
+		docker build -f ./examples/consumer.Dockerfile -t ${CONSUMER_IMG} .; \
+	fi
 
-docker-push-consumer: ## Push docker image with the manager.
+docker-push-consumer:
 	docker push ${CONSUMER_IMG}
 
-podman-build: #test ## Build docker image with the manager.
+podman-build:
 	podman build --no-cache -t ${IMG} .
 
-podman-build-dlv: #test ## Build docker image with the manager.
+podman-build-dlv:
 	podman build -f Dockerfile.dlv --no-cache -t ${IMG} .
 
-podman-push: ## Push docker image with the manager.
+podman-push:
 	podman push ${IMG}
 
-podman-build-consumer: #test ## Build docker image with the manager.
+podman-build-consumer:
 	podman build -f ./examples/consumer.Dockerfile -t ${CONSUMER_IMG} .
 
-podman-build-consumer-dlv: #test ## Build docker image with the manager.
+podman-build-consumer-dlv:
 	podman build -f ./examples/consumer.Dockerfile.dlv -t ${CONSUMER_IMG} .
 
-podman-push-consumer: ## Push docker image with the manager.
+podman-push-consumer:
 	podman push ${CONSUMER_IMG}
 
 fmt: ## Go fmt your code
