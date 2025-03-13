@@ -1,6 +1,7 @@
 module github.com/redhat-cne/cloud-event-proxy
 
 go 1.22
+toolchain go1.23.7
 
 require (
 	github.com/blang/semver v3.5.1+incompatible
@@ -16,7 +17,7 @@ require (
 	github.com/redhat-cne/sdk-go v1.22.3
 	github.com/sirupsen/logrus v1.9.0
 	github.com/stretchr/testify v1.8.1
-	golang.org/x/net v0.33.0
+	golang.org/x/net v0.36.0
 	k8s.io/api v0.26.0
 	k8s.io/apiextensions-apiserver v0.24.2
 	k8s.io/apimachinery v0.26.3
@@ -59,9 +60,9 @@ require (
 	go.uber.org/multierr v1.10.0 // indirect
 	go.uber.org/zap v1.26.0 // indirect
 	golang.org/x/oauth2 v0.5.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
-	golang.org/x/term v0.27.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/term v0.29.0 // indirect
+	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
