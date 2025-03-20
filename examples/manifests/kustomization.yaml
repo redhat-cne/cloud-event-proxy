@@ -3,7 +3,6 @@ kind: Kustomization
 resources:
 - namespace.yaml
 - service-account.yaml
-- roles.yaml
 - service.yaml
 - consumer.yaml
 replicas:
@@ -11,8 +10,5 @@ replicas:
   name: cloud-consumer-deployment
 images:
 - name: cloud-event-consumer
-  newName: quay.io/redhat-cne/cloud-event-consumer
-  newTag: latest
-- name: cloud-event-sidecar
-  newName: quay.io/openshift/origin-cloud-event-proxy
-  newTag: latest
+  newName: quay.io/jacding/cloud-event-consumer
+  newTag: remove-v1
