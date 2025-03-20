@@ -81,9 +81,8 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 		}
 		return nil
 	}
-	if !common.IsV1Api(config.APIVersion) {
-		config.RestAPI.SetOnStatusReceiveOverrideFn(onCurrentStateFn)
-	}
+
+	config.RestAPI.SetOnStatusReceiveOverrideFn(onCurrentStateFn)
 
 	// create events periodically
 	time.Sleep(5 * time.Second)
