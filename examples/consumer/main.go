@@ -30,7 +30,6 @@ import (
 	ce "github.com/cloudevents/sdk-go/v2/event"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
-	"github.com/redhat-cne/sdk-go/pkg/event"
 	ptpEvent "github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	redfishEvent "github.com/redhat-cne/sdk-go/pkg/event/redfish"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
@@ -60,9 +59,9 @@ const (
 )
 
 var (
-	apiAddr            = "localhost:8089"
-	apiPath            = "/api/ocloudNotifications/v1/"
-	apiVersion         = "1.0"
+	apiAddr            = "localhost:9043"
+	apiPath            = "/api/ocloudNotifications/v2/"
+	apiVersion         = "2.0"
 	localAPIAddr       = "localhost:8989"
 	resourcePrefix     = "/cluster/node/%s%s"
 	mockResource       = "/mock"
@@ -71,15 +70,14 @@ var (
 	// map to track if subscriptions were created successfully for each publisher service
 	subscribed = make(map[string]bool)
 	subs       []*pubsub.PubSub
-	isV1Api    bool
 )
 
 func main() {
 	common.InitLogger()
 	flag.StringVar(&localAPIAddr, "local-api-addr", "localhost:8989", "The address the local api binds to .")
-	flag.StringVar(&apiPath, "api-path", "/api/ocloudNotifications/v1/", "The rest api path.")
-	flag.StringVar(&apiAddr, "api-addr", "localhost:8089", "The address the framework api endpoint binds to.")
-	flag.StringVar(&apiVersion, "api-version", "1.0", "The version of Cloud Events Rest Api.")
+	flag.StringVar(&apiPath, "api-path", "/api/ocloudNotifications/v2/", "The rest api path.")
+	flag.StringVar(&apiAddr, "api-addr", "localhost:9043", "The address the framework api endpoint binds to.")
+	flag.StringVar(&apiVersion, "api-version", "2.0", "The version of Cloud Events Rest Api.")
 	flag.StringVar(&httpEventPublisher, "http-event-publishers", "", "Comma separated address of the publishers available.")
 	flag.Parse()
 
@@ -89,38 +87,31 @@ func main() {
 		log.Error("cannot find NODE_NAME environment variable,setting to default `mock` node")
 		nodeName = mockResourceKey
 	}
-
 	enableEventPull := common.GetBoolEnv("ENABLE_STATUS_CHECK")
-
 	consumerTypeEnv := os.Getenv("CONSUMER_TYPE")
 	if consumerTypeEnv == "" {
 		consumerType = MOCK
 	} else {
 		consumerType = ConsumerTypeEnum(consumerTypeEnv)
 	}
-
-	isV1Api = common.IsV1Api(apiVersion)
-
-	if !isV1Api {
-		// get the first publisher and replace the apiAddr
-		apiAddr = getFirstHTTPPublishers(nodeIP, nodeName, httpEventPublisher)
-		if apiAddr == "" {
-			log.Error("cannot find publisher,setting to default `\"localhost:8089\"` address")
-		}
-		apiPath = "/api/ocloudNotifications/v2/"
-		log.Infof("apiVersion=%s, updated apiAddr=%s, apiPath=%s", apiVersion, apiAddr, apiPath)
+	if common.IsV1Api(apiVersion) {
+		log.Fatal("REST API v1 is no longer supported. " +
+			"Please update the API version to 2.0.")
 	}
-
-	subscribeTo := initSubscribers(consumerType, isV1Api)
+	apiAddr = getFirstHTTPPublishers(nodeIP, nodeName, httpEventPublisher)
+	if apiAddr == "" {
+		log.Error("cannot find publisher,setting to default `\"localhost:8089\"` address")
+	}
+	log.Infof(
+		"REST API config: version=%s, addr=%s, path=%s.",
+		apiVersion,
+		apiAddr,
+		apiPath)
+	subscribeTo := initSubscribers(consumerType)
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go server() // spin local api
 	time.Sleep(5 * time.Second)
-
-	if isV1Api {
-		checkConsumerSidecarAPIHealth()
-	}
-
 	for _, resource := range subscribeTo {
 		subs = append(subs, &pubsub.PubSub{
 			ID:       getUUID(fmt.Sprintf(resourcePrefix, nodeName, resource)).String(),
@@ -167,16 +158,6 @@ func deleteAllSubscriptions() {
 	rc.Delete(deleteURL)
 	for p := range subscribed {
 		subscribed[p] = false
-	}
-}
-
-func checkConsumerSidecarAPIHealth() {
-	healthURL := &types.URI{URL: url.URL{Scheme: "http",
-		Host: apiAddr,
-		Path: fmt.Sprintf("%s%s", apiPath, "health")}}
-RETRY:
-	if ok, _ := common.APIHealthCheck(healthURL, 2*time.Second); !ok {
-		goto RETRY
 	}
 }
 
@@ -267,11 +248,7 @@ func getCurrentState(resource string) {
 func server() {
 	http.HandleFunc("/event", getEvent)
 	http.HandleFunc("/ack/event", ackEvent)
-	url := localAPIAddr
-	if !isV1Api {
-		// this provides consumer-events-subscription-service.cloud-events.svc.cluster.local:9043
-		url = ":9043"
-	}
+	url := ":9043"
 	log.Infof("Starting local API listening to %s", url)
 	server := &http.Server{
 		Addr:              url,
@@ -293,13 +270,9 @@ func getEvent(w http.ResponseWriter, req *http.Request) {
 	e := string(bodyBytes)
 	if e != "" {
 		log.Infof("received event %s", string(bodyBytes))
-		if isV1Api {
-			processEvent(bodyBytes)
-		} else {
-			if err = processEventV2(bodyBytes); err != nil {
-				w.WriteHeader(http.StatusBadRequest)
-				return
-			}
+		if err = processEventV2(bodyBytes); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -319,18 +292,6 @@ func ackEvent(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func processEvent(data []byte) {
-	var e event.Event
-	if err := json.Unmarshal(data, &e); err != nil {
-		log.Errorf("failed to unmarshal event, %v", err)
-		return
-	}
-	latency := time.Now().UnixMilli() - e.GetTime().UnixMilli()
-	// set log to Info level for performance measurement
-	log.Infof("Latency for the event: %v ms", latency)
-	log.Infof("Event: %s", e.String())
-}
-
 func processEventV2(data []byte) error {
 	var e ce.Event
 	if err := json.Unmarshal(data, &e); err != nil {
@@ -344,15 +305,12 @@ func processEventV2(data []byte) error {
 	return nil
 }
 
-func initSubscribers(cType ConsumerTypeEnum, v1Api bool) map[string]string {
+func initSubscribers(cType ConsumerTypeEnum) map[string]string {
 	subscribeTo := make(map[string]string)
 	switch cType {
 	case PTP:
 		subscribeTo[string(ptpEvent.OsClockSyncStateChange)] = string(ptpEvent.OsClockSyncState)
 		subscribeTo[string(ptpEvent.PtpClockClassChange)] = string(ptpEvent.PtpClockClass)
-		if v1Api {
-			subscribeTo[string(ptpEvent.PtpClockClassChange)] = string(ptpEvent.PtpClockClassV1)
-		}
 		subscribeTo[string(ptpEvent.PtpStateChange)] = string(ptpEvent.PtpLockState)
 		subscribeTo[string(ptpEvent.GnssStateChange)] = string(ptpEvent.GnssSyncStatus)
 		subscribeTo[string(ptpEvent.SyncStateChange)] = string(ptpEvent.SyncStatusState)
@@ -389,10 +347,7 @@ func pullEvents() {
 }
 
 func publisherHealthCheck(apiAddr string) bool {
-	path := "health"
-	if !isV1Api {
-		path = fmt.Sprintf("%s%s", apiPath, "health")
-	}
+	path := fmt.Sprintf("%s%s", apiPath, "health")
 	healthURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
 		Path: path}}
