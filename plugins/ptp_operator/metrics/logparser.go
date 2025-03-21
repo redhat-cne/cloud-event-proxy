@@ -307,7 +307,9 @@ func extractPTP4lEventState(output string, isFollowerOnly bool) (portID int, rol
 	} else if strings.Contains(output, "SLAVE to LISTENING") {
 		role = types.LISTENING
 		clockState = ptp.HOLDOVER
-	} else if strings.Contains(output, "FAULTY to LISTENING") && isFollowerOnly {
+	} else if (strings.Contains(output, "FAULTY to LISTENING") ||
+		strings.Contains(output, "UNCALIBRATED to LISTENING") ||
+		strings.Contains(output, "INITIALIZING to LISTENING")) && isFollowerOnly {
 		role = types.LISTENING
 	}
 	return
