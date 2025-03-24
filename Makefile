@@ -40,6 +40,9 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 KUSTOMIZE_VERSION ?= v4.5.7
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 
+GIT_COMMIT=$(shell git rev-list -1 HEAD)
+LINKER_RELEASE_FLAGS=-X main.GitCommit=$(GIT_COMMIT)
+
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
 $(KUSTOMIZE): $(LOCALBIN)
@@ -61,7 +64,7 @@ build:build-plugins test
 	go build -o ./build/cloud-event-proxy cmd/main.go
 
 build-only:
-	go build -o ./build/cloud-event-proxy cmd/main.go
+	go build -ldflags "${LINKER_RELEASE_FLAGS}" -o ./build/cloud-event-proxy cmd/main.go
 
 build-examples:
 	go build -o ./build/cloud-event-consumer ./examples/consumer/main.go
