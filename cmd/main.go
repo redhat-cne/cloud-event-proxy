@@ -71,9 +71,13 @@ var (
 	pluginHandler           plugins.Handler
 	nodeName                string
 	namespace               string
+
+	// Git commit of current build set at build time
+	GitCommit = "Undefined"
 )
 
 func main() {
+	fmt.Printf("Git commit: %s\n", GitCommit)
 	// init
 	common.InitLogger()
 	flag.StringVar(&metricsAddr, "metrics-addr", ":9091", "The address the metric endpoint binds to.")
