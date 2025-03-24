@@ -4,12 +4,14 @@
 package metrics_test
 
 import (
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
 	"testing"
 
 	ptpConfig "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/config"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/stats"
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
+	"sync"
 )
 
 func TestPTPEventManager_GenPTPEvent(t *testing.T) {
@@ -131,4 +133,58 @@ func TestPTPEventManager_GenPTPEvent(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestConcurrentMapAccess(t *testing.T) {
+	// Initialize the PTPEventManager with a map and a mutex
+	manager := &metrics.PTPEventManager{
+		Stats: map[types.ConfigName]stats.PTPStats{},
+		PtpConfigMapUpdates: &ptpConfig.LinuxPTPConfigMapUpdate{
+			EventThreshold: map[string]*ptpConfig.PtpClockThreshold{
+				"ptofile": {
+					MaxOffsetThreshold: 500,
+					MinOffsetThreshold: 10,
+				},
+			},
+		},
+	}
+	manager.MockTest(true)
+	// Function to simulate concurrent writes
+	writeFunc := func(wg *sync.WaitGroup, key string, value stats.PTPStats) {
+		defer wg.Done()
+		manager.GetStats(types.ConfigName(configName))
+	}
+
+	// Function to simulate concurrent reads
+	readFunc := func(wg *sync.WaitGroup, key types.ConfigName) {
+		defer wg.Done()
+		manager.GetStats(key)
+	}
+	// Function to simulate concurrent reads
+	readInterfaceFunc := func(wg *sync.WaitGroup, key types.ConfigName) {
+		defer wg.Done()
+		manager.GetStatsForInterface(types.ConfigName("profile"), types.IFace("ens10"))
+	}
+
+	var wg sync.WaitGroup
+	numGoroutines := 1000
+
+	// Start multiple goroutines to write to the map
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go writeFunc(&wg, "key", stats.PTPStats{})
+	}
+
+	// Start multiple goroutines to read from the map
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go readFunc(&wg, "key")
+	}
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go readInterfaceFunc(&wg, "key")
+	}
+
+	// Wait for all goroutines to finish
+	wg.Wait()
 }
