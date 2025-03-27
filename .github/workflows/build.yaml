@@ -34,16 +34,17 @@ jobs:
           context: .
           file: examples/consumer.Dockerfile
           platforms: ${{ matrix.platform }}
-          push: ${{ github.repository_owner == 'redhat-cne' }}
+          # push: ${{ github.repository_owner == 'redhat-cne' }}
+          push: true
+          # Disable attestations
+          provenance: false
+          sbom: false
           tags: |
             quay.io/redhat-cne/cloud-event-consumer:${{ github.ref_name }}-${{ matrix.arch }}
-            quay.io/redhat-cne/cloud-event-consumer:${{ github.ref_name }}
 
   create-manifest:
     runs-on: ubuntu-latest
     needs: build
-    env:
-      BRANCH_SANITIZED: ${{ needs.build.outputs.BRANCH_SANITIZED }}
     steps:
       - name: Log in to Quay.io
         if: ${{ github.repository_owner == 'redhat-cne' }}
