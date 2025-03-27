@@ -1,7 +1,9 @@
 name: Build and Push Consumer Image
 on:
   push:
-    branches: [ consumer-test ]
+    branches: [ consumer-test, main, release-4.18 ]
+env:
+  VERSION: ${{ github.ref_name == 'main' && 'latest' || github.ref_name == 'release-4.18' && 'release-4.18' || github.ref_name == 'consumer-test' && 'release-4.18' }}
 jobs:
   build:
     runs-on: ubuntu-latest
