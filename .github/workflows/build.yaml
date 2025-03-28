@@ -1,9 +1,12 @@
+# We only build consumer images for main (label: latest) and release-4.18 (label: 4.18) branches.
+# 4.18 consumer is the last version to support v1 events, which is used for 4.18 and earlier releases.
+# For 4.19+ releases (v2 events only) we always use main branch for consumer.
 name: Build and Push Consumer Image
 on:
   push:
     branches: [ main, release-4.18 ]
 env:
-  VERSION: ${{ github.ref_name == 'main' && 'latest' || github.ref_name == 'release-4.18' && 'release-4.18' }}
+  VERSION: ${{ github.ref_name == 'main' && 'latest' || github.ref_name == 'release-4.18' && '4.18' }}
 jobs:
   build:
     runs-on: ubuntu-latest
