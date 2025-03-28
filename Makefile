@@ -122,10 +122,7 @@ gha:
 docker-build:
 	# make sure build the right target when developer using a Mac
 	if [ "$(OS)" = "Darwin" ]; then \
-		sed -e 's|^FROM \(.*\) AS builder|FROM --platform=linux/amd64 \1 AS builder|' \
-		-e 's|^FROM \(.*\) AS bin|FROM --platform=linux/amd64 \1 AS bin|' Dockerfile > Dockerfile.tmp; \
-		docker build --no-cache -t ${IMG} -f Dockerfile.tmp .; \
-		rm Dockerfile.tmp; \
+		docker build --no-cache --platform=linux/amd64 -t ${IMG} .; \
 	else \
 		docker build --no-cache -t ${IMG} .; \
 	fi
@@ -136,10 +133,7 @@ docker-push:
 docker-build-consumer:
 	# make sure build the right target when developer using a Mac
 	if [ "$(OS)" = "Darwin" ]; then \
-		sed -e 's|^FROM \(.*\) AS builder|FROM --platform=linux/amd64 \1 AS builder|' \
-		-e 's|^FROM \(.*\) AS bin|FROM --platform=linux/amd64 \1 AS bin|' ./examples/consumer.Dockerfile > ./examples/Dockerfile.tmp; \
-		docker build -f ./examples/Dockerfile.tmp -t ${CONSUMER_IMG} .; \
-		rm ./examples/Dockerfile.tmp; \
+		docker build --platform=linux/amd64 -f ./examples/consumer.Dockerfile -t ${CONSUMER_IMG} .; \
 	else \
 		docker build -f ./examples/consumer.Dockerfile -t ${CONSUMER_IMG} .; \
 	fi
