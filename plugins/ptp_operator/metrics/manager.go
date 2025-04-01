@@ -535,3 +535,28 @@ func (p *PTPEventManager) HAProfiles() (profiles []string) {
 	}
 	return
 }
+func (p *PTPEventManager) ListHAProfilesWith(currentProfile string) (profiles []string) {
+	// Check if PtpSettings exist, if so proceed
+	if len(strings.TrimSpace(currentProfile)) == 0 {
+		return
+	}
+	if p.PtpConfigMapUpdates.PtpSettings != nil {
+		p.lock.RLock()
+		defer p.lock.RUnlock()
+		for _, ptpSettings := range p.PtpConfigMapUpdates.PtpSettings {
+			if ptpSettings != nil {
+				if haProfileStr, ok := ptpSettings["haProfiles"]; ok {
+					// Split the profiles string by comma (assuming it's comma-separated)
+					haProfiles := strings.Split(haProfileStr, ",")
+					for _, profile := range haProfiles {
+						if strings.TrimSpace(profile) == currentProfile {
+							// Return all profiles in the same HA group
+							return haProfiles
+						}
+					}
+				}
+			}
+		}
+	}
+	return
+}
