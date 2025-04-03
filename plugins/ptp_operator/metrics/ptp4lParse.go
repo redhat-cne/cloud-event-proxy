@@ -129,11 +129,29 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 				// Put CLOCK_REALTIME in FREERUN state
 				var ptpOpts *ptpConfig.PtpProcessOpts
 				var ok bool
+				publishOSClockSyncStateChangeEvent := false
+				// in the case of non ha interface is down and has phc2sys enabled, we need to set CLOCK_REALTIME to FREERUN
+				// when clock is in holodover state, where sync is lost OS CLOCK sets to FREERUN
 				if ptpOpts, ok = p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && ptpOpts != nil && ptpOpts.Phc2SysEnabled() {
+					publishOSClockSyncStateChangeEvent = true
+				} else if haProfiles := p.ListHAProfilesWith(profileName); len(haProfiles) > 0 {
+					// if ha profile then if all HA profiles are in FAULTY state only then set FREERUN for CLOCK_REALTIME
+					publishOSClockSyncStateChangeEvent = true
+					for _, hProfile := range haProfiles {
+						if hProfile != profileName { // we already know current profile is faulty
+							if p.GetStats(types.ConfigName(hProfile))[master].Role() != types.FAULTY {
+								publishOSClockSyncStateChangeEvent = false
+							}
+						}
+					}
+				}
+				// send CLOCK REALTIME to FREERUN state just before master goes to holdover. Reduce noise by checking if it is already in FREERUN
+				if publishOSClockSyncStateChangeEvent && ptpStats[ClockRealTime].LastSyncState() != ptp.FREERUN {
 					p.PublishEvent(ptp.FREERUN, ptpStats[ClockRealTime].LastOffset(), ClockRealTime, ptp.OsClockSyncStateChange)
 					ptpStats[ClockRealTime].SetLastSyncState(ptp.FREERUN)
 					UpdateSyncStateMetrics(phc2sysProcessName, ClockRealTime, ptp.FREERUN)
 				}
+				// case where
 				threshold := p.PtpThreshold(profileName, true)
 				go handleHoldOverState(p, ptpOpts, configName, profileName, threshold.HoldOverTimeout, MasterClockType, threshold.Close)
 			}
@@ -166,13 +184,6 @@ func handleHoldOverState(ptpManager *PTPEventManager,
 				ptpManager.PublishEvent(ptp.FREERUN, ptpStats[MasterClockType].LastOffset(), masterResource, ptp.PtpStateChange)
 				ptpStats[MasterClockType].SetLastSyncState(ptp.FREERUN)
 				UpdateSyncStateMetrics(mStats.ProcessName(), mStats.Alias(), ptp.FREERUN)
-				// don't check of os clock sync state if phc2 not enabled
-				if cStats, ok := ptpStats[ClockRealTime]; ok && ptpOpts != nil && ptpOpts.Phc2SysEnabled() {
-					ptpManager.GenPTPEvent(ptpProfileName, cStats, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
-					UpdateSyncStateMetrics(phc2sysProcessName, ClockRealTime, ptp.FREERUN)
-				} else {
-					log.Infof("phc2sys is not enabled for profile %s, skiping os clock syn state ", ptpProfileName)
-				}
 				// s.reset()
 			}
 		} else {
