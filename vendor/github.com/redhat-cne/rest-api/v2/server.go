@@ -61,7 +61,7 @@ var once sync.Once
 var ServerInstance *Server
 var healthCheckPause = 2 * time.Second
 
-type serverStatus int
+type ServerStatus int
 
 const (
 	API_VERSION           = "2.0"
@@ -88,8 +88,9 @@ type Server struct {
 	httpServer              *http.Server
 	pubSubAPI               *pubsubv1.API
 	subscriberAPI           *subscriberApi.API
-	status                  serverStatus
+	status                  ServerStatus
 	statusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error
+	statusLock              sync.RWMutex
 }
 
 // SubscriptionInfo
@@ -279,7 +280,22 @@ func (s *Server) Port() int {
 
 // Ready gives the status of the server
 func (s *Server) Ready() bool {
+	s.statusLock.RLock()
+	defer s.statusLock.RUnlock()
 	return s.status == started
+}
+
+// SetStatus safely updates the server status
+func (s *Server) SetStatus(newStatus ServerStatus) {
+	s.statusLock.Lock()
+	defer s.statusLock.Unlock()
+	s.status = newStatus
+}
+
+func (s *Server) GetStatus() ServerStatus {
+	s.statusLock.RLock()
+	defer s.statusLock.RUnlock()
+	return s.status
 }
 
 // GetHostPath  returns hostpath
@@ -289,11 +305,12 @@ func (s *Server) GetHostPath() *types.URI {
 
 // Start will start res routes service
 func (s *Server) Start() {
-	if s.status == started || s.status == starting {
+	currentStatus := s.GetStatus()
+	if currentStatus == started || currentStatus == starting {
 		log.Infof("Server is already running at port %d", s.port)
 		return
 	}
-	s.status = starting
+	s.SetStatus(starting)
 	r := mux.NewRouter()
 
 	api := r.PathPrefix(s.apiPath).Subrouter()
@@ -482,7 +499,7 @@ func (s *Server) Start() {
 
 	log.Infof("starting v2 rest api server at port %d, endpoint %s", s.port, s.apiPath)
 	go wait.Until(func() {
-		s.status = started
+		s.SetStatus(started)
 		s.httpServer = &http.Server{
 			ReadHeaderTimeout: HTTPReadHeaderTimeout,
 			Addr:              fmt.Sprintf(":%d", s.port),
@@ -491,7 +508,7 @@ func (s *Server) Start() {
 		err := s.httpServer.ListenAndServe()
 		if err != nil {
 			log.Errorf("restarting due to error with api server %s\n", err.Error())
-			s.status = failed
+			s.SetStatus(failed)
 		}
 	}, 1*time.Second, s.closeCh)
 }
