@@ -409,6 +409,44 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 	}
 }
 
+// ParseTBCLogs ... parse logs for various events
+func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, fields []string,
+	ptpStats stats.PTPStats) {
+	// T-BC[1743005894]:[ptp4l.0.config] ens7f0  offset  55 T-BC-STATUS s0
+	// 0    1            2               3       4       5  6           7
+	// T-BC 1743005894   ptp4l.0.config  ens7f0  offset  55 T-BC-STATUS s0
+	if strings.Contains(output, bcStatusIdentifier) {
+		if len(fields) < 8 {
+			log.Errorf("T-BC Status is not in right format %s", output)
+			return
+		}
+	} else {
+		return
+	}
+
+	syncState := GetSyncState(fields[7])
+	offset, _ := strconv.ParseInt(fields[5], 10, 64)
+	iface := getAlias(fields[3])
+	ifaceType := types.IFace(iface)
+
+	ptpStats.CheckSource(types.IFace(iface), configName, processName)
+
+	ptpStatsIface := ptpStats[ifaceType]
+
+	ptpStatsIface.SetLastOffset(offset)
+	lastOffset := ptpStats[ifaceType].LastOffset()
+	bcResource := fmt.Sprintf("%s/%s", iface, TBC)
+	lastSyncState := ptpStats[ifaceType].LastSyncState()
+
+	if syncState != lastSyncState { // publish directly here
+		log.Infof("%s sync state %s, last ptp state is : %s", bcResource, syncState, lastSyncState)
+		p.PublishEvent(syncState, lastOffset, bcResource, ptp.PtpStateChange)
+		ptpStats[ifaceType].SetLastSyncState(syncState)
+		UpdateSyncStateMetrics(processName, iface, ptpStats[ifaceType].LastSyncState())
+		UpdatePTPOffsetMetrics(processName, processName, iface, float64(lastOffset))
+	}
+}
+
 // ParseDPLLLogs ... parse logs for various events
 func (p *PTPEventManager) ParseDPLLLogs(processName, configName, output string, fields []string,
 	ptpStats stats.PTPStats) {
