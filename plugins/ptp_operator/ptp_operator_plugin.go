@@ -367,6 +367,8 @@ func getOverallState(current, new ptp.SyncState) ptp.SyncState {
 		}
 	case ptp.LOCKED:
 		return current
+	case "":
+		return current
 	default:
 		log.Warnf("last sync state is unknown: %s", new)
 	}
