@@ -124,6 +124,16 @@ func (p *PTPEventManager) GetPTPConfig(configName types.ConfigName) *ptp4lconf.P
 	return pc
 }
 
+// GetPTPConfigByProfile ...
+func (p *PTPEventManager) GetPTPConfigByProfile(profile string) string {
+	for _, config := range p.Ptp4lConfigInterfaces {
+		if config.Profile == profile {
+			return config.Name
+		}
+	}
+	return ""
+}
+
 // GetPTPConfigDeepCopy  ... Add PtpConfigUpdate obj
 func (p *PTPEventManager) GetPTPConfigDeepCopy(configName types.ConfigName) *ptp4lconf.PTP4lConfig {
 	if _, ok := p.Ptp4lConfigInterfaces[configName]; ok && p.Ptp4lConfigInterfaces[configName] != nil {
@@ -519,19 +529,42 @@ func (p *PTPEventManager) IsHAProfile(name string) bool {
 }
 
 // HAProfiles ... if profile for ha found pass the settings
-func (p *PTPEventManager) HAProfiles() (profiles []string) {
+func (p *PTPEventManager) HAProfiles() (profile string, profiles []string) {
 	// Check if PtpSettings exist, if so proceed with confidence
 	if p.PtpConfigMapUpdates.PtpSettings != nil {
 		p.lock.RLock()
 		defer p.lock.RUnlock()
-		for _, ptpSettings := range p.PtpConfigMapUpdates.PtpSettings {
+		for profileName, ptpSettings := range p.PtpConfigMapUpdates.PtpSettings {
 			if ptpSettings != nil {
 				if haProfile, ok := ptpSettings["haProfiles"]; ok {
-					profiles = strings.Split(haProfile, "")
+					profile = profileName
+					rawProfiles := strings.Split(haProfile, ",")
+					for _, hp := range rawProfiles {
+						profiles = append(profiles, strings.TrimSpace(hp))
+					}
 					return
 				}
 			}
 		}
 	}
 	return
+}
+
+func (p *PTPEventManager) ListHAProfilesWith(currentProfile string) (profile string, profiles []string) {
+	// Check if PtpSettings exist, if so proceed
+	currentProfile = strings.TrimSpace(currentProfile)
+	if currentProfile == "" {
+		return "", nil
+	}
+	if p.PtpConfigMapUpdates.PtpSettings != nil {
+		profile, profiles = p.HAProfiles()
+		for _, hp := range profiles {
+			if hp == strings.TrimSpace(currentProfile) {
+				// Return all profiles in the same HA group
+				return profile, profiles
+			}
+		}
+	}
+	// No match found — return empty
+	return "", nil
 }
