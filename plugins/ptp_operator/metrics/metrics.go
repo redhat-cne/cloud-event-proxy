@@ -86,6 +86,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			log.Errorf("failed to extract %s", msg)
 		}
 	}()
+
 	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
 	output := replacer.Replace(msg)
 	fields := strings.Fields(output)

@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -16,6 +17,7 @@ import (
 
 var (
 	ptpProcessStatusIdentifier = "PTP_PROCESS_STATUS"
+	numericOnly                = regexp.MustCompile(`^\d+$`)
 )
 
 func extractSummaryMetrics(processName, output string) (iface string, ptpOffset, maxPtpOffset, frequencyAdjustment, delay float64) {
@@ -254,10 +256,13 @@ func extractNmeaMetrics(processName, output string) (interfaceName string, statu
 //	     "MASTER to PASSIVE"
 func extractPTP4lEventState(output string, isFollowerOnly bool) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
 	// This makes the out to equal
-	// phc2sys[187248.740]:[ens5f0] CLOCK_REALTIME phc offset        12 s2 freq   +6879 delay    49
-	// phc2sys[187248.740]:[ens5f1] CLOCK_REALTIME phc offset        12 s2 freq   +6879 delay    49
+
 	// ptp4l[5199193.712]: [ptp4l.0.config] port 1: SLAVE to UNCALIBRATED on SYNCHRONIZATION_FAULT
-	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
+	// ptp4l[28914813.104]: [ptp4l.1.config] port 1 (ens2f0): SLAVE to UNCALIBRATED on RS_SLAVE
+	clockState = ptp.FREERUN
+	role = types.UNKNOWN
+
+	var replacer = strings.NewReplacer("[", " ", "]", " ", ":", " ")
 	output = replacer.Replace(output)
 
 	index := strings.Index(output, " port ")
@@ -271,18 +276,11 @@ func extractPTP4lEventState(output string, isFollowerOnly bool) (portID int, rol
 		return
 	}
 
-	portIndex := fields[1]
-	role = types.UNKNOWN
-
-	var e error
-	portID, e = strconv.Atoi(portIndex)
-	if e != nil {
-		log.Errorf("error parsing port id %s for output %s", e, output)
-		portID = 0
+	portID, err := handlePort(fields[1])
+	if err != nil {
 		return
 	}
 
-	clockState = ptp.FREERUN
 	if strings.Contains(output, "UNCALIBRATED to SLAVE") ||
 		strings.Contains(output, "LISTENING to SLAVE") {
 		role = types.SLAVE
@@ -297,7 +295,9 @@ func extractPTP4lEventState(output string, isFollowerOnly bool) (portID int, rol
 	} else if strings.Contains(output, "FAULT_DETECTED") ||
 		strings.Contains(output, "SYNCHRONIZATION_FAULT") ||
 		strings.Contains(output, "SLAVE to UNCALIBRATED") ||
-		strings.Contains(output, "MASTER to UNCALIBRATED on RS_SLAVE") {
+		strings.Contains(output, "MASTER to UNCALIBRATED on RS_SLAVE") ||
+		strings.Contains(output, "LISTENING to UNCALIBRATED on RS_SLAVE") ||
+		(strings.Contains(output, "FAULTY to LISTENING on INIT_COMPLETE") && !isFollowerOnly) { // added to manage two port case so its not breaking
 		role = types.FAULTY
 		clockState = ptp.HOLDOVER
 	} else if strings.Contains(output, "SLAVE to MASTER") ||
@@ -310,6 +310,8 @@ func extractPTP4lEventState(output string, isFollowerOnly bool) (portID int, rol
 	} else if (strings.Contains(output, "FAULTY to LISTENING") ||
 		strings.Contains(output, "UNCALIBRATED to LISTENING") ||
 		strings.Contains(output, "INITIALIZING to LISTENING")) && isFollowerOnly {
+		role = types.LISTENING
+	} else if strings.Contains(output, "INITIALIZING to LISTENING") {
 		role = types.LISTENING
 	}
 	return
@@ -732,4 +734,23 @@ func GetSyncStateID(state string) float64 {
 	default:
 		return 0
 	}
+}
+
+func handlePort(portIndex string) (portID int, err error) {
+	if !numericOnly.MatchString(portIndex) {
+		// Skip any non-numeric portIndex like "b49691.fffe.a3f27c-1"
+		return
+	}
+
+	portID, err = strconv.Atoi(portIndex)
+	if err != nil {
+		log.Printf("Failed to convert portIndex to int: %v", err)
+		return
+	}
+	// Use portID as needed
+	return portID, err
+}
+
+func TestFuncExtractPTP4lEventState(output string, isFollowerOnly bool) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
+	return extractPTP4lEventState(output, isFollowerOnly)
 }

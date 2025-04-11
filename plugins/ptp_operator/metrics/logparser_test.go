@@ -1,6 +1,7 @@
 package metrics_test
 
 import (
+	"fmt"
 	"sort"
 	"strings"
 	"testing"
@@ -315,5 +316,123 @@ func Test_ParseGmLogs(t *testing.T) {
 		lastState, errState := ptpStats[masterType].GetStateState(tt.processName, pointer.String(tt.interfaceName))
 		assert.Equal(t, errState, nil)
 		assert.Equal(t, tt.expectedState, lastState)
+	}
+}
+
+func TestExtractPTP4lEventState(t *testing.T) {
+	tests := []struct {
+		name          string
+		logLine       string
+		isFollower    bool
+		expectedPort  int
+		expectedRole  types.PtpPortRole
+		expectedState ptp.SyncState
+	}{
+
+		{
+			name:          "b49691.fffe.a3f27c-1 changed state",
+			logLine:       "phc2sys[152918.606]: [phc2sys.2.config:6] port b49691.fffe.a3f27c-1 changed state",
+			isFollower:    false,
+			expectedPort:  0,
+			expectedRole:  types.UNKNOWN,
+			expectedState: ptp.FREERUN,
+		},
+
+		{
+			name:          "INITIALIZING to LISTENING",
+			logLine:       "ptp4l.0.config  port 2 (ens1f1)  INITIALIZING to LISTENING on INIT_COMPLETE",
+			isFollower:    false,
+			expectedPort:  2,
+			expectedRole:  types.LISTENING,
+			expectedState: ptp.FREERUN,
+		},
+		{
+			name:          "LISTENING to UNCALIBRATED ",
+			logLine:       "ptp4l.1.config  port 1 (ens2f0)  LISTENING to UNCALIBRATED on RS_SLAVE",
+			isFollower:    false,
+			expectedPort:  1,
+			expectedRole:  types.FAULTY,
+			expectedState: ptp.HOLDOVER,
+		},
+		{
+			name:          "FAULTY on FAULT_DETECTED",
+			logLine:       "ptp4l[72444.514]: [ptp4l.0.config:5] port 1 (ens1f0): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)",
+			isFollower:    false,
+			expectedPort:  1,
+			expectedRole:  types.FAULTY,
+			expectedState: ptp.HOLDOVER,
+		},
+		{
+			name:          "LISTENING to UNCALIBRATED",
+			logLine:       "ptp4l[72530.751]: [ptp4l.0.config:5] port 1 (ens1f0): LISTENING to UNCALIBRATED on RS_SLAVE",
+			isFollower:    false,
+			expectedPort:  1,
+			expectedRole:  types.FAULTY,
+			expectedState: ptp.HOLDOVER,
+		},
+		{
+			name:          "UNCALIBRATED to SLAVE ",
+			logLine:       "ptp4l[72530.885]: [ptp4l.0.config:5] port 1 (ens1f0): UNCALIBRATED to SLAVE on MASTER_CLOCK_SELECTED",
+			isFollower:    false,
+			expectedPort:  1,
+			expectedRole:  types.SLAVE,
+			expectedState: ptp.FREERUN,
+		},
+		{
+			name:          "SLAVE to UNCALIBRATED",
+			logLine:       "ptp4l[5199193.712]: [ptp4l.0.config] port 1: SLAVE to UNCALIBRATED on SYNCHRONIZATION_FAULT",
+			isFollower:    false,
+			expectedPort:  1,
+			expectedRole:  types.FAULTY,
+			expectedState: ptp.HOLDOVER,
+		},
+		{
+			name:          "LISTENING to SLAVE",
+			logLine:       "ptp4l[5199200.100]: [ptp4l.0.config] port 1: LISTENING to SLAVE",
+			isFollower:    false,
+			expectedPort:  1,
+			expectedRole:  types.SLAVE,
+			expectedState: ptp.FREERUN,
+		},
+		{
+			name:          "SLAVE to PASSIVE",
+			logLine:       "ptp4l[5199210.200]: [ptp4l.0.config] port 1: SLAVE to PASSIVE",
+			isFollower:    false,
+			expectedPort:  1,
+			expectedRole:  types.PASSIVE,
+			expectedState: ptp.FREERUN,
+		},
+		{
+			name:          "SLAVE to MASTER",
+			logLine:       "ptp4l[5199220.300]: [ptp4l.0.config] port 1: SLAVE to MASTER",
+			isFollower:    false,
+			expectedPort:  1,
+			expectedRole:  types.MASTER,
+			expectedState: ptp.HOLDOVER,
+		},
+		{
+			name:          "INITIALIZING to LISTENING (follower only)",
+			logLine:       "ptp4l[5199230.400]: [ptp4l.0.config] port 1: INITIALIZING to LISTENING",
+			isFollower:    true,
+			expectedPort:  1,
+			expectedRole:  types.LISTENING,
+			expectedState: ptp.FREERUN,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			portID, role, clockState := metrics.TestFuncExtractPTP4lEventState(tc.logLine, tc.isFollower)
+
+			if portID != tc.expectedPort {
+				assert.Equal(t, tc.expectedPort, portID, fmt.Sprintf("portID = %d; want %d", portID, tc.expectedPort))
+			}
+			if role != tc.expectedRole {
+				assert.Equal(t, tc.expectedRole, role, fmt.Sprintf("role = %v; want %v", role, tc.expectedRole))
+			}
+			if clockState != tc.expectedState {
+				assert.Equal(t, tc.expectedPort, clockState, fmt.Sprintf("state = %v; want %v", clockState, tc.expectedState))
+			}
+		})
 	}
 }
