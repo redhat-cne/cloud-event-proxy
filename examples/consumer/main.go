@@ -57,6 +57,9 @@ const (
 	HealthCheckRetryInterval = 2
 	// eventPullInterval interval in seconds for pulling events
 	eventPullInterval = 60
+	// eventPullErrorMaxCount threshold for number of errors before resubscribing
+	// v1 only
+	eventPullErrorMaxCount = 10
 )
 
 var (
@@ -69,9 +72,10 @@ var (
 	mockResourceKey    = "mock"
 	httpEventPublisher string
 	// map to track if subscriptions were created successfully for each publisher service
-	subscribed = make(map[string]bool)
-	subs       []*pubsub.PubSub
-	isV1Api    bool
+	subscribed          = make(map[string]bool)
+	subs                []*pubsub.PubSub
+	isV1Api             bool
+	eventPullErrorCount int
 	// Git commit of current build set at build time
 	GitCommit = "Undefined"
 )
@@ -183,6 +187,32 @@ RETRY:
 	}
 }
 
+// listSubscriptions lists all subscriptions
+// and returns true if there are any subscriptions
+// NOTE for v1 this returns locally stored subscriptions even when subscriptions are deleted remotely
+func listSubscriptions() bool {
+	url := &types.URI{URL: url.URL{Scheme: "http",
+		Host: apiAddr,
+		Path: fmt.Sprintf("%s%s", apiPath, "subscriptions")}}
+	rc := restclient.New()
+
+	var subs = []pubsub.PubSub{}
+	var subB []byte
+	status, subB, err := rc.Get(url)
+	if status != http.StatusOK {
+		log.Errorf("failed to list subscriptions, status %d", status)
+		if err != nil {
+			log.Errorf("%s", err.Error())
+		}
+		return false
+	}
+	if err = json.Unmarshal(subB, &subs); err != nil {
+		log.Errorf("failed to unmarshal subscriptions, %v", err)
+		return false
+	}
+	return len(subs) > 0
+}
+
 func subscribeToEvents() {
 RETRY:
 	for p, subOK := range subscribed {
@@ -191,7 +221,16 @@ RETRY:
 			if !healthOK {
 				deleteAllSubscriptions()
 				log.Info("delete all subscriptions due to publisher health failure")
-				return
+				goto RETRY
+			}
+			// for v1 we use eventPullErrorCount to trigger the recovery since we can
+			// not rely on listSubscriptions() to check if the subscription are still valid,
+			if !isV1Api && !listSubscriptions() {
+				// re-subscribe in case of non-recoverable error at server side, for example
+				// lost of persist data in configmap
+				log.Infof("subscription not found for %s, resubscribe", p)
+				subscribed[p] = false
+				goto RETRY
 			}
 			continue
 		}
@@ -258,11 +297,24 @@ func getCurrentState(resource string) {
 		Host: apiAddr,
 		Path: fmt.Sprintf("%s%s", apiPath, fmt.Sprintf("%s/CurrentState", resource[1:]))}}
 	rc := restclient.New()
-	status, cloudEvent := rc.Get(url)
+	status, cloudEvent, err := rc.Get(url)
 	if status != http.StatusOK {
-		log.Errorf("CurrentState:error %d from url %s, %s", status, url.String(), cloudEvent)
+		log.Errorf("CurrentState: error %d from url %s", status, url.String())
+		if err != nil {
+			log.Errorf("%s", err.Error())
+		}
+		// re-subscribe in case of non-recoverable error at server side, for example
+		// lost of persist data in configmap
+		if isV1Api {
+			eventPullErrorCount++
+			if eventPullErrorCount > eventPullErrorMaxCount {
+				log.Errorf("Failed to pull event %d times. resubscribe", eventPullErrorMaxCount)
+				eventPullErrorCount = 0
+				deleteAllSubscriptions()
+			}
+		}
 	} else {
-		log.Debugf("Got CurrentState: %s ", cloudEvent)
+		log.Debugf("Got CurrentState: %s ", string(cloudEvent))
 	}
 }
 
