@@ -5,8 +5,8 @@
 VERSION ?=latest
 # Default image tag
 
-IMG ?= quay.io/openshift/origin-cloud-event-proxy:$(VERSION)
-CONSUMER_IMG ?= quay.io/redhat-cne/cloud-event-consumer:$(VERSION)
+IMG ?= quay.io/jacding/cloud-event-proxy:4.21
+CONSUMER_IMG ?= quay.io/jacding/cloud-event-consumer:latest
 
 export GO111MODULE=on
 export CGO_ENABLED=1
