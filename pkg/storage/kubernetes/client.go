@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/golang/glog"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
@@ -70,8 +71,10 @@ func (sClient *Client) CreateConfigMap(ctx context.Context, apiVersion, nodeName
 	if err == nil {
 		// clean up configMap if apiVersion changed
 		if apiVersion != "" && !validateConfigMap(apiVersion, cm) {
+			log.Warnf("ConfigMap %s is not compatible with the current version %s. Cleaning up.", cm.Name, apiVersion)
 			return sClient.cleanupConfigMap(ctx, cm, namespace)
 		}
+		log.Infof("ConfigMap %s already exists", cm.Name)
 		return cm, nil
 	}
 
@@ -91,7 +94,7 @@ func (sClient *Client) CreateConfigMap(ctx context.Context, apiVersion, nodeName
 		log.Errorf("Error creating configmap %s", err.Error())
 		return
 	}
-
+	log.Infof("ConfigMap %s created successfully", cm.Name)
 	return
 }
 
@@ -135,8 +138,7 @@ func (sClient *Client) UpdateConfigMap(ctx context.Context, data []subscriber.Su
 				log.Errorf("error marshalling subscriber %s", e.Error())
 				continue
 			}
-			log.Infof("persisting following contents %s ", string(out))
-			log.Infof("updating new subscriber in configmap")
+			log.Infof("updating new subscriber in configmap with following contents %s ", string(out))
 			existingData[data[i].ClientID.String()] = string(out)
 		}
 	}
@@ -152,34 +154,43 @@ func (sClient *Client) UpdateConfigMap(ctx context.Context, data []subscriber.Su
 }
 
 // InitConfigMap ... using configmap
-func (sClient *Client) InitConfigMap(apiVersion, storePath, nodeName, namespace string) error {
+func (sClient *Client) InitConfigMap(apiVersion, storePath, nodeName, namespace string, delay time.Duration, retry int) error {
 	var err error
 	var cm *corev1.ConfigMap
-	if cm, err = sClient.CreateConfigMap(context.Background(), apiVersion, nodeName, namespace); err == nil {
-		for clientID, subscriberData := range cm.Data {
-			var newSubscriberBytes []byte
-			var subscriberErr error
-			subscriber := subscriber.Subscriber{}
-			if err = json.Unmarshal([]byte(subscriberData), &subscriber); err == nil {
-				newSubscriberBytes, subscriberErr = json.MarshalIndent(&subscriber, "", " ")
-				if subscriberErr == nil {
-					filePath := fmt.Sprintf("%s/%s", storePath, fmt.Sprintf("%s.json", clientID))
-					log.Infof("persisting following contents %s to a file %s\n", string(newSubscriberBytes), filePath)
-					if subscriberErr = os.WriteFile(filePath, newSubscriberBytes, 0600); subscriberErr != nil {
-						log.Errorf("error writing subscription to a file %s", subscriberErr.Error())
-					}
-				} else {
-					log.Errorf("error write to a file %s", subscriberErr.Error())
-					continue
+
+	for i := 0; i <= retry; i++ {
+		cm, err = sClient.CreateConfigMap(context.Background(), apiVersion, nodeName, namespace)
+		if err == nil {
+			break
+		}
+		log.Warnf("error creating configmap %s, retrying %d", err.Error(), i)
+		time.Sleep(delay)
+	}
+	if err != nil {
+		log.Errorf("failed creating config map %s", err.Error())
+		return err
+	}
+
+	for clientID, subscriberData := range cm.Data {
+		var newSubscriberBytes []byte
+		var subscriberErr error
+		subscriber := subscriber.Subscriber{}
+		if err = json.Unmarshal([]byte(subscriberData), &subscriber); err == nil {
+			newSubscriberBytes, subscriberErr = json.MarshalIndent(&subscriber, "", " ")
+			if subscriberErr == nil {
+				filePath := fmt.Sprintf("%s/%s", storePath, fmt.Sprintf("%s.json", clientID))
+				log.Infof("persisting following contents from configmap to file %s: %s\n", filePath, string(newSubscriberBytes))
+				if subscriberErr = os.WriteFile(filePath, newSubscriberBytes, 0600); subscriberErr != nil {
+					log.Errorf("error writing subscription to a file %s", subscriberErr.Error())
 				}
 			} else {
-				log.Errorf("error unmarshalling data from configmap")
-				return err
+				log.Errorf("error marshalling subscriber data: %s", subscriberErr.Error())
+				continue
 			}
+		} else {
+			log.Errorf("error unmarshalling data from configmap")
+			return err
 		}
-	} else {
-		log.Errorf("error creating config map %s", err.Error())
-		return err
 	}
 	return nil
 }
@@ -202,6 +213,7 @@ func validateSubscriberVersion(apiVersion string, sub subscriber.Subscriber) boo
 
 	for _, v := range sub.SubStore.Store {
 		if !isVersionsCompatible(v.GetVersion(), apiVersion) {
+			log.Errorf("subscriber version %s is not compatible with the current version %s", v.GetVersion(), apiVersion)
 			return false
 		}
 	}
@@ -217,9 +229,16 @@ func validateConfigMap(apiVersion string, cm *corev1.ConfigMap) bool {
 		subscriber := subscriber.Subscriber{}
 		if err := json.Unmarshal([]byte(subscriberData), &subscriber); err == nil {
 			_, subscriberErr = json.MarshalIndent(&subscriber, "", " ")
-			if subscriberErr != nil || !validateSubscriberVersion(apiVersion, subscriber) {
+			if subscriberErr != nil {
+				log.Errorf("error marshalling subscriber data from configmap: %s", subscriberErr.Error())
 				return false
 			}
+			if !validateSubscriberVersion(apiVersion, subscriber) {
+				return false
+			}
+		} else {
+			log.Errorf("validateConfigMap: error unmarshalling data from configmap: %s", err.Error())
+			return false
 		}
 	}
 	return true
