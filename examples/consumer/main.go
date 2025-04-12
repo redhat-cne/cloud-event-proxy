@@ -67,9 +67,12 @@ var (
 	httpEventPublisher string
 	eventPublishers    = make(map[string]bool)
 	subs               []*pubsub.PubSub
+	// Git commit of current build set at build time
+	GitCommit = "Undefined"
 )
 
 func main() {
+	fmt.Printf("Git commit: %s\n", GitCommit)
 	common.InitLogger()
 	flag.StringVar(&localAPIAddr, "local-api-addr", "localhost:8989", "The address the local api binds to .")
 	flag.StringVar(&apiPath, "api-path", "/api/ocloudNotifications/v1/", "The rest api path.")
