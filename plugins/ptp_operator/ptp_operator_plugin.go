@@ -352,25 +352,24 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 }
 
 // return worst of FREERUN, HOLDOVER or LOCKED
-func getOverallState(current, new ptp.SyncState) ptp.SyncState {
+func getOverallState(current, updated ptp.SyncState) ptp.SyncState {
 	if current == "" {
-		return new
+		return updated
 	}
-	switch new {
+	switch updated {
 	case ptp.FREERUN:
 		return ptp.FREERUN
 	case ptp.HOLDOVER:
 		if current == ptp.FREERUN {
 			return current
-		} else {
-			return new
 		}
+		return updated
 	case ptp.LOCKED:
 		return current
 	case "":
 		return current
 	default:
-		log.Warnf("last sync state is unknown: %s", new)
+		log.Warnf("last sync state is unknown: %s", updated)
 	}
 	return ""
 }
