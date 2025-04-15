@@ -116,6 +116,7 @@ type TestCase struct {
 	process       string
 	node          string
 	iface         string
+	clockName     string
 	lastSyncState ptp.SyncState
 
 	// offset_ns
@@ -146,7 +147,7 @@ type TestCase struct {
 	expectedRoleCheck bool
 	expectedRole      types.PtpPortRole
 
-	expectedEvent        ptp.EventType
+	expectedEvent        []ptp.EventType
 	logPtp4lConfigName   string
 	skipCleanupMetrics   bool
 	skipSetLastSyncState bool
@@ -193,191 +194,232 @@ func statsAddValue(iface string, val int64, ptp4lconfName string) {
 
 var testCases = []TestCase{
 	{
+		log:                "ptp4l[4270543.688]: [ptp4l.1.config:5] port 1 (ens3f0): SLAVE to LISTENING",
+		from:               "master",
+		process:            "ptp4l",
+		iface:              "ens3f0",
+		clockName:              "ens3fx",
+		lastSyncState:      ptp.LOCKED,
+		expectedRoleCheck:  true,
+		expectedRole:       types.LISTENING,
+		expectedSyncStateCheck: true,
+		expectedSyncState:      float64(types.HOLDOVER),
+		logPtp4lConfigName: logPtp4lConfigDualFollower.Name,
+		skipCleanupMetrics: true,
+		expectedEvent:      []ptp.EventType{ptp.PtpStateChange},
+	},
+	{
+		log:                "ptp4l[4270544.036]: [ptp4l.1.config:5] port 1 (ens3f0): UNCALIBRATED to SLAVE on MASTER_CLOCK_SELECTED",
+		from:               "master",
+		process:            "ptp4l",
+		iface:              "ens3f0",
+		clockName:              "ens3fx",
+		lastSyncState:      ptp.HOLDOVER,
+		expectedRoleCheck:  true,
+		expectedRole:       types.SLAVE,
+		logPtp4lConfigName: logPtp4lConfigDualFollower.Name,
+		skipCleanupMetrics: true,
+		expectedEvent:      []ptp.EventType{ptp.PtpStateChange},
+	},
+	{
 		log:                "ptp4l[4270543.688]: [ptp4l.1.config:5] port 1 (ens3f0): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)",
 		from:               "master",
 		process:            "ptp4l",
 		iface:              "ens3f0",
-		lastSyncState:      ptp.FREERUN,
+		clockName:              "ens3fx",
+		lastSyncState:      ptp.LOCKED,
 		expectedRoleCheck:  true,
 		expectedRole:       types.FAULTY,
+		expectedSyncStateCheck: true,
+		expectedSyncState:      float64(types.HOLDOVER),
 		logPtp4lConfigName: logPtp4lConfigDualFollower.Name,
 		skipCleanupMetrics: true,
+		expectedEvent:      []ptp.EventType{ptp.PtpStateChange, ptp.PtpStateChange},
 	},
 	{
 		log:                "ptp4l[4270544.036]: [ptp4l.1.config:5] port 2 (ens3f1): UNCALIBRATED to SLAVE on MASTER_CLOCK_SELECTED",
 		from:               "master",
 		process:            "ptp4l",
 		iface:              "ens3f1",
+		clockName:              "ens3fx",
+		lastSyncState:      ptp.HOLDOVER,
 		expectedRoleCheck:  true,
 		expectedRole:       types.SLAVE,
 		logPtp4lConfigName: logPtp4lConfigDualFollower.Name,
 		skipCleanupMetrics: true,
+		expectedEvent:      []ptp.EventType{ptp.PtpStateChange, ptp.PtpStateChange},
 	},
 	{
 		log:                    "ptp4l[4270543.688]: [ptp4l.1.config:5] port 2 (ens3f1): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)",
 		from:                   "master",
 		process:                "ptp4l",
-		iface:                  "ens3fx",
+		iface:                  "ens3f",
+		clockName:              "ens3fx",
+		lastSyncState:      ptp.LOCKED,
 		logPtp4lConfigName:     logPtp4lConfigDualFollower.Name,
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.HOLDOVER),
-		expectedEvent:          "event.sync.ptp-status.ptp-state-change",
+		expectedEvent:          []ptp.EventType{"event.sync.ptp-status.ptp-state-change","event.sync.ptp-status.ptp-state-change"},
 		skipCleanupMetrics:     true,
 		skipSetLastSyncState:   true,
+
 	},
 	{
 		log:                    "dpll[1000000100]:[ts2phc.0.config] ens7f0 frequency_status 3 offset 5 phase_status 3 pps_status 1 s2",
 		from:                   "master",
 		process:                "dpll",
-		iface:                  "ens7fx",
+		clockName:                  "ens7fx",
 		lastSyncState:          ptp.FREERUN,
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.LOCKED),
 		expectedPpsStatusCheck: true,
 		expectedPpsStatus:      1,
+		expectedEvent:          []ptp.EventType{},
 		logPtp4lConfigName:     logPtp4lConfig.Name,
 	},
 	{
 		log:                    "dpll[1000000110]:[ts2phc.0.config] ens7f0 frequency_status 3 offset 5 phase_status 3 pps_status 0 s0",
 		from:                   "master",
 		process:                "dpll",
-		iface:                  "ens7fx",
+		clockName:                  "ens7fx",
 		lastSyncState:          ptp.LOCKED,
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.FREERUN),
 		expectedPpsStatusCheck: true,
 		expectedPpsStatus:      0,
-		expectedEvent:          "",
+		expectedEvent:          []ptp.EventType{},
 		logPtp4lConfigName:     logPtp4lConfig.Name,
 	},
 	{
 		log:                    "dpll[1000000120]:[ts2phc.0.config] ens7f0 frequency_status 3 offset 7 phase_status 3 pps_status 0 s1",
 		from:                   "master",
 		process:                "dpll",
-		iface:                  "ens7fx",
+		clockName:                  "ens7fx",
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.HOLDOVER),
 		expectedPpsStatusCheck: true,
 		expectedPpsStatus:      0,
+		expectedEvent:          []ptp.EventType{},
 		logPtp4lConfigName:     logPtp4lConfig.Name,
 	},
 	{
 		log:                     "ts2phc[1000000200]:[ts2phc.0.config] ens2f0 nmea_status 0 offset 999999 s0",
 		from:                    "master",
 		process:                 "ts2phc",
-		iface:                   "ens2fx",
+		clockName:                   "ens2fx",
 		lastSyncState:           ptp.LOCKED,
 		expectedNmeaStatusCheck: true,
 		expectedNmeaStatus:      0,
-		expectedEvent:           "",
+		expectedEvent:          []ptp.EventType{},
 		logPtp4lConfigName:      logPtp4lConfig.Name,
 	},
 	{
 		log:                     "ts2phc[1000000210]:[ts2phc.0.config] ens2f0 nmea_status 1 offset 0 s2",
 		from:                    "master",
 		process:                 "ts2phc",
-		iface:                   "ens2fx",
+		clockName:                   "ens2fx",
 		expectedNmeaStatusCheck: true,
 		expectedNmeaStatus:      1,
-		expectedEvent:           "",
+		expectedEvent:          []ptp.EventType{},
 		logPtp4lConfigName:      logPtp4lConfig.Name,
 	},
 	{
 		log:                    "ts2phc[1000000300]: [ts2phc.0.config] ens2f0 master offset  0 s2 freq -0",
 		from:                   "master",
 		process:                "ts2phc",
-		iface:                  "ens2fx",
+		clockName:                  "ens2fx",
 		expectedPtpOffsetCheck: true,
 		expectedPtpOffset:      0,
-		expectedEvent:          ptp.PtpStateChange,
+		expectedEvent:          []ptp.EventType{ptp.PtpStateChange},
 		logPtp4lConfigName:     logPtp4lConfig.Name,
 	},
 	{
 		log:                    "ts2phc[1000000310]: [ts2phc.0.config] ens7f0 master offset 999 s0 freq      -0",
 		from:                   "master",
 		process:                "ts2phc",
-		iface:                  "ens7fx",
+		clockName:                  "ens7fx",
 		expectedPtpOffsetCheck: true,
 		expectedPtpOffset:      999,
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.FREERUN),
-		expectedEvent:          ptp.PtpStateChange,
+		expectedEvent:          []ptp.EventType{ptp.PtpStateChange},
 		logPtp4lConfigName:     logPtp4lConfig.Name,
 	},
 	{
 		log:                    "GM[1000000400]:[ts2phc.0.config] ens2f0 T-GM-STATUS s0",
 		from:                   "master",
 		process:                "GM",
-		iface:                  "ens2fx",
+		clockName:                  "ens2fx",
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.FREERUN),
-		expectedEvent:          ptp.PtpStateChange,
+		expectedEvent:          []ptp.EventType{ptp.PtpStateChange},
 		logPtp4lConfigName:     logPtp4lConfig.Name,
 	},
 	{
 		log:                    "gnss[1000000500]:[ts2phc.0.config] ens2f1 gnss_status 3 offset 5 s2",
 		from:                   "gnss",
 		process:                "gnss",
-		iface:                  "ens2fx",
+		clockName:                  "ens2fx",
 		lastSyncState:          ptp.FREERUN,
 		expectedPtpOffsetCheck: true,
 		expectedPtpOffset:      5,
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.LOCKED),
-		expectedEvent:          ptp.GnssStateChange,
+		expectedEvent:          []ptp.EventType{ptp.GnssStateChange},
 		logPtp4lConfigName:     logPtp4lConfig.Name,
 	},
 	{
 		log:                            "ptp4l[1000000600]:[ptp4l.0.config] CLOCK_CLASS_CHANGE 248.000000",
 		process:                        "ptp4l",
-		iface:                          "master",
+		clockName:                          "master",
 		lastSyncState:                  ptp.FREERUN,
 		expectedClockClassMetricsCheck: true,
 		expectedClockClassMetrics:      248,
-		expectedEvent:                  ptp.PtpClockClassChange,
+		expectedEvent:                  []ptp.EventType{ptp.PtpClockClassChange},
 		logPtp4lConfigName:             logPtp4lConfig.Name,
 	},
 	{
 		log:                            "ptp4l[1000000610]:[ptp4l.0.config] CLOCK_CLASS_CHANGE 6.000000",
 		process:                        "ptp4l",
-		iface:                          "master",
+		clockName:                          "master",
 		lastSyncState:                  ptp.FREERUN,
 		expectedClockClassMetricsCheck: true,
 		expectedClockClassMetrics:      6,
-		expectedEvent:                  ptp.PtpClockClassChange,
+		expectedEvent:                  []ptp.EventType{ptp.PtpClockClassChange},
 		logPtp4lConfigName:             logPtp4lConfig.Name,
 	},
 	{
-		log:                                 "phc2sys[1000000700]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -62 s0 freq  -78368 delay   1100",
+		log:                                 "phc2sys[1000000700]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -63 s0 freq  -78368 delay   1100",
 		from:                                "phc",
 		process:                             "phc2sys",
-		iface:                               metrics.ClockRealTime,
+		lastSyncState:                       ptp.LOCKED,
+		clockName:                           metrics.ClockRealTime,
 		expectedPtpOffsetCheck:              true,
-		expectedPtpOffset:                   -62,
+		expectedPtpOffset:                   -63,
 		expectedPtpFrequencyAdjustmentCheck: true,
 		expectedPtpFrequencyAdjustment:      -78368,
 		expectedPtpDelayCheck:               true,
 		expectedPtpDelay:                    1100,
 		expectedSyncStateCheck:              true,
 		expectedSyncState:                   float64(types.FREERUN),
-		expectedEvent:                       ptp.OsClockSyncStateChange,
+		expectedEvent:                       []ptp.EventType{},
 		logPtp4lConfigName:                  logPtp4lConfig.Name,
 	},
 	{
-		log:                                 "phc2sys[1000000710]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -62 s0 freq  -78368 delay   1100",
+		log:                                 "phc2sys[1000000710]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -64 s0 freq  -78368 delay   1100",
 		from:                                "phc",
 		process:                             "phc2sys",
-		iface:                               metrics.ClockRealTime,
+		clockName:                           metrics.ClockRealTime,
 		lastSyncState:                       ptp.LOCKED,
 		expectedPtpOffsetCheck:              true,
-		expectedPtpOffset:                   -62,
+		expectedPtpOffset:                   -64,
 		expectedPtpFrequencyAdjustmentCheck: true,
 		expectedPtpFrequencyAdjustment:      -78368,
 		expectedPtpDelayCheck:               true,
 		expectedPtpDelay:                    1100,
 		expectedSyncStateCheck:              true,
 		expectedSyncState:                   float64(types.FREERUN),
-		expectedEvent:                       ptp.OsClockSyncStateChange,
+		expectedEvent:                       []ptp.EventType{},
 		logPtp4lConfigName:                  logPtp4lConfig.Name,
 	},
 }
@@ -461,7 +503,7 @@ func Test_ExtractMetrics(t *testing.T) {
 		}
 
 		if tc.expectedPtpOffsetCheck {
-			ptpOffset := metrics.PtpOffset.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface})
+			ptpOffset := metrics.PtpOffset.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.clockName})
 			statsAddValue(tc.iface, int64(testutil.ToFloat64(ptpOffset)), tc.logPtp4lConfigName)
 			assert.Equal(tc.expectedPtpOffset, testutil.ToFloat64(ptpOffset), "PtpOffset does not match\n%s", tc.String())
 		}
@@ -470,21 +512,21 @@ func Test_ExtractMetrics(t *testing.T) {
 			assert.Equal(tc.expectedPtpMaxOffset, testutil.ToFloat64(ptpMaxOffset), "PtpMaxOffset does not match\n%s", tc.String())
 		}
 		if tc.expectedPtpFrequencyAdjustmentCheck {
-			ptpFrequencyAdjustment := metrics.PtpFrequencyAdjustment.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface})
+			ptpFrequencyAdjustment := metrics.PtpFrequencyAdjustment.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.clockName})
 			assert.Equal(tc.expectedPtpFrequencyAdjustment, testutil.ToFloat64(ptpFrequencyAdjustment), "PtpFrequencyAdjustment does not match\n%s", tc.String())
 		}
 		if tc.expectedPtpDelayCheck {
-			ptpDelay := metrics.PtpDelay.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface})
+			ptpDelay := metrics.PtpDelay.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.clockName})
 			assert.Equal(tc.expectedPtpDelay, testutil.ToFloat64(ptpDelay), "PtpDelay does not match\n%s", tc.String())
 		}
 		if tc.expectedSyncStateCheck {
-			clockState := metrics.SyncState.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface})
+			clockState := metrics.SyncState.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.clockName})
 
 			cs := testutil.ToFloat64(clockState)
 			assert.Equal(tc.expectedSyncState, cs, "SyncState does not match\n%s", tc.String())
 		}
 		if tc.expectedNmeaStatusCheck {
-			nmeaStatus := metrics.NmeaStatus.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface})
+			nmeaStatus := metrics.NmeaStatus.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.clockName})
 			assert.Equal(tc.expectedNmeaStatus, testutil.ToFloat64(nmeaStatus), "NmeaStatus does not match\n%s", tc.String())
 		}
 		if tc.expectedClockClassMetricsCheck {

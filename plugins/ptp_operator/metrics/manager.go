@@ -27,7 +27,7 @@ type PTPEventManager struct {
 	lock           sync.RWMutex
 	Stats          map[types.ConfigName]stats.PTPStats
 	mock           bool
-	mockEvent      ptp.EventType
+	mockEvent      []ptp.EventType
 	// PtpConfigMapUpdates holds ptp-configmap updated details
 	PtpConfigMapUpdates *ptpConfig.LinuxPTPConfigMapUpdate
 	// Ptp4lConfigInterfaces holds interfaces and its roles, after reading from ptp4l config files
@@ -209,7 +209,7 @@ func (p *PTPEventManager) DeletePTPConfig(key types.ConfigName) {
 // PublishClockClassEvent ...publish events
 func (p *PTPEventManager) PublishClockClassEvent(clockClass float64, source string, eventType ptp.EventType) {
 	if p.mock {
-		p.mockEvent = eventType
+		p.mockEvent = append(p.mockEvent, eventType)
 		log.Infof("PublishClockClassEvent clockClass=%f, source=%s, eventType=%s", clockClass, source, eventType)
 		return
 	}
@@ -221,7 +221,7 @@ func (p *PTPEventManager) PublishClockClassEvent(clockClass float64, source stri
 // PublishClockClassEvent ...publish events
 func (p *PTPEventManager) publishGNSSEvent(state int64, offset float64, syncState ptp.SyncState, source string, eventType ptp.EventType) {
 	if p.mock {
-		p.mockEvent = eventType
+		p.mockEvent = append(p.mockEvent, eventType)
 		log.Infof("publishGNSSEvent state=%d, offset=%f, source=%s, eventType=%s", state, offset, source, eventType)
 		return
 	}
@@ -241,7 +241,7 @@ func (p *PTPEventManager) publishGNSSEvent(state int64, offset float64, syncStat
 // publishSyncEEvent ...publish events
 func (p *PTPEventManager) publishSyncEEvent(syncState ptp.SyncState, source string, ql byte, extQl byte, extendedTvlEnabled bool, eventType ptp.EventType) {
 	if p.mock {
-		p.mockEvent = eventType
+		p.mockEvent = append(p.mockEvent, eventType)
 		log.Infof("publishSyncEEvent state=%s, source=%s, eventType=%s", syncState, source, eventType)
 		return
 	}
@@ -347,7 +347,7 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, sou
 		return
 	}
 	if p.mock {
-		p.mockEvent = eventType
+		p.mockEvent = append(p.mockEvent, eventType)
 		log.Infof("PublishEvent state=%s, ptpOffset=%d, source=%s, eventType=%s", state, ptpOffset, source, eventType)
 		return
 	}
@@ -497,13 +497,13 @@ func (p *PTPEventManager) NodeName() string {
 }
 
 // GetMockEvent ...
-func (p *PTPEventManager) GetMockEvent() ptp.EventType {
+func (p *PTPEventManager) GetMockEvent() []ptp.EventType {
 	return p.mockEvent
 }
 
 // ResetMockEvent ...
 func (p *PTPEventManager) ResetMockEvent() {
-	p.mockEvent = ""
+	p.mockEvent = []ptp.EventType{}
 }
 
 // PrintStats .... for debug

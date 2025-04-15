@@ -99,7 +99,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 					ptpStats[master].SetRole(role)
 				}
 			}
-			log.Infof("update interface %s with portid %d from role %s to role %s  out %s", ptpIFace, portID, lastRole, role, output)
+			log.Infof("update interface %s with portid %d from role %s to role %s  out %s, syncState %s, lastSyncState %s", ptpIFace, portID, lastRole, role, output, syncState, ptpStats[master].LastSyncState())
 			ptp4lCfg.Interfaces[portID-1].UpdateRole(role)
 
 			// update role metrics
@@ -116,6 +116,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 		// holdover timeout, always put only master offset from ptp4l to HOLDOVER,when this goes to FREERUN
 		// make any slave interface master offset to FREERUN
 		// Only if master (slave port ) offset was reported by ptp4l
+
 		if syncState != "" && syncState != ptpStats[master].LastSyncState() && syncState == ptp.HOLDOVER {
 			// Put master in HOLDOVER state
 			ptpStats[master].SetRole(types.FAULTY) // update slave port as faulty
@@ -180,20 +181,15 @@ func isFollowerOnly(ptp4lCfg *ptp4lconf.PTP4lConfig) bool {
 	return false
 }
 
-func followerOnlySyncState(role types.PtpPortRole, portID int, ptp4lCfg *ptp4lconf.PTP4lConfig) (outClockState ptp.SyncState) {
+func followerOnlySyncState(newRole types.PtpPortRole, portID int, ptp4lCfg *ptp4lconf.PTP4lConfig) (outClockState ptp.SyncState) {
 	activeFollower, err := ptp4lCfg.ByRole(types.SLAVE)
 	activeFollowerPresent := err == nil
-	var listeningFollower ptp4lconf.PTPInterface
-	listeningFollower, err = ptp4lCfg.ByRole(types.LISTENING)
-	listeningFollowerPresent := err == nil
 
 	// If there is no port in FOLLOWING or SLAVE state after this transition then
 	// syncstate is holdover
-	if (!activeFollowerPresent || (activeFollower.PortID == portID && role == types.FAULTY)) &&
-		(!listeningFollowerPresent || (listeningFollower.PortID == portID && role == types.FAULTY)) {
+	if (!activeFollowerPresent && newRole != types.SLAVE) || (activeFollower.PortID == portID && (newRole == types.FAULTY || newRole == types.LISTENING)) {
 		return ptp.HOLDOVER
 	}
-
 	return ptp.FREERUN
 }
 
