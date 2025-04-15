@@ -3,6 +3,7 @@ package metrics
 import (
 	"fmt"
 	"regexp"
+	"runtime/debug"
 	"strings"
 
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
@@ -83,7 +84,9 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Errorf("restored from extract metrics and events: %s", err)
+			log.Printf("Stack trace:\n%s", debug.Stack())
 			log.Errorf("failed to extract %s", msg)
+
 		}
 	}()
 

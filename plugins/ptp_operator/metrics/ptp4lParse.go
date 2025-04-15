@@ -99,7 +99,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 					ptpStats[master].SetRole(role)
 				}
 			}
-			log.Infof("update interface %s with portid %d from role %s to role %s  out %s, syncState %s, lastSyncState %s", ptpIFace, portID, lastRole, role, output, syncState, ptpStats[master].LastSyncState())
+			log.Infof("update interface %s with portid %d from role %s to role %s  out %s, syncState %s", ptpIFace, portID, lastRole, role, output, syncState)
 			ptp4lCfg.Interfaces[portID-1].UpdateRole(role)
 
 			// update role metrics
