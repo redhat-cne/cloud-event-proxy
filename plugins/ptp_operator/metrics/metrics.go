@@ -377,3 +377,8 @@ func getAlias(iface string) string {
 	r := []rune(iface)
 	return string(r[:len(r)-1]) + "x"
 }
+
+// SetMasterOffsetSource .. setting for testing purposes
+func SetMasterOffsetSource(processName string) {
+	masterOffsetSource = processName
+}

@@ -52,14 +52,9 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			}
 		}
 	} else if strings.Contains(output, " port ") && processName == ptp4lProcessName { // ignore anything reported by other process
-		followerOnly := isFollowerOnly(ptp4lCfg)
-		portID, role, syncState := extractPTP4lEventState(output, followerOnly)
+		portID, role, syncState := extractPTP4lEventState(output)
 		if portID == 0 || role == types.UNKNOWN {
 			return
-		}
-
-		if followerOnly {
-			syncState = followerOnlySyncState(role, portID, ptp4lCfg)
 		}
 
 		if ptpInterface, err = ptp4lCfg.ByPortID(portID); err != nil {
@@ -129,7 +124,11 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 				if ptpOpts, ok := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && ptpOpts != nil {
 					p.maybePublishOSClockSyncStateChangeEvent(ptpOpts, configName, profileName)
 					threshold := p.PtpThreshold(profileName, true)
-					go handleHoldOverState(p, ptpOpts, configName, profileName, threshold.HoldOverTimeout, ptpStats[MasterClockType].Alias(), threshold.Close)
+					if p.mock {
+						log.Infof("mock holdover is set to %s", ptpStats[MasterClockType].Alias())
+					} else {
+						go handleHoldOverState(p, ptpOpts, configName, profileName, threshold.HoldOverTimeout, ptpStats[MasterClockType].Alias(), threshold.Close)
+					}
 				}
 			}
 		}
@@ -168,33 +167,6 @@ func handleHoldOverState(ptpManager *PTPEventManager,
 			log.Errorf("failed to switch from holdover, could not find ptpStats for interface %s", ptpIFace)
 		}
 	}
-}
-
-func isFollowerOnly(ptp4lCfg *ptp4lconf.PTP4lConfig) bool {
-	if section, ok1 := ptp4lCfg.Sections["global"]; ok1 {
-		if value, ok2 := section["slaveOnly"]; ok2 {
-			log.Info("FollowerOnly scenario detected")
-			return value == "1"
-		}
-	}
-	return false
-}
-
-func followerOnlySyncState(role types.PtpPortRole, portID int, ptp4lCfg *ptp4lconf.PTP4lConfig) (outClockState ptp.SyncState) {
-	activeFollower, err := ptp4lCfg.ByRole(types.SLAVE)
-	activeFollowerPresent := err == nil
-	var listeningFollower ptp4lconf.PTPInterface
-	listeningFollower, err = ptp4lCfg.ByRole(types.LISTENING)
-	listeningFollowerPresent := err == nil
-
-	// If there is no port in FOLLOWING or SLAVE state after this transition then
-	// syncstate is holdover
-	if (!activeFollowerPresent || (activeFollower.PortID == portID && role == types.FAULTY)) &&
-		(!listeningFollowerPresent || (listeningFollower.PortID == portID && role == types.FAULTY)) {
-		return ptp.HOLDOVER
-	}
-
-	return ptp.FREERUN
 }
 
 func (p *PTPEventManager) maybePublishOSClockSyncStateChangeEvent(
@@ -251,6 +223,11 @@ func (p *PTPEventManager) maybePublishOSClockSyncStateChangeEvent(
 	}
 
 	if publish {
+		if p.mock {
+			p.mockEvent = ptp.OsClockSyncStateChange
+			log.Infof("PublishEvent state=%s, ptpOffset=%d, source=%s, eventType=%s", ptp.FREERUN, FreeRunOffsetValue, ClockRealTime, ptp.OsClockSyncStateChange)
+			return
+		}
 		p.GenPTPEvent(ptpProfileName, cStats, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
 		UpdateSyncStateMetrics(phc2sysProcessName, ClockRealTime, ptp.FREERUN)
 	}

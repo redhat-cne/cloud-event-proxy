@@ -254,7 +254,7 @@ func extractNmeaMetrics(processName, output string) (interfaceName string, statu
 //		"FAULTY to SLAVE on INIT_COMPLETE"
 //		"SLAVE to UNCALIBRATED on SYNCHRONIZATION_FAULT"
 //	     "MASTER to PASSIVE"
-func extractPTP4lEventState(output string, isFollowerOnly bool) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
+func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
 	// This makes the out to equal
 
 	// ptp4l[5199193.712]: [ptp4l.0.config] port 1: SLAVE to UNCALIBRATED on SYNCHRONIZATION_FAULT
@@ -297,7 +297,7 @@ func extractPTP4lEventState(output string, isFollowerOnly bool) (portID int, rol
 		strings.Contains(output, "SLAVE to UNCALIBRATED") ||
 		strings.Contains(output, "MASTER to UNCALIBRATED on RS_SLAVE") ||
 		strings.Contains(output, "LISTENING to UNCALIBRATED on RS_SLAVE") ||
-		(strings.Contains(output, "FAULTY to LISTENING on INIT_COMPLETE") && !isFollowerOnly) { // added to manage two port case so its not breaking
+		strings.Contains(output, "FAULTY to LISTENING on INIT_COMPLETE") { // added to manage two port case so its not breaking
 		role = types.FAULTY
 		clockState = ptp.HOLDOVER
 	} else if strings.Contains(output, "SLAVE to MASTER") ||
@@ -307,11 +307,9 @@ func extractPTP4lEventState(output string, isFollowerOnly bool) (portID int, rol
 	} else if strings.Contains(output, "SLAVE to LISTENING") {
 		role = types.LISTENING
 		clockState = ptp.HOLDOVER
-	} else if (strings.Contains(output, "FAULTY to LISTENING") ||
+	} else if strings.Contains(output, "FAULTY to LISTENING") ||
 		strings.Contains(output, "UNCALIBRATED to LISTENING") ||
-		strings.Contains(output, "INITIALIZING to LISTENING")) && isFollowerOnly {
-		role = types.LISTENING
-	} else if strings.Contains(output, "INITIALIZING to LISTENING") {
+		strings.Contains(output, "INITIALIZING to LISTENING") {
 		role = types.LISTENING
 	}
 	return
@@ -751,6 +749,6 @@ func handlePort(portIndex string) (portID int, err error) {
 	return portID, err
 }
 
-func TestFuncExtractPTP4lEventState(output string, isFollowerOnly bool) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
-	return extractPTP4lEventState(output, isFollowerOnly)
+func TestFuncExtractPTP4lEventState(output string) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
+	return extractPTP4lEventState(output)
 }
