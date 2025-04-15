@@ -124,7 +124,11 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 				if ptpOpts, ok := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && ptpOpts != nil {
 					p.maybePublishOSClockSyncStateChangeEvent(ptpOpts, configName, profileName)
 					threshold := p.PtpThreshold(profileName, true)
-					go handleHoldOverState(p, ptpOpts, configName, profileName, threshold.HoldOverTimeout, ptpStats[MasterClockType].Alias(), threshold.Close)
+					if p.mock {
+						log.Infof("mock holdover is set to %s", ptpStats[MasterClockType].Alias())
+					} else {
+						go handleHoldOverState(p, ptpOpts, configName, profileName, threshold.HoldOverTimeout, ptpStats[MasterClockType].Alias(), threshold.Close)
+					}
 				}
 			}
 		}
@@ -219,6 +223,11 @@ func (p *PTPEventManager) maybePublishOSClockSyncStateChangeEvent(
 	}
 
 	if publish {
+		if p.mock {
+			p.mockEvent = ptp.OsClockSyncStateChange
+			log.Infof("PublishEvent state=%s, ptpOffset=%d, source=%s, eventType=%s", ptp.FREERUN, FreeRunOffsetValue, ClockRealTime, ptp.OsClockSyncStateChange)
+			return
+		}
 		p.GenPTPEvent(ptpProfileName, cStats, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
 		UpdateSyncStateMetrics(phc2sysProcessName, ClockRealTime, ptp.FREERUN)
 	}

@@ -457,6 +457,7 @@ func processPtp4lConfigFileUpdates() {
 					Profile:    *ptpConfigEvent.Profile,
 					Interfaces: ptpInterfaces,
 				}
+
 				// add to eventManager
 				eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
 				// clean up process metrics
