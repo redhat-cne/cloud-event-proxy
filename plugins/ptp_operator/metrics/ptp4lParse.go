@@ -52,7 +52,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			}
 		}
 	} else if strings.Contains(output, " port ") && processName == ptp4lProcessName { // ignore anything reported by other process
-		portID, role, syncState := extractPTP4lEventState(output)
+		portID, role, syncState := extractPTP4lEventState(output, ptp4lCfg)
 		if portID == 0 || role == types.UNKNOWN {
 			return
 		}

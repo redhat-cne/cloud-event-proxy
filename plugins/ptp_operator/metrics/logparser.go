@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/event"
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/stats"
 	"k8s.io/utils/pointer"
 
@@ -254,7 +255,7 @@ func extractNmeaMetrics(processName, output string) (interfaceName string, statu
 //		"FAULTY to SLAVE on INIT_COMPLETE"
 //		"SLAVE to UNCALIBRATED on SYNCHRONIZATION_FAULT"
 //	     "MASTER to PASSIVE"
-func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
+func extractPTP4lEventState(output string, ptp4lCfg *ptp4lconf.PTP4lConfig) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
 	// This makes the out to equal
 
 	// ptp4l[5199193.712]: [ptp4l.0.config] port 1: SLAVE to UNCALIBRATED on SYNCHRONIZATION_FAULT
@@ -280,7 +281,7 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 	if err != nil {
 		return
 	}
-
+	holdoverOK := false
 	if strings.Contains(output, "UNCALIBRATED to SLAVE") ||
 		strings.Contains(output, "LISTENING to SLAVE") {
 		role = types.SLAVE
@@ -296,22 +297,28 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 		strings.Contains(output, "SYNCHRONIZATION_FAULT") ||
 		strings.Contains(output, "SLAVE to UNCALIBRATED") ||
 		strings.Contains(output, "MASTER to UNCALIBRATED on RS_SLAVE") ||
-		strings.Contains(output, "LISTENING to UNCALIBRATED on RS_SLAVE") ||
-		strings.Contains(output, "FAULTY to LISTENING on INIT_COMPLETE") { // added to manage two port case so its not breaking
+		strings.Contains(output, "LISTENING to UNCALIBRATED on RS_SLAVE") {
 		role = types.FAULTY
-		clockState = ptp.HOLDOVER
+		holdoverOK = true
 	} else if strings.Contains(output, "SLAVE to MASTER") ||
 		strings.Contains(output, "SLAVE to GRAND_MASTER") {
 		role = types.MASTER
-		clockState = ptp.HOLDOVER
+		holdoverOK = true
 	} else if strings.Contains(output, "SLAVE to LISTENING") {
 		role = types.LISTENING
-		clockState = ptp.HOLDOVER
+		holdoverOK = true
 	} else if strings.Contains(output, "FAULTY to LISTENING") ||
 		strings.Contains(output, "UNCALIBRATED to LISTENING") ||
 		strings.Contains(output, "INITIALIZING to LISTENING") {
 		role = types.LISTENING
 	}
+
+	// If there is no port in SLAVE/FOLLOWER role after this transition
+	// syncState is HOLDOVER
+	if !ptp4lCfg.IsFollowerPresentAfterNewRole(portID, role) && holdoverOK {
+		clockState = ptp.HOLDOVER
+	}
+
 	return
 }
 
@@ -737,7 +744,7 @@ func GetSyncStateID(state string) float64 {
 func handlePort(portIndex string) (portID int, err error) {
 	if !numericOnly.MatchString(portIndex) {
 		// Skip any non-numeric portIndex like "b49691.fffe.a3f27c-1"
-		return
+		return 0, fmt.Errorf("port is not a number")
 	}
 
 	portID, err = strconv.Atoi(portIndex)
@@ -749,6 +756,6 @@ func handlePort(portIndex string) (portID int, err error) {
 	return portID, err
 }
 
-func TestFuncExtractPTP4lEventState(output string) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
-	return extractPTP4lEventState(output)
+func TestFuncExtractPTP4lEventState(output string, ptp4lCfg *ptp4lconf.PTP4lConfig) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
+	return extractPTP4lEventState(output, ptp4lCfg)
 }

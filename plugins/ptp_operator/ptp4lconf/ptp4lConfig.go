@@ -333,3 +333,24 @@ func GetPTPProfileName(ptpConfig string) string {
 	log.Errorf("did not find matching profile name for reg ex %s and ptp config %s", "profile: \\s*([a-zA-Z0-9]+)", ptpConfig)
 	return ""
 }
+
+// IsFollowerPresentAfterNewRole returns true if there is an interface in SLAVE/FOLLOWER role
+func (ptp4lCfg *PTP4lConfig) IsFollowerPresentAfterNewRole(portID int, role types.PtpPortRole) bool {
+	interfaceCopy := []PTPInterface{}
+	for _, p := range ptp4lCfg.Interfaces {
+		interfaceCopy = append(interfaceCopy, *p)
+	}
+	interfaceID := portID - 1
+	if portID <= 0 || interfaceID >= len(ptp4lCfg.Interfaces) || role == types.UNKNOWN {
+		log.Errorf("port ID=%d InterfaceID(=portID-1)=%d not found in ptp4lCfg (len=%d) or role=%d is UNKOWN(4), cannot update role in ptp4lCfg", portID, interfaceID, len(interfaceCopy), role)
+	} else {
+		interfaceCopy[interfaceID].Role = role
+	}
+	for _, p := range interfaceCopy {
+		// If there is at least one SLAVE/FOLLOWER interface return true
+		if p.Role == types.SLAVE {
+			return true
+		}
+	}
+	return false
+}
