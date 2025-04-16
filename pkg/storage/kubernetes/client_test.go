@@ -3,6 +3,7 @@ package kubernetes_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
@@ -14,8 +15,9 @@ import (
 )
 
 const (
-	nodeName  = "test_node_name"
-	storePath = "."
+	nodeName               = "test_node_name"
+	storePath              = "."
+	configMapRetryInterval = 3 * time.Second
 )
 
 var (
@@ -40,7 +42,7 @@ func Subscriptions() *v1.ConfigMap {
 
 func TestClient_InitConfigMap(t *testing.T) {
 	setupClient()
-	err := clients.InitConfigMap("1.0", ".", nodeName, metav1.NamespaceSystem)
+	err := clients.InitConfigMap("1.0", ".", nodeName, metav1.NamespaceSystem, configMapRetryInterval, 0)
 	assert.Nil(t, err)
 	cm, e := clients.GetConfigMap(context.Background(), nodeName, metav1.NamespaceSystem)
 	assert.Nil(t, e)
@@ -49,7 +51,7 @@ func TestClient_InitConfigMap(t *testing.T) {
 
 func TestClient_GetConfigMap(t *testing.T) {
 	setupClient()
-	err := clients.InitConfigMap("1.0", ".", nodeName, metav1.NamespaceSystem)
+	err := clients.InitConfigMap("1.0", ".", nodeName, metav1.NamespaceSystem, configMapRetryInterval, 0)
 	assert.Nil(t, err)
 	cm, e := clients.GetConfigMap(context.Background(), nodeName, metav1.NamespaceSystem)
 	assert.Nil(t, e)
@@ -59,7 +61,7 @@ func TestClient_GetConfigMap(t *testing.T) {
 
 func Test_LoadingSubscriptionFromFileToCache(t *testing.T) {
 	setupClient()
-	err := clients.InitConfigMap("1.0", ".", nodeName, metav1.NamespaceSystem)
+	err := clients.InitConfigMap("1.0", ".", nodeName, metav1.NamespaceSystem, configMapRetryInterval, 0)
 	assert.Nil(t, err)
 	cm, e := clients.GetConfigMap(context.Background(), nodeName, metav1.NamespaceSystem)
 	assert.Nil(t, e)

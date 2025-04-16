@@ -57,6 +57,11 @@ import (
 	subscriberApi "github.com/redhat-cne/sdk-go/v1/subscriber"
 )
 
+const (
+	configMapRetryInterval = 3 * time.Second
+	configMapRetryCount    = 5
+)
+
 var (
 	// defaults
 	storePath               string
@@ -134,8 +139,8 @@ func main() {
 	}
 	if namespace != "" && nodeName != "" && scConfig.TransportHost.Type == common.HTTP {
 		// if consumer doesn't pass namespace then this will default to empty dir
-		if e := client.InitConfigMap(scConfig.APIVersion, scConfig.StorePath, nodeName, namespace); e != nil {
-			log.Errorf("failed to initlialize configmap, subcription will be stored in empty dir %s", e.Error())
+		if e := client.InitConfigMap(scConfig.APIVersion, scConfig.StorePath, nodeName, namespace, configMapRetryInterval, configMapRetryCount); e != nil {
+			log.Errorf("failed to initialize configmap, subscription will be stored in empty dir %s", e.Error())
 		} else {
 			scConfig.StorageType = storageClient.ConfigMap
 		}

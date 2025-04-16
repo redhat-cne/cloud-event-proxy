@@ -72,9 +72,12 @@ var (
 	// map to track if subscriptions were created successfully for each publisher service
 	subscribed = make(map[string]bool)
 	subs       []*pubsub.PubSub
+	// Git commit of current build set at build time
+	GitCommit = "Undefined"
 )
 
 func main() {
+	fmt.Printf("Git commit: %s\n", GitCommit)
 	common.InitLogger()
 	flag.StringVar(&localAPIAddr, "local-api-addr", "localhost:8989", "The address the local api binds to .")
 	flag.StringVar(&apiPath, "api-path", "/api/ocloudNotifications/v2/", "The rest api path.")
@@ -170,6 +173,34 @@ func deleteAllSubscriptions() {
 	}
 }
 
+// listSubscriptions lists all subscriptions
+// and returns true if there are any subscriptions
+func listSubscriptions() bool {
+	url := &types.URI{URL: url.URL{Scheme: "http",
+		Host: apiAddr,
+		Path: fmt.Sprintf("%s%s", apiPath, "subscriptions")}}
+	rc := restclient.New()
+
+	var subs = []pubsub.PubSub{}
+	var subB []byte
+	status, subB, err := rc.Get(url)
+	if status != http.StatusOK {
+		log.Errorf("failed to list subscriptions, status %d", status)
+		if err != nil {
+			log.Errorf("%s", err.Error())
+		}
+		return false
+	}
+	if err = json.Unmarshal(subB, &subs); err != nil {
+		log.Errorf("failed to unmarshal subscriptions, %v", err)
+		return false
+	}
+	if len(subs) > 0 {
+		return true
+	}
+	return false
+}
+
 func subscribeToEvents() {
 RETRY:
 	for p, subOK := range subscribed {
@@ -178,7 +209,14 @@ RETRY:
 			if !healthOK {
 				deleteAllSubscriptions()
 				log.Info("delete all subscriptions due to publisher health failure")
-				return
+				goto RETRY
+			}
+			if !listSubscriptions() {
+				// re-subscribe in case of non-recoverable error at server side, for example
+				// lost of persist data in configmap
+				log.Infof("subscription not found for %s, resubscribe", p)
+				subscribed[p] = false
+				goto RETRY
 			}
 			continue
 		}
@@ -245,11 +283,14 @@ func getCurrentState(resource string) {
 		Host: apiAddr,
 		Path: fmt.Sprintf("%s%s", apiPath, fmt.Sprintf("%s/CurrentState", resource[1:]))}}
 	rc := restclient.New()
-	status, cloudEvent := rc.Get(url)
+	status, cloudEvent, err := rc.Get(url)
 	if status != http.StatusOK {
-		log.Errorf("CurrentState:error %d from url %s, %s", status, url.String(), cloudEvent)
+		log.Errorf("CurrentState: error %d from url %s", status, url.String())
+		if err != nil {
+			log.Errorf("%s", err.Error())
+		}
 	} else {
-		log.Debugf("Got CurrentState: %s ", cloudEvent)
+		log.Debugf("Got CurrentState: %s ", string(cloudEvent))
 	}
 }
 

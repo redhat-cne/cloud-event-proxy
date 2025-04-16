@@ -67,7 +67,7 @@ build-only:
 	go build -ldflags "${LINKER_RELEASE_FLAGS}" -o ./build/cloud-event-proxy cmd/main.go
 
 build-examples:
-	go build -o ./build/cloud-event-consumer ./examples/consumer/main.go
+	go build -ldflags "${LINKER_RELEASE_FLAGS}" -o ./build/cloud-event-consumer ./examples/consumer/main.go
 
 lint:
 	golangci-lint --enable gosec run

@@ -71,8 +71,7 @@ func (r *Rest) PostCloudEvent(url *types.URI, e ce.Event) (int, error) {
 
 // Post with data
 func (r *Rest) Post(url *types.URI, data []byte) (int, error) {
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, "POST", url.String(), bytes.NewBuffer(data))
 	if err != nil {
@@ -102,18 +101,17 @@ func (r *Rest) Post(url *types.URI, data []byte) (int, error) {
 
 // PostWithReturn post with data and return data
 func (r *Rest) PostWithReturn(url *types.URI, data []byte) (int, []byte) {
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, "POST", url.String(), bytes.NewBuffer(data))
 	if err != nil {
-		log.Errorf("error creating post request %v", err)
+		log.Errorf("error creating post with return: %v", err)
 		return http.StatusBadRequest, nil
 	}
 	request.Header.Set("content-type", "application/json")
 	res, err := r.client.Do(request)
 	if err != nil {
-		log.Errorf("error in post response %v to %s ", err, url)
+		log.Errorf("error in post response to %s: %v", url, err)
 		return http.StatusBadRequest, nil
 	}
 	if res.Body != nil {
@@ -129,18 +127,17 @@ func (r *Rest) PostWithReturn(url *types.URI, data []byte) (int, []byte) {
 
 // Put  http request
 func (r *Rest) Put(url *types.URI) int {
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, "PUT", url.String(), nil)
 	if err != nil {
-		log.Errorf("error creating post request %v", err)
+		log.Errorf("error creating put request: %v", err)
 		return http.StatusBadRequest
 	}
 	request.Header.Set("content-type", "application/json")
 	res, err := r.client.Do(request)
 	if err != nil {
-		log.Errorf("error in post response %v to %s ", err, url)
+		log.Errorf("error in put response to %s: %v", url, err)
 		return http.StatusBadRequest
 	}
 	defer res.Body.Close()
@@ -149,18 +146,17 @@ func (r *Rest) Put(url *types.URI) int {
 
 // Delete  http request
 func (r *Rest) Delete(url *types.URI) int {
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, "DELETE", url.String(), nil)
 	if err != nil {
-		log.Errorf("error creating post request %v", err)
+		log.Errorf("error creating delete request: %v", err)
 		return http.StatusBadRequest
 	}
 	request.Header.Set("content-type", "application/json")
 	res, err := r.client.Do(request)
 	if err != nil {
-		log.Errorf("error in post response %v to %s ", err, url)
+		log.Errorf("error in delete response to %s: %v", url, err)
 		return http.StatusBadRequest
 	}
 	defer res.Body.Close()
@@ -168,24 +164,22 @@ func (r *Rest) Delete(url *types.URI) int {
 }
 
 // Get  http request
-func (r *Rest) Get(url *types.URI) (int, string) {
-	ctx := context.Background()
-	ctx, cancel := context.WithCancel(ctx)
+func (r *Rest) Get(url *types.URI) (int, []byte, error) {
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, "GET", url.String(), nil)
 	if err != nil {
-		log.Errorf("error creating post request %v", err)
-		return http.StatusBadRequest, fmt.Sprintf("error creating post request %v", err)
+		return http.StatusBadRequest, nil, fmt.Errorf("error creating get request: %v", err)
 	}
 	request.Header.Set("content-type", "application/json")
 	res, err := r.client.Do(request)
 	if err != nil {
-		log.Errorf("error in post response %v to %s ", err, url)
-		return http.StatusBadRequest, fmt.Sprintf("error in post response %v to %s ", err, url)
+		return http.StatusBadRequest, nil, fmt.Errorf("error in get response to %s: %v", url, err)
 	}
 	defer res.Body.Close()
-	if body, readErr := io.ReadAll(res.Body); readErr == nil {
-		return res.StatusCode, string(body)
+	var body []byte
+	if body, err = io.ReadAll(res.Body); err != nil {
+		return res.StatusCode, body, nil
 	}
-	return http.StatusBadRequest, fmt.Sprintf("error in post response %v to %s ", err, url)
+	return http.StatusBadRequest, nil, fmt.Errorf("error reading body in get response to %s: %v", url, err)
 }
