@@ -9,6 +9,8 @@ import (
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/event"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
 
+	"encoding/json"
+
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/stats"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
@@ -295,6 +297,7 @@ func Test_ParseGmLogs(t *testing.T) {
 	ptpStats := ptpEventManager.GetStats(types.ConfigName(configName))
 	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
 	for _, tt := range tc {
+		tt := tt
 		output := replacer.Replace(tt.output)
 		fields := strings.Fields(output)
 		ptpStats[types.IFace(tt.interfaceName)] = &stats.Stats{}
@@ -323,7 +326,6 @@ func TestExtractPTP4lEventState(t *testing.T) {
 	tests := []struct {
 		name          string
 		logLine       string
-		isFollower    bool
 		expectedPort  int
 		expectedRole  types.PtpPortRole
 		expectedState ptp.SyncState
@@ -332,7 +334,6 @@ func TestExtractPTP4lEventState(t *testing.T) {
 		{
 			name:          "b49691.fffe.a3f27c-1 changed state",
 			logLine:       "phc2sys[152918.606]: [phc2sys.2.config:6] port b49691.fffe.a3f27c-1 changed state",
-			isFollower:    false,
 			expectedPort:  0,
 			expectedRole:  types.UNKNOWN,
 			expectedState: ptp.FREERUN,
@@ -341,7 +342,6 @@ func TestExtractPTP4lEventState(t *testing.T) {
 		{
 			name:          "INITIALIZING to LISTENING",
 			logLine:       "ptp4l.0.config  port 2 (ens1f1)  INITIALIZING to LISTENING on INIT_COMPLETE",
-			isFollower:    false,
 			expectedPort:  2,
 			expectedRole:  types.LISTENING,
 			expectedState: ptp.FREERUN,
@@ -349,7 +349,6 @@ func TestExtractPTP4lEventState(t *testing.T) {
 		{
 			name:          "LISTENING to UNCALIBRATED ",
 			logLine:       "ptp4l.1.config  port 1 (ens2f0)  LISTENING to UNCALIBRATED on RS_SLAVE",
-			isFollower:    false,
 			expectedPort:  1,
 			expectedRole:  types.FAULTY,
 			expectedState: ptp.HOLDOVER,
@@ -357,7 +356,6 @@ func TestExtractPTP4lEventState(t *testing.T) {
 		{
 			name:          "FAULTY on FAULT_DETECTED",
 			logLine:       "ptp4l[72444.514]: [ptp4l.0.config:5] port 1 (ens1f0): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)",
-			isFollower:    false,
 			expectedPort:  1,
 			expectedRole:  types.FAULTY,
 			expectedState: ptp.HOLDOVER,
@@ -365,7 +363,6 @@ func TestExtractPTP4lEventState(t *testing.T) {
 		{
 			name:          "LISTENING to UNCALIBRATED",
 			logLine:       "ptp4l[72530.751]: [ptp4l.0.config:5] port 1 (ens1f0): LISTENING to UNCALIBRATED on RS_SLAVE",
-			isFollower:    false,
 			expectedPort:  1,
 			expectedRole:  types.FAULTY,
 			expectedState: ptp.HOLDOVER,
@@ -373,7 +370,6 @@ func TestExtractPTP4lEventState(t *testing.T) {
 		{
 			name:          "UNCALIBRATED to SLAVE ",
 			logLine:       "ptp4l[72530.885]: [ptp4l.0.config:5] port 1 (ens1f0): UNCALIBRATED to SLAVE on MASTER_CLOCK_SELECTED",
-			isFollower:    false,
 			expectedPort:  1,
 			expectedRole:  types.SLAVE,
 			expectedState: ptp.FREERUN,
@@ -381,7 +377,6 @@ func TestExtractPTP4lEventState(t *testing.T) {
 		{
 			name:          "SLAVE to UNCALIBRATED",
 			logLine:       "ptp4l[5199193.712]: [ptp4l.0.config] port 1: SLAVE to UNCALIBRATED on SYNCHRONIZATION_FAULT",
-			isFollower:    false,
 			expectedPort:  1,
 			expectedRole:  types.FAULTY,
 			expectedState: ptp.HOLDOVER,
@@ -389,7 +384,6 @@ func TestExtractPTP4lEventState(t *testing.T) {
 		{
 			name:          "LISTENING to SLAVE",
 			logLine:       "ptp4l[5199200.100]: [ptp4l.0.config] port 1: LISTENING to SLAVE",
-			isFollower:    false,
 			expectedPort:  1,
 			expectedRole:  types.SLAVE,
 			expectedState: ptp.FREERUN,
@@ -397,7 +391,6 @@ func TestExtractPTP4lEventState(t *testing.T) {
 		{
 			name:          "SLAVE to PASSIVE",
 			logLine:       "ptp4l[5199210.200]: [ptp4l.0.config] port 1: SLAVE to PASSIVE",
-			isFollower:    false,
 			expectedPort:  1,
 			expectedRole:  types.PASSIVE,
 			expectedState: ptp.FREERUN,
@@ -405,7 +398,6 @@ func TestExtractPTP4lEventState(t *testing.T) {
 		{
 			name:          "SLAVE to MASTER",
 			logLine:       "ptp4l[5199220.300]: [ptp4l.0.config] port 1: SLAVE to MASTER",
-			isFollower:    false,
 			expectedPort:  1,
 			expectedRole:  types.MASTER,
 			expectedState: ptp.HOLDOVER,
@@ -413,7 +405,6 @@ func TestExtractPTP4lEventState(t *testing.T) {
 		{
 			name:          "INITIALIZING to LISTENING (follower only)",
 			logLine:       "ptp4l[5199230.400]: [ptp4l.0.config] port 1: INITIALIZING to LISTENING",
-			isFollower:    true,
 			expectedPort:  1,
 			expectedRole:  types.LISTENING,
 			expectedState: ptp.FREERUN,
@@ -421,18 +412,224 @@ func TestExtractPTP4lEventState(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			portID, role, clockState := metrics.TestFuncExtractPTP4lEventState(tc.logLine, tc.isFollower)
+		tc := tc
+		for _, followers := range []int{0, 1, 2} {
+			t.Run(tc.name, func(t *testing.T) {
+				portID, role, clockState := metrics.TestFuncExtractPTP4lEventState(tc.logLine)
 
-			if portID != tc.expectedPort {
-				assert.Equal(t, tc.expectedPort, portID, fmt.Sprintf("portID = %d; want %d", portID, tc.expectedPort))
-			}
-			if role != tc.expectedRole {
-				assert.Equal(t, tc.expectedRole, role, fmt.Sprintf("role = %v; want %v", role, tc.expectedRole))
-			}
-			if clockState != tc.expectedState {
-				assert.Equal(t, tc.expectedPort, clockState, fmt.Sprintf("state = %v; want %v", clockState, tc.expectedState))
-			}
-		})
+				if portID != tc.expectedPort {
+					assert.Equal(t, tc.expectedPort, portID, fmt.Sprintf("with followers(%d) portID = %d; want %d", followers, portID, tc.expectedPort))
+				}
+				if role != tc.expectedRole {
+					assert.Equal(t, tc.expectedRole, role, fmt.Sprintf("with followers(%d) role = %v; want %v", followers, role, tc.expectedRole))
+				}
+				if clockState != tc.expectedState {
+					assert.Equal(t, tc.expectedPort, clockState, fmt.Sprintf("with followers(%d) state = %v; want %v", followers, clockState, tc.expectedState))
+				}
+			})
+		}
 	}
+}
+
+func TestParsePTP4l(t *testing.T) {
+	tests := []struct {
+		name                string
+		processName         string
+		configName          string
+		profileName         string
+		output              string
+		fields              []string
+		expectedStateChange bool
+		expectedMasterState ptp.SyncState // expected state when exiting
+		expectedOSState     ptp.SyncState
+		ptpInterface        ptp4lconf.PTPInterface
+		ptp4lCfg            *ptp4lconf.PTP4lConfig
+		lastSyncState       ptp.SyncState // what ws the last sync state before entering new state
+		expectedError       bool
+	}{
+		{
+			name:        "valid CLOCK_CLASS_CHANGE event",
+			processName: "ptp4l",
+			configName:  "ptp4l.0.config",
+			profileName: "test-profile",
+			output:      "ptp4l 1646672953 ptp4l.0.config CLOCK_CLASS_CHANGE 165.000000",
+			fields:      []string{"ptp4l", "1646672953", "ptp4l.0.config", "CLOCK_CLASS_CHANGE", "165.000000"},
+			ptpInterface: ptp4lconf.PTPInterface{
+				Name: "ens2f0",
+			},
+			ptp4lCfg: &ptp4lconf.PTP4lConfig{
+				Interfaces: []*ptp4lconf.PTPInterface{
+					{
+						Name:     "ens2f0",
+						PortID:   1,
+						PortName: "port 1",
+						Role:     types.SLAVE, //master
+					},
+					{
+						Name:     "ens2f1",
+						PortID:   2,
+						PortName: "port 2",
+						Role:     types.MASTER, // master
+					},
+				},
+			},
+			expectedError: false,
+		},
+		{
+			name:        "SLAVE changing to FAULT",
+			processName: "ptp4l",
+			configName:  "ptp4l.0.config",
+			profileName: "test-profile",
+			output:      "ptp4l[72444.514]: [ptp4l.0.config:5] port 1 (ens2f0): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)",
+			fields:      []string{"ptp4l", "1646672953", "ptp4l.0.config", "port", "1", "(ens2f0)", "SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)"},
+			ptpInterface: ptp4lconf.PTPInterface{
+				Name: "ens2f0",
+			},
+			ptp4lCfg: &ptp4lconf.PTP4lConfig{
+				Interfaces: []*ptp4lconf.PTPInterface{
+					{
+						Name:     "ens2f0",
+						PortID:   1,
+						PortName: "port 1",
+						Role:     types.SLAVE,
+					},
+					{
+						Name:     "ens2f1",
+						PortID:   2,
+						PortName: "port 2",
+						Role:     types.MASTER, // master
+					},
+				},
+			},
+			expectedMasterState: ptp.HOLDOVER,
+			expectedStateChange: true,
+			lastSyncState:       ptp.LOCKED,
+			expectedError:       false,
+		},
+		{
+			name:        "FAULTY Changing to SLAVE",
+			processName: "ptp4l",
+			configName:  "ptp4l.0.config",
+			profileName: "test-profile",
+			output:      "ptp4l[72444.514]: [ptp4l.0.config:5] port 1 (ens2f0): FAULTY to SLAVE",
+			fields:      []string{"ptp4l", "1646672953", "ptp4l.0.config", "port", "1", "(ens2f0)", "FAULTY to SLAVE"},
+			ptpInterface: ptp4lconf.PTPInterface{
+				Name: "ens2f0",
+			},
+			ptp4lCfg: &ptp4lconf.PTP4lConfig{
+				Interfaces: []*ptp4lconf.PTPInterface{
+					{
+						Name:     "ens2f0",
+						PortID:   1,
+						PortName: "port 1",
+						Role:     types.FAULTY,
+					},
+					{
+						Name:     "ens2f1",
+						PortID:   2,
+						PortName: "port 2",
+						Role:     types.MASTER, // master
+					},
+				},
+			},
+			expectedMasterState: ptp.HOLDOVER, //stays in holdover in 4.18 , when backporting we need to check this to make it FREERUN
+			lastSyncState:       ptp.HOLDOVER,
+			expectedStateChange: true,
+			expectedError:       false,
+		},
+		{
+			name:        "LISTENING Changing to SLAVE",
+			processName: "ptp4l",
+			configName:  "ptp4l.0.config",
+			profileName: "test-profile",
+			output:      "ptp4l[72444.514]: [ptp4l.0.config:5] port 1 (ens2f1): LISTENING to SLAVE",
+			fields:      []string{"ptp4l", "1646672953", "ptp4l.0.config", "port", "2", "(ens2f1)", "LISTENING to SLAVE"},
+			ptpInterface: ptp4lconf.PTPInterface{
+				Name: "ens2f0",
+			},
+			ptp4lCfg: &ptp4lconf.PTP4lConfig{
+				Interfaces: []*ptp4lconf.PTPInterface{
+					{
+						Name:     "ens2f0",
+						PortID:   1,
+						PortName: "port 1",
+						Role:     types.FAULTY,
+					},
+					{
+						Name:     "ens2f1",
+						PortID:   2,
+						PortName: "port 2",
+						Role:     types.LISTENING, // master
+					},
+				},
+			},
+			expectedMasterState: ptp.FREERUN, // Here if the last state was freerun then satys in free run until it gets a locked
+			lastSyncState:       ptp.FREERUN,
+			expectedStateChange: true,
+			expectedError:       false,
+		},
+		{
+			name:        "SLAVE Changing to LISTENING",
+			processName: "ptp4l",
+			configName:  "ptp4l.0.config",
+			profileName: "test-profile",
+			output:      "ptp4l[72444.514]: [ptp4l.0.config:5] port 1 (ens2f0): SLAVE to LISTENING",
+			fields:      []string{"ptp4l", "1646672953", "ptp4l.0.config", "port", "2", "(ens2f0)", "SLAVE to LISTENING"},
+			ptpInterface: ptp4lconf.PTPInterface{
+				Name: "ens2f0",
+			},
+			ptp4lCfg: &ptp4lconf.PTP4lConfig{
+				Interfaces: []*ptp4lconf.PTPInterface{
+					{
+						Name:     "ens2f0",
+						PortID:   1,
+						PortName: "port 1",
+						Role:     types.SLAVE,
+					},
+					{
+						Name:     "ens2f1",
+						PortID:   2,
+						PortName: "port 2",
+						Role:     types.LISTENING, // master
+					},
+				},
+			},
+			expectedMasterState: ptp.HOLDOVER, //stays in holdover in 4.18 , when backporting we need to check this to make it FREERUN
+			lastSyncState:       ptp.LOCKED,
+			expectedStateChange: true,
+			expectedError:       false,
+		},
+	}
+	ptpEventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "tetsnode", nil)
+	ptpEventManager.MockTest(true)
+	for _, followers := range []int{1, 2} {
+		followers := followers // 👈 capture the value of `followers` too
+		for _, tt := range tests {
+			tt := tt // Important: capture tt for each iteration
+			tt.ptp4lCfg = deepCopyPTP4lCfg(tt.ptp4lCfg)
+			t.Run(tt.name, func(t *testing.T) {
+				if followers == 2 {
+					tt.ptp4lCfg.Interfaces[1].UpdateRole(types.LISTENING)
+				}
+
+				metrics.SetMasterOffsetSource(tt.processName)
+				ptpEventManager.Stats[types.ConfigName(tt.configName)] = make(stats.PTPStats)
+				ptpStats := ptpEventManager.GetStats(types.ConfigName(tt.configName))
+				ptpStats.CheckSource(metrics.ClockRealTime, configName, tt.processName)
+				ptpStats.CheckSource(metrics.MasterClockType, configName, tt.processName)
+				ptpStats[metrics.MasterClockType].SetLastSyncState(tt.lastSyncState)
+				ptpEventManager.ParsePTP4l(tt.processName, tt.configName, tt.profileName, tt.output, tt.fields, tt.ptpInterface, tt.ptp4lCfg, ptpStats)
+				if tt.expectedStateChange {
+					assert.Equal(t, tt.expectedMasterState, ptpStats[metrics.MasterClockType].LastSyncState(), fmt.Sprintf("%s-followers(%d) state = %v; want %v", tt.name, followers, ptpStats[metrics.MasterClockType].LastSyncState(), tt.expectedMasterState))
+				}
+			})
+		}
+	}
+}
+
+func deepCopyPTP4lCfg(src *ptp4lconf.PTP4lConfig) *ptp4lconf.PTP4lConfig {
+	var copied ptp4lconf.PTP4lConfig
+	raw, _ := json.Marshal(src)
+	_ = json.Unmarshal(raw, &copied)
+	return &copied
 }
