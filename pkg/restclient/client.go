@@ -178,7 +178,7 @@ func (r *Rest) Get(url *types.URI) (int, []byte, error) {
 	}
 	defer res.Body.Close()
 	var body []byte
-	if body, err = io.ReadAll(res.Body); err != nil {
+	if body, err = io.ReadAll(res.Body); err == nil {
 		return res.StatusCode, body, nil
 	}
 	return http.StatusBadRequest, nil, fmt.Errorf("error reading body in get response to %s: %v", url, err)
