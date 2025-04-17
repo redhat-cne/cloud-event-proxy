@@ -236,7 +236,13 @@ func getCurrentState(resource string) {
 func server() {
 	http.HandleFunc("/event", getEvent)
 	http.HandleFunc("/ack/event", ackEvent)
-	err := http.ListenAndServe(localAPIAddr, nil)
+	log.Infof("Starting local API listening to %s", localAPIAddr)
+	server := &http.Server{
+		Addr:              localAPIAddr,
+		ReadHeaderTimeout: 3 * time.Second,
+	}
+
+	err := server.ListenAndServe()
 	if err != nil {
 		log.Errorf("error creating event server %s", err)
 	}
