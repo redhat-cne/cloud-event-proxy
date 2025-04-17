@@ -91,6 +91,8 @@ func main() {
 
 	flag.Parse()
 
+	// dummy chanGES
+
 	// Register metrics
 	localmetrics.RegisterMetrics()
 	apiMetrics.RegisterMetrics()
