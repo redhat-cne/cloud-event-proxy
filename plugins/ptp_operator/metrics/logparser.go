@@ -243,7 +243,8 @@ func extractNmeaMetrics(processName, output string) (interfaceName string, statu
 	return
 }
 
-// ExtractPTP4lEvent ... extract event form ptp4l logs
+// parseNewPortStateAndDetermineHoldover ... extract single ptp state transition from one log line
+// For ptp4l transitions, determine which ones will trigger an holdover (basically all transitions out of follower mode)
 //
 //	    "INITIALIZING to LISTENING on INIT_COMPLETE"
 //		"LISTENING to UNCALIBRATED on RS_SLAVE"
@@ -254,12 +255,12 @@ func extractNmeaMetrics(processName, output string) (interfaceName string, statu
 //		"FAULTY to SLAVE on INIT_COMPLETE"
 //		"SLAVE to UNCALIBRATED on SYNCHRONIZATION_FAULT"
 //	     "MASTER to PASSIVE"
-func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
+func parseNewPortStateAndDetermineHoldover(output string) (portID int, role types.PtpPortRole, isHoldover bool) {
 	// This makes the out to equal
 
 	// ptp4l[5199193.712]: [ptp4l.0.config] port 1: SLAVE to UNCALIBRATED on SYNCHRONIZATION_FAULT
 	// ptp4l[28914813.104]: [ptp4l.1.config] port 1 (ens2f0): SLAVE to UNCALIBRATED on RS_SLAVE
-	clockState = ptp.FREERUN
+	isHoldover = false
 	role = types.UNKNOWN
 
 	var replacer = strings.NewReplacer("[", " ", "]", " ", ":", " ")
@@ -299,18 +300,23 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 		strings.Contains(output, "LISTENING to UNCALIBRATED on RS_SLAVE") ||
 		strings.Contains(output, "FAULTY to LISTENING on INIT_COMPLETE") { // added to manage two port case so its not breaking
 		role = types.FAULTY
-		clockState = ptp.HOLDOVER
+		isHoldover = true
 	} else if strings.Contains(output, "SLAVE to MASTER") ||
 		strings.Contains(output, "SLAVE to GRAND_MASTER") {
 		role = types.MASTER
-		clockState = ptp.HOLDOVER
+		isHoldover = true
 	} else if strings.Contains(output, "SLAVE to LISTENING") {
 		role = types.LISTENING
-		clockState = ptp.HOLDOVER
+		isHoldover = true
 	} else if strings.Contains(output, "FAULTY to LISTENING") ||
 		strings.Contains(output, "UNCALIBRATED to LISTENING") ||
 		strings.Contains(output, "INITIALIZING to LISTENING") {
 		role = types.LISTENING
+	} else if strings.Contains(output, "FAULTY to LISTENING on INIT_COMPLETE") {
+		role = types.LISTENING
+		isHoldover = true
+	} else {
+		log.Warn("Output does not match any state transition")
 	}
 	return
 }
@@ -801,6 +807,6 @@ func handlePort(portIndex string) (portID int, err error) {
 	return portID, err
 }
 
-func TestFuncExtractPTP4lEventState(output string) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
-	return extractPTP4lEventState(output)
+func TestFuncExtractPTP4lEventState(output string) (portID int, role types.PtpPortRole, isHoldover bool) {
+	return parseNewPortStateAndDetermineHoldover(output)
 }

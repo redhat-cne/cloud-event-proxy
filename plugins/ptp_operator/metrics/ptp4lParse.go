@@ -20,8 +20,8 @@ var gnssEventIdentifier = "gnss_status"
 var gmStatusIdentifier = "T-GM-STATUS"
 var bcStatusIdentifier = "T-BC"
 
-// ParsePTP4l ... parse ptp4l for various events
-func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, output string, fields []string,
+// HandleHoldover ... parse ptp4l for various events
+func (p *PTPEventManager) HandleHoldover(processName, configName, profileName, output string, fields []string,
 	ptpInterface ptp4lconf.PTPInterface, ptp4lCfg *ptp4lconf.PTP4lConfig, ptpStats stats.PTPStats) {
 	var err error
 	if strings.Contains(output, classChangeIdentifier) {
@@ -53,7 +53,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			}
 		}
 	} else if strings.Contains(output, " port ") && processName == ptp4lProcessName { // ignore anything reported by other process
-		portID, role, syncState := extractPTP4lEventState(output)
+		portID, role, isHoldover := parseNewPortStateAndDetermineHoldover(output)
 		if portID == 0 || role == types.UNKNOWN {
 			return
 		}
@@ -112,16 +112,16 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 		// holdover timeout, always put only master offset from ptp4l to HOLDOVER,when this goes to FREERUN
 		// make any slave interface master offset to FREERUN
 		// Only if master (slave port ) offset was reported by ptp4l
-		if syncState != "" && syncState != ptpStats[master].LastSyncState() && syncState == ptp.HOLDOVER {
+		if ptpStats[master].LastSyncState() != ptp.HOLDOVER && isHoldover {
 			// Put master in HOLDOVER state
 			ptpStats[master].SetRole(types.FAULTY) // update slave port as faulty
 			log.Infof("master process name %s and masteroffsetsource %s", ptpStats[master].ProcessName(), masterOffsetSource)
 			if ptpStats[master].ProcessName() == masterOffsetSource {
 				alias := ptpStats[master].Alias()
 				masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
-				ptpStats[master].SetLastSyncState(syncState)
-				p.PublishEvent(syncState, ptpStats[master].LastOffset(), masterResource, ptp.PtpStateChange)
-				UpdateSyncStateMetrics(ptpStats[master].ProcessName(), alias, syncState)
+				ptpStats[master].SetLastSyncState(ptp.HOLDOVER)
+				p.PublishEvent(ptp.HOLDOVER, ptpStats[master].LastOffset(), masterResource, ptp.PtpStateChange)
+				UpdateSyncStateMetrics(ptpStats[master].ProcessName(), alias, ptp.HOLDOVER)
 				if ptpOpts, ok := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && ptpOpts != nil {
 					p.maybePublishOSClockSyncStateChangeEvent(ptpOpts, configName, profileName)
 					threshold := p.PtpThreshold(profileName, true)

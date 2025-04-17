@@ -81,8 +81,8 @@ const (
 	ppsStatus       = "pps_status"
 )
 
-// ExtractMetrics ... extract metrics from ptp logs.
-func (p *PTPEventManager) ExtractMetrics(msg string) {
+// UpdateMetricsAndHoldoverFromLogs ... extract metrics from ptp logs.
+func (p *PTPEventManager) UpdateMetricsAndHoldoverFromLogs(msg string) {
 	defer func() {
 		if err := recover(); err != nil {
 			log.Errorf("restored from extract metrics and events: %s", err)
@@ -323,7 +323,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			}
 		}
 	}
-	p.ParsePTP4l(processName, configName, profileName, output, fields,
+	p.HandleHoldover(processName, configName, profileName, output, fields,
 		ptpInterface, ptp4lCfg, ptpStats)
 }
 

@@ -604,7 +604,7 @@ func processMessages(c net.Conn) {
 			break
 		}
 		msg := scanner.Text()
-		eventManager.ExtractMetrics(msg)
+		eventManager.UpdateMetricsAndHoldoverFromLogs(msg)
 	}
 }
 

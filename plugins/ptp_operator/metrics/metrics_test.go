@@ -463,7 +463,7 @@ func Test_ExtractMetrics(t *testing.T) {
 			setLastSyncState(tc.iface, tc.lastSyncState, tc.logPtp4lConfigName)
 		}
 		ptpEventManager.ResetMockEvent()
-		ptpEventManager.ExtractMetrics(tc.log)
+		ptpEventManager.UpdateMetricsAndHoldoverFromLogs(tc.log)
 
 		if tc.expectedRoleCheck {
 			role := metrics.InterfaceRole.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface})

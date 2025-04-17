@@ -96,6 +96,6 @@ func processTestMetrics2(c net.Conn) {
 			break
 		}
 		msg := scanner.Text()
-		eventProcessor.ExtractMetrics(msg)
+		eventProcessor.UpdateMetricsAndHoldoverFromLogs(msg)
 	}
 }
