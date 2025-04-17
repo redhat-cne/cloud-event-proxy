@@ -145,11 +145,21 @@ func (p *PTPEventManager) GetPTPConfigDeepCopy(configName types.ConfigName) *ptp
 
 // GetStatsForInterface ... get stats for interface
 func (p *PTPEventManager) GetStatsForInterface(name types.ConfigName, iface types.IFace) *stats.Stats {
-	var found bool
-	if _, found = p.Stats[name]; !found {
+	p.lock.RLock()
+	if statsForName, found := p.Stats[name]; found {
+		if stat, found2 := statsForName[iface]; found2 {
+			p.lock.RUnlock()
+			return stat
+		}
+	}
+	p.lock.RUnlock()
+
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if _, found := p.Stats[name]; !found {
 		p.Stats[name] = make(stats.PTPStats)
-		p.Stats[name][iface] = stats.NewStats(string(name))
-	} else if _, found = p.Stats[name][iface]; !found {
+	}
+	if _, found := p.Stats[name][iface]; !found {
 		p.Stats[name][iface] = stats.NewStats(string(name))
 	}
 	return p.Stats[name][iface]
@@ -157,10 +167,26 @@ func (p *PTPEventManager) GetStatsForInterface(name types.ConfigName, iface type
 
 // GetStats ... get stats
 func (p *PTPEventManager) GetStats(name types.ConfigName) stats.PTPStats {
+	p.lock.RLock()
+	if stat, found := p.Stats[name]; found {
+		p.lock.RUnlock()
+		return stat
+	}
+	p.lock.RUnlock()
+
+	p.lock.Lock()
+	defer p.lock.Unlock()
 	if _, found := p.Stats[name]; !found {
 		p.Stats[name] = make(stats.PTPStats)
 	}
 	return p.Stats[name]
+}
+
+// SetStats sets the stats for a given config name.
+func (p *PTPEventManager) SetStats(configName types.ConfigName, s stats.PTPStats) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.Stats[configName] = s
 }
 
 // DeletePTPConfig ... delete ptp obj
