@@ -172,7 +172,11 @@ func readKey(wg *sync.WaitGroup, input chan string, readerDone chan bool) {
 			return
 		default:
 			var s string
-			fmt.Scan(&s)
+			_, err := fmt.Scan(&s)
+			if err != nil {
+				log.Printf("error in scan: %v", err)
+				return
+			}
 			// Send what we read over the channel
 			if s == "q" {
 				log.Println("ctrl+c to terminate")
