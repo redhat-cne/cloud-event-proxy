@@ -46,8 +46,13 @@ func Post(address string, e cloudevents.Event) (int, error) {
 
 // GetEventData ... getter method
 func GetEventData(url string) (*cloudevents.Event, *cneevent.Data, error) {
-	// using variable url is security hole. Do we need to fix this
-	response, errResp := http.Get(url)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		log.Warnf("failed to make new request: %v", err)
+		return nil, nil, err
+	}
+
+	response, errResp := http.DefaultClient.Do(req)
 	if errResp != nil {
 		log.Warnf("return rest service  error  %v", errResp)
 		return nil, nil, errResp
@@ -56,7 +61,6 @@ func GetEventData(url string) (*cloudevents.Event, *cneevent.Data, error) {
 
 	event := &cloudevents.Event{}
 	data := &cneevent.Data{}
-	var err error
 	if err = json.NewDecoder(response.Body).Decode(event); err != nil {
 		return nil, nil, err
 	}

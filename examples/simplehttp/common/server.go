@@ -56,7 +56,10 @@ func StartServer(wg *sync.WaitGroup, clientAddress string, stopHTTPServerChan ch
 }
 
 func getRoot(w http.ResponseWriter, _ *http.Request) {
-	io.WriteString(w, "I am groot!\n")
+	_, err := io.WriteString(w, "I am groot!\n")
+	if err != nil {
+		log.Printf("Error writing root string: %v", err)
+	}
 }
 
 func getEvent(w http.ResponseWriter, r *http.Request) {
