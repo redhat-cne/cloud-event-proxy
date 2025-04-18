@@ -30,6 +30,7 @@ const (
 	gnssProcessName    = "gnss"
 	dpllProcessName    = "dpll"
 	gmProcessName      = "GM"
+	bcProcessName      = "T-BC"
 	syncE4lProcessName = "synce4l"
 
 	unLocked     = "s0"
@@ -49,6 +50,8 @@ const (
 	DPLL = "DPLL"
 	// ClockClass number
 	ClockClass = "CLOCK_CLASS"
+	// TBC ...
+	TBC = "T-BC"
 
 	// from the logs
 	processNameIndex = 0
@@ -80,6 +83,7 @@ const (
 
 // ExtractMetrics ... extract metrics from ptp logs.
 func (p *PTPEventManager) ExtractMetrics(msg string) {
+	log.Infof("ExtractMetrics: %s", msg)
 	defer func() {
 		if err := recover(); err != nil {
 			log.Errorf("restored from extract metrics and events: %s", err)
@@ -142,6 +146,8 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		p.ParseDPLLLogs(processName, configName, output, fields, ptpStats)
 	case gmProcessName:
 		p.ParseGMLogs(processName, configName, output, fields, ptpStats)
+	case bcProcessName:
+		p.ParseTBCLogs(processName, configName, output, fields, ptpStats)
 	case syncE4lProcessName:
 		p.ParseSyncELogs(processName, configName, output, fields, ptpStats)
 	default:
