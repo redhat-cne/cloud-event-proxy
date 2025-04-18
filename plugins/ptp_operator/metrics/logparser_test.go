@@ -174,7 +174,8 @@ func Test_ParseGmLogs(t *testing.T) {
 	ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)] = make(stats.PTPStats)
 	ptpStats := ptpEventManager.GetStats(types.ConfigName(configName))
 	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
-	for _, tt := range tc {
+	for _, orig := range tc {
+		tt := orig // new variable for this iteration
 		output := replacer.Replace(tt.output)
 		fields := strings.Fields(output)
 		ptpStats[types.IFace(tt.interfaceName)] = &stats.Stats{}
