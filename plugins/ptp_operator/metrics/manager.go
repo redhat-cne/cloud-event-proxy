@@ -27,7 +27,7 @@ type PTPEventManager struct {
 	lock           sync.RWMutex
 	Stats          map[types.ConfigName]stats.PTPStats
 	mock           bool
-	mockEvent      ptp.EventType
+	mockEvent      []ptp.EventType
 	// PtpConfigMapUpdates holds ptp-configmap updated details
 	PtpConfigMapUpdates *ptpConfig.LinuxPTPConfigMapUpdate
 	// Ptp4lConfigInterfaces holds interfaces and its roles, after reading from ptp4l config files
@@ -209,7 +209,7 @@ func (p *PTPEventManager) DeletePTPConfig(key types.ConfigName) {
 // PublishClockClassEvent ...publish events
 func (p *PTPEventManager) PublishClockClassEvent(clockClass float64, source string, eventType ptp.EventType) {
 	if p.mock {
-		p.mockEvent = eventType
+		p.mockEvent = []ptp.EventType{eventType}
 		log.Infof("PublishClockClassEvent clockClass=%f, source=%s, eventType=%s", clockClass, source, eventType)
 		return
 	}
@@ -221,7 +221,7 @@ func (p *PTPEventManager) PublishClockClassEvent(clockClass float64, source stri
 // PublishClockClassEvent ...publish events
 func (p *PTPEventManager) publishGNSSEvent(state int64, offset float64, syncState ptp.SyncState, source string, eventType ptp.EventType) {
 	if p.mock {
-		p.mockEvent = eventType
+		p.mockEvent = []ptp.EventType{eventType}
 		log.Infof("publishGNSSEvent state=%d, offset=%f, source=%s, eventType=%s", state, offset, source, eventType)
 		return
 	}
@@ -241,7 +241,7 @@ func (p *PTPEventManager) publishGNSSEvent(state int64, offset float64, syncStat
 // publishSyncEEvent ...publish events
 func (p *PTPEventManager) publishSyncEEvent(syncState ptp.SyncState, source string, ql byte, extQl byte, extendedTvlEnabled bool, eventType ptp.EventType) {
 	if p.mock {
-		p.mockEvent = eventType
+		p.mockEvent = []ptp.EventType{eventType}
 		log.Infof("publishSyncEEvent state=%s, source=%s, eventType=%s", syncState, source, eventType)
 		return
 	}
@@ -347,7 +347,10 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, sou
 		return
 	}
 	if p.mock {
-		p.mockEvent = eventType
+		p.mockEvent = []ptp.EventType{eventType}
+		if eventType == ptp.PtpStateChange || eventType == ptp.OsClockSyncStateChange {
+			p.mockEvent = append(p.mockEvent, ptp.SyncStateChange)
+		}
 		log.Infof("PublishEvent state=%s, ptpOffset=%d, source=%s, eventType=%s", state, ptpOffset, source, eventType)
 		return
 	}
@@ -359,12 +362,14 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, sou
 	// publish the event again as overall sync state
 	// SyncStateChange is the overall sync state including PtpStateChange and OsClockSyncStateChange
 	if eventType == ptp.PtpStateChange || eventType == ptp.OsClockSyncStateChange {
+		nodeState := p.GetNodeSyncState(state)
 		if state != p.lastOverallSyncState {
 			eventType = ptp.SyncStateChange
+			source = string(p.publisherTypes[eventType].Resource)
 			data = p.GetPTPEventsData(state, ptpOffset, source, eventType)
-			resourceAddress = path.Join(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
+			resourceAddress = path.Join(p.resourcePrefix, p.nodeName, source)
 			p.publish(*data, resourceAddress, eventType)
-			p.lastOverallSyncState = state
+			p.lastOverallSyncState = nodeState
 		}
 	}
 }
@@ -411,8 +416,8 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 			if isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) { // within range
 				log.Infof(" publishing event for ( profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
 					ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
-				p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType) // change to locked
 				oStats.SetLastSyncState(clockState)
+				p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType) // change to locked
 				oStats.SetLastOffset(ptpOffset)
 				oStats.AddValue(ptpOffset) // update off set when its in locked state and hold over only
 			}
@@ -423,9 +428,9 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 			} else {
 				clockState = ptp.FREERUN
 				log.Infof(" publishing event for ( profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
-					ptpProfileName, eventResourceName, oStats.LastSyncState(), clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
-				p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType)
+					ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
 				oStats.SetLastSyncState(clockState)
+				p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType)
 				oStats.SetLastOffset(ptpOffset)
 			}
 		case ptp.HOLDOVER:
@@ -437,8 +442,8 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 				threshold.SafeClose()
 				log.Infof(" publishing event for ( profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
 					ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
-				p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType) // change to locked
 				oStats.SetLastSyncState(clockState)
+				p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType) // change to locked
 				oStats.SetLastOffset(ptpOffset)
 				oStats.AddValue(ptpOffset) // update off set when its in locked state and hold over only/ update off set when its in locked state and hold over only
 			} // else continue to stay in HOLDOVER UNTIL its really LOCKED state
@@ -451,29 +456,29 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 			log.Warnf("%s sync state %s, last ptp state is unknown, setting to  %s", eventResourceName, lastClockState, clockState)
 
 			log.Infof(" publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
-				ptpProfileName, eventResourceName, oStats.LastSyncState(), clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
-			p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType) // change to unknown
+				ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
 			oStats.SetLastSyncState(clockState)
+			p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType) // change to unknown
 			oStats.SetLastOffset(ptpOffset)
 		}
 	case ptp.HOLDOVER:
+		oStats.SetLastSyncState(clockState)
 		if lastClockState != ptp.HOLDOVER { //send event only once
 			log.Infof(" publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d )",
-				ptpProfileName, eventResourceName, oStats.LastSyncState(), clockState, ptpOffset)
+				ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset)
 			p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType)
 		}
-		oStats.SetLastSyncState(clockState)
 		oStats.SetLastOffset(ptpOffset)
 		oStats.AddValue(ptpOffset)
 		return
 	case ptp.FREERUN:
+		oStats.SetLastSyncState(clockState)
 		if lastClockState != ptp.HOLDOVER {
 			if lastClockState != ptp.FREERUN { // don't send event if last event was freerun
 				log.Infof("publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
-					ptpProfileName, eventResourceName, oStats.LastSyncState(), clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
+					ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
 				p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType)
 			}
-			oStats.SetLastSyncState(clockState)
 			oStats.SetLastOffset(ptpOffset)
 			oStats.AddValue(ptpOffset)
 		}
@@ -484,9 +489,9 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 		}
 		log.Warnf("%s unknown current ptp state, setting to  %s", eventResourceName, clockState)
 		log.Infof(" publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
-			ptpProfileName, eventResourceName, oStats.LastSyncState(), clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
-		p.PublishEvent(clockState, ptpOffset, eventResourceName, ptp.PtpStateChange) // change to unknown state
+			ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
 		oStats.SetLastSyncState(clockState)
+		p.PublishEvent(clockState, ptpOffset, eventResourceName, ptp.PtpStateChange) // change to unknown state
 		oStats.SetLastOffset(ptpOffset)
 	}
 }
@@ -497,13 +502,13 @@ func (p *PTPEventManager) NodeName() string {
 }
 
 // GetMockEvent ...
-func (p *PTPEventManager) GetMockEvent() ptp.EventType {
+func (p *PTPEventManager) GetMockEvent() []ptp.EventType {
 	return p.mockEvent
 }
 
 // ResetMockEvent ...
 func (p *PTPEventManager) ResetMockEvent() {
-	p.mockEvent = ""
+	p.mockEvent = []ptp.EventType{}
 }
 
 // PrintStats .... for debug
@@ -567,4 +572,62 @@ func (p *PTPEventManager) ListHAProfilesWith(currentProfile string) (profile str
 	}
 	// No match found — return empty
 	return "", nil
+}
+
+// GetNodeSyncState evaluates the node-level sync state based on FREERUN, HOLDOVER, and LOCKED.
+// It returns the worst state among the available MasterClock and ClockRealTime stats.
+func (p *PTPEventManager) GetNodeSyncState(currentState ptp.SyncState) ptp.SyncState {
+	if currentState == "" {
+		currentState = ptp.FREERUN
+	}
+
+	var finalState ptp.SyncState = ""
+	found := false
+
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+
+	for _, ptpStats := range p.Stats {
+		for iface, stat := range ptpStats {
+			if iface != MasterClockType && iface != ClockRealTime {
+				continue
+			}
+			s := stat.LastSyncState()
+			if s != ptp.FREERUN && s != ptp.HOLDOVER && s != ptp.LOCKED {
+				continue
+			}
+			finalState = OverallState(s, finalState)
+			found = true
+		}
+	}
+
+	if !found {
+		// No usable stats, use currentState as fallback
+		return currentState
+	}
+
+	// Compare with currentState and return the worst
+	return OverallState(currentState, finalState)
+}
+
+func OverallState(current, updated ptp.SyncState) ptp.SyncState {
+	if current == "" {
+		return updated
+	}
+	switch updated {
+	case ptp.FREERUN:
+		return ptp.FREERUN
+	case ptp.HOLDOVER:
+		if current == ptp.FREERUN {
+			return current
+		}
+		return updated
+	case ptp.LOCKED:
+		return current
+	case "":
+		return current
+	default:
+		log.Warnf("last sync state is unknown: %s", updated)
+	}
+	return ""
 }
