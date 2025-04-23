@@ -146,7 +146,7 @@ type TestCase struct {
 	expectedRoleCheck bool
 	expectedRole      types.PtpPortRole
 
-	expectedEvent        ptp.EventType
+	expectedEvent        []ptp.EventType
 	logPtp4lConfigName   string
 	skipCleanupMetrics   bool
 	skipSetLastSyncState bool
@@ -193,20 +193,6 @@ func statsAddValue(iface string, val int64, ptp4lconfName string) {
 
 var testCases = []TestCase{
 	{
-		log:                    "ptp4l[4270543.688]: [ptp4l.1.config:5] port 1 (ens3f0): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)",
-		from:                   "master",
-		process:                "ptp4l",
-		iface:                  "ens3f0",
-		lastSyncState:          ptp.FREERUN,
-		expectedRoleCheck:      true,
-		expectedRole:           types.FAULTY,
-		logPtp4lConfigName:     logPtp4lConfigDualFollower.Name,
-		expectedSyncStateCheck: true,
-		expectedSyncState:      float64(types.FREERUN),
-		expectedEvent:          "event.sync.ptp-status.ptp-state-change",
-		skipCleanupMetrics:     true,
-	},
-	{
 		log:                    "ptp4l[4270544.036]: [ptp4l.1.config:5] port 2 (ens3f1): UNCALIBRATED to SLAVE on MASTER_CLOCK_SELECTED",
 		from:                   "master",
 		process:                "ptp4l",
@@ -215,7 +201,7 @@ var testCases = []TestCase{
 		expectedRole:           types.SLAVE,
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.FREERUN),
-		expectedEvent:          "event.sync.ptp-status.ptp-state-change",
+		expectedEvent:          []ptp.EventType{}, // no event until next sync state
 		logPtp4lConfigName:     logPtp4lConfigDualFollower.Name,
 		skipCleanupMetrics:     true,
 	},
@@ -227,10 +213,25 @@ var testCases = []TestCase{
 		logPtp4lConfigName:     logPtp4lConfigDualFollower.Name,
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.HOLDOVER),
-		expectedEvent:          "event.sync.ptp-status.ptp-state-change",
+		expectedEvent:          []ptp.EventType{ptp.PtpStateChange, ptp.SyncStateChange},
 		skipCleanupMetrics:     true,
 		skipSetLastSyncState:   true,
 	},
+	{
+		log:                    "ptp4l[4270543.688]: [ptp4l.1.config:5] port 1 (ens3f0): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)",
+		from:                   "master",
+		process:                "ptp4l",
+		iface:                  "ens3f0",
+		lastSyncState:          ptp.FREERUN,
+		expectedRoleCheck:      true,
+		expectedRole:           types.FAULTY,
+		logPtp4lConfigName:     logPtp4lConfigDualFollower.Name,
+		expectedSyncStateCheck: true,
+		expectedSyncState:      float64(types.FREERUN),
+		expectedEvent:          []ptp.EventType{ptp.PtpStateChange, ptp.SyncStateChange},
+		skipCleanupMetrics:     true,
+	},
+
 	{
 		log:                    "dpll[1000000100]:[ts2phc.0.config] ens7f0 frequency_status 3 offset 5 phase_status 3 pps_status 1 s2",
 		from:                   "master",
@@ -240,6 +241,7 @@ var testCases = []TestCase{
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.LOCKED),
 		expectedPpsStatusCheck: true,
+		expectedEvent:          []ptp.EventType{},
 		expectedPpsStatus:      1,
 		logPtp4lConfigName:     logPtp4lConfig.Name,
 	},
@@ -253,7 +255,7 @@ var testCases = []TestCase{
 		expectedSyncState:      float64(types.FREERUN),
 		expectedPpsStatusCheck: true,
 		expectedPpsStatus:      0,
-		expectedEvent:          "",
+		expectedEvent:          []ptp.EventType{},
 		logPtp4lConfigName:     logPtp4lConfig.Name,
 	},
 	{
@@ -264,6 +266,7 @@ var testCases = []TestCase{
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.HOLDOVER),
 		expectedPpsStatusCheck: true,
+		expectedEvent:          []ptp.EventType{},
 		expectedPpsStatus:      0,
 		logPtp4lConfigName:     logPtp4lConfig.Name,
 	},
@@ -275,7 +278,7 @@ var testCases = []TestCase{
 		lastSyncState:           ptp.LOCKED,
 		expectedNmeaStatusCheck: true,
 		expectedNmeaStatus:      0,
-		expectedEvent:           "",
+		expectedEvent:           []ptp.EventType{},
 		logPtp4lConfigName:      logPtp4lConfig.Name,
 	},
 	{
@@ -285,7 +288,7 @@ var testCases = []TestCase{
 		iface:                   "ens2fx",
 		expectedNmeaStatusCheck: true,
 		expectedNmeaStatus:      1,
-		expectedEvent:           "",
+		expectedEvent:           []ptp.EventType{},
 		logPtp4lConfigName:      logPtp4lConfig.Name,
 	},
 	{
@@ -295,7 +298,7 @@ var testCases = []TestCase{
 		iface:                  "ens2fx",
 		expectedPtpOffsetCheck: true,
 		expectedPtpOffset:      0,
-		expectedEvent:          ptp.PtpStateChange,
+		expectedEvent:          []ptp.EventType{ptp.PtpStateChange, ptp.SyncStateChange},
 		logPtp4lConfigName:     logPtp4lConfig.Name,
 	},
 	{
@@ -307,7 +310,7 @@ var testCases = []TestCase{
 		expectedPtpOffset:      999,
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.FREERUN),
-		expectedEvent:          ptp.PtpStateChange,
+		expectedEvent:          []ptp.EventType{ptp.PtpStateChange, ptp.SyncStateChange},
 		logPtp4lConfigName:     logPtp4lConfig.Name,
 	},
 	{
@@ -317,7 +320,7 @@ var testCases = []TestCase{
 		iface:                  "ens2fx",
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.FREERUN),
-		expectedEvent:          ptp.PtpStateChange,
+		expectedEvent:          []ptp.EventType{ptp.PtpStateChange, ptp.SyncStateChange},
 		logPtp4lConfigName:     logPtp4lConfig.Name,
 	},
 	{
@@ -330,7 +333,7 @@ var testCases = []TestCase{
 		expectedPtpOffset:      5,
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.LOCKED),
-		expectedEvent:          ptp.GnssStateChange,
+		expectedEvent:          []ptp.EventType{ptp.GnssStateChange},
 		logPtp4lConfigName:     logPtp4lConfig.Name,
 	},
 	{
@@ -340,7 +343,7 @@ var testCases = []TestCase{
 		lastSyncState:                  ptp.FREERUN,
 		expectedClockClassMetricsCheck: true,
 		expectedClockClassMetrics:      248,
-		expectedEvent:                  ptp.PtpClockClassChange,
+		expectedEvent:                  []ptp.EventType{ptp.PtpClockClassChange},
 		logPtp4lConfigName:             logPtp4lConfig.Name,
 	},
 	{
@@ -350,7 +353,7 @@ var testCases = []TestCase{
 		lastSyncState:                  ptp.FREERUN,
 		expectedClockClassMetricsCheck: true,
 		expectedClockClassMetrics:      6,
-		expectedEvent:                  ptp.PtpClockClassChange,
+		expectedEvent:                  []ptp.EventType{ptp.PtpClockClassChange},
 		logPtp4lConfigName:             logPtp4lConfig.Name,
 	},
 	{
@@ -366,7 +369,7 @@ var testCases = []TestCase{
 		expectedPtpDelay:                    1100,
 		expectedSyncStateCheck:              true,
 		expectedSyncState:                   float64(types.FREERUN),
-		expectedEvent:                       ptp.OsClockSyncStateChange,
+		expectedEvent:                       []ptp.EventType{ptp.OsClockSyncStateChange, ptp.SyncStateChange},
 		logPtp4lConfigName:                  logPtp4lConfig.Name,
 	},
 	{
@@ -383,7 +386,7 @@ var testCases = []TestCase{
 		expectedPtpDelay:                    1100,
 		expectedSyncStateCheck:              true,
 		expectedSyncState:                   float64(types.FREERUN),
-		expectedEvent:                       ptp.OsClockSyncStateChange,
+		expectedEvent:                       []ptp.EventType{ptp.OsClockSyncStateChange, ptp.SyncStateChange},
 		logPtp4lConfigName:                  logPtp4lConfig.Name,
 	},
 }
@@ -446,9 +449,12 @@ func TestMain(m *testing.M) {
 	teardown()
 	os.Exit(code)
 }
+
+// this test works for v2 only , there is no sync state event for v1
 func Test_ExtractMetrics(t *testing.T) {
 	assert := assert.New(t)
 	for _, tc := range testCases {
+		tc := tc
 		tc.node = MYNODE
 		if !tc.skipCleanupMetrics {
 			tc.cleanupMetrics()
@@ -456,7 +462,7 @@ func Test_ExtractMetrics(t *testing.T) {
 		if !tc.skipSetLastSyncState {
 			setLastSyncState(tc.iface, tc.lastSyncState, tc.logPtp4lConfigName)
 		}
-
+		ptpEventManager.ResetMockEvent()
 		ptpEventManager.ExtractMetrics(tc.log)
 
 		if tc.expectedRoleCheck {
