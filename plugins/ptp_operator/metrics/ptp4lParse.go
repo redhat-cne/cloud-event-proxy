@@ -18,6 +18,7 @@ import (
 var classChangeIdentifier = "CLOCK_CLASS_CHANGE"
 var gnssEventIdentifier = "gnss_status"
 var gmStatusIdentifier = "T-GM-STATUS"
+var bcStatusIdentifier = "T-BC"
 
 // ParsePTP4l ... parse ptp4l for various events
 func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, output string, fields []string,

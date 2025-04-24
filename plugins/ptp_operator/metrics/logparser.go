@@ -409,6 +409,58 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 	}
 }
 
+// ParseTBCLogs ... parse logs for various events
+func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, fields []string,
+	ptpStats stats.PTPStats) {
+	// T-BC[1743005894]:[ptp4l.0.config] ens7f0  offset  55 T-BC-STATUS s0
+	// 0    1            2               3       4       5  6           7
+	// T-BC 1743005894   ptp4l.0.config  ens7f0  offset  55 T-BC-STATUS s0
+	if strings.Contains(output, bcStatusIdentifier) {
+		if len(fields) < 8 {
+			log.Errorf("T-BC Status is not in right format %s", output)
+			return
+		}
+	} else {
+		return
+	}
+
+	iface := fields[3]
+	syncState := fields[7]
+	offset, _ := strconv.ParseInt(fields[5], 10, 64)
+	alias := getAlias(iface)
+	masterType := types.IFace(MasterClockType)
+
+	clockState := event.ClockState{
+		State:       GetSyncState(syncState),
+		IFace:       pointer.String(iface),
+		Process:     processName,
+		ClockSource: "T-BC",
+		Value:       nil,
+		Metric:      nil,
+		NodeName:    ptpNodeName,
+	}
+
+	ptpStats.CheckSource(masterType, configName, processName)
+
+	SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": alias}).Set(GetSyncStateID(syncState))
+	// status metrics
+	ptpStats[masterType].SetPtpDependentEventState(clockState, ptpStats.HasMetrics(processName), ptpStats.HasMetricHelp(processName))
+	ptpStats[masterType].SetAlias(alias)
+
+	ptpStats[masterType].SetLastOffset(offset)
+	lastOffset := ptpStats[masterType].LastOffset()
+	bcResource := fmt.Sprintf("%s/%s", alias, TBC)
+	lastSyncState := ptpStats[masterType].LastSyncState()
+
+	if clockState.State != lastSyncState { // publish directly here
+		log.Infof("%s sync state %s, last ptp state is : %s", bcResource, clockState.State, lastSyncState)
+		ptpStats[masterType].SetLastSyncState(clockState.State)
+		p.PublishEvent(clockState.State, lastOffset, bcResource, ptp.PtpStateChange)
+		UpdateSyncStateMetrics(processName, alias, ptpStats[masterType].LastSyncState())
+		UpdatePTPOffsetMetrics(processName, processName, alias, float64(lastOffset))
+	}
+}
+
 // ParseDPLLLogs ... parse logs for various events
 func (p *PTPEventManager) ParseDPLLLogs(processName, configName, output string, fields []string,
 	ptpStats stats.PTPStats) {

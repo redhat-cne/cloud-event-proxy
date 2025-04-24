@@ -106,6 +106,37 @@ func Test_ParseGNSSLogs(t *testing.T) {
 	}
 }
 
+func Test_ParseTBCLogs(t *testing.T) {
+	var ptpEventManager *metrics.PTPEventManager
+	tc := []testCase{
+		{
+			processName:   "T-BC",
+			output:        "T-BC[1743005894]:[ptp4l.0.config] ens2f0  offset 123 T-BC-STATUS s0",
+			expectedState: ptp.FREERUN,
+			interfaceName: "ens2f0",
+		},
+		{
+			processName:   "T-BC",
+			output:        "T-BC[1743005894]:[ptp4l.0.config] ens2f0  offset  55 T-BC-STATUS s2",
+			expectedState: ptp.LOCKED,
+			interfaceName: "ens2f0",
+		},
+	}
+	ptpEventManager = metrics.NewPTPEventManager("", initPubSubTypes(), "tetsnode", nil)
+	ptpEventManager.MockTest(true)
+	ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)] = make(stats.PTPStats)
+	ptpStats := ptpEventManager.GetStats(types.ConfigName(configName))
+	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
+	for _, tt := range tc {
+		output := replacer.Replace(tt.output)
+		fields := strings.Fields(output)
+		ptpEventManager.ParseTBCLogs(tt.processName, configName, output, fields, ptpStats)
+		lastState, errState := ptpStats[types.IFace(metrics.MasterClockType)].GetStateState(tt.processName, pointer.String(tt.interfaceName))
+		assert.Equal(t, nil, errState)
+		assert.Equal(t, tt.expectedState, lastState)
+	}
+}
+
 func TestPTPEventManager_ParseDPLLLogs(t *testing.T) {
 	var ptpEventManager *metrics.PTPEventManager
 	tc := []testCase{
