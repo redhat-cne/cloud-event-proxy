@@ -507,25 +507,24 @@ func (h *Server) HTTPProcessor(wg *sync.WaitGroup) {
 						for _, pubURL := range h.Publishers {
 							stateURL := fmt.Sprintf("%s%s/%s/%s", pubURL.String(), d.Address, d.ClientID, CURRENTSTATE)
 							// this is called form consumer, so sender object registered at consumer side
-							log.Infof("current state call :reaching out to %s", stateURL)
 							res, state, resErr := GetByte(stateURL)
 							if resErr == nil && state == http.StatusOK {
 								var cloudEvent cloudevents.Event
 								if err := json.Unmarshal(res, &cloudEvent); err != nil {
 									sendToStatusChannel(d, nil, d.ClientID, http.StatusBadRequest, []byte(err.Error()))
-									log.Infof("failed to send current state to %s for %s ", stateURL, d.Address)
+									log.Errorf("failed to get current state at %s for %s, unmarshal error %v", stateURL, d.Address, err)
 								} else {
 									sendToStatusChannel(d, &cloudEvent, d.ClientID, state, res)
 									log.Infof("success, status sent to %s for %s", stateURL, d.Address)
 								}
 							} else {
 								sendToStatusChannel(d, nil, d.ClientID, state, res)
-								log.Infof("failed to send current state to %s for %s", stateURL, d.Address)
+								log.Errorf("failed to get current state at %s for %s, status code %d", stateURL, d.Address, state)
 							}
 						}
 					} else {
 						sendToStatusChannel(d, nil, d.ClientID, http.StatusBadRequest, []byte("no publisher endpoint was configured to check current state."))
-						log.Infof("failed to send current state for %s", d.Address)
+						log.Errorf("no publishers found for %s", d.Address)
 					}
 				}
 			case <-h.CloseCh:
@@ -703,7 +702,7 @@ func (c *Protocol) Send(e cloudevents.Event) error {
 			Desc: "sender not found",
 		}
 	}
-	log.Infof("sending now %s, to  %s", e.Type(), c.Protocol.Target.String())
+	log.Tracef("sending now %s, to  %s", e.Type(), c.Protocol.Target.String())
 	sendCtx, sendCancel := context.WithTimeout(context.Background(), cancelTimeout)
 	defer sendCancel()
 	e.SetDataContentType(cloudevents.ApplicationJSON)
@@ -731,7 +730,6 @@ func (c *Protocol) Send(e cloudevents.Event) error {
 
 // Get ... getter method
 func Get(url string) (int, error) {
-	log.Infof("health check %s ", url)
 	// using variable url is security hole. Do we need to fix this
 	response, errResp := http.Get(url)
 	if errResp != nil {
@@ -747,7 +745,6 @@ func Get(url string) (int, error) {
 
 // GetByte ... getter method
 func GetByte(url string) ([]byte, int, error) {
-	log.Infof("health check %s ", url)
 	// using variable url is security hole. Do we need to fix this
 	response, errResp := http.Get(url)
 	if errResp != nil {

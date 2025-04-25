@@ -236,7 +236,7 @@ func (s *Server) sendOut(eType channel.Type, sub *pubsub.PubSub) {
 
 func (s *Server) getSubscriptionByID(w http.ResponseWriter, r *http.Request) {
 	queries := mux.Vars(r)
-	subscriptionID, ok := queries["subscriptionid"]
+	subscriptionID, ok := queries["subscriptionId"]
 	if !ok {
 		respondWithStatusCode(w, http.StatusNotFound, "")
 		return
@@ -306,9 +306,9 @@ func (s *Server) deletePublisher(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 	queries := mux.Vars(r)
-	subscriptionID, ok := queries["subscriptionid"]
+	subscriptionID, ok := queries["subscriptionId"]
 	if !ok {
-		respondWithError(w, "subscriptionid param is missing")
+		respondWithError(w, "subscriptionId param is missing")
 		return
 	}
 
@@ -500,7 +500,7 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 // pingForSubscribedEventStatus sends ping to the listening address in the producer to fire all status as events
 func (s *Server) pingForSubscribedEventStatus(w http.ResponseWriter, r *http.Request) {
 	queries := mux.Vars(r)
-	subscriptionID, ok := queries["subscriptionid"]
+	subscriptionID, ok := queries["subscriptionId"]
 	if !ok {
 		respondWithError(w, "subscription parameter not found")
 		return
