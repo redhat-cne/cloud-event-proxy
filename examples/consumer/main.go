@@ -165,7 +165,7 @@ func main() {
 func deleteAllSubscriptions() {
 	deleteURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
-		Path: fmt.Sprintf("%s%s", apiPath, "subscriptions")}}
+		Path: apiPath + "subscriptions"}}
 	rc := restclient.New()
 	rc.Delete(deleteURL)
 	for p := range subscribed {
@@ -173,12 +173,12 @@ func deleteAllSubscriptions() {
 	}
 }
 
-// listSubscriptions lists all subscriptions
+// checkSubscriptions gets all subscriptions
 // and returns true if there are any subscriptions
-func listSubscriptions() bool {
+func checkSubscriptions() bool {
 	url := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
-		Path: fmt.Sprintf("%s%s", apiPath, "subscriptions")}}
+		Path: apiPath + "subscriptions"}}
 	rc := restclient.New()
 
 	var subs = []pubsub.PubSub{}
@@ -187,7 +187,7 @@ func listSubscriptions() bool {
 	if status != http.StatusOK {
 		log.Errorf("failed to list subscriptions, status %d", status)
 		if err != nil {
-			log.Errorf("%s", err.Error())
+			log.Error(err)
 		}
 		return false
 	}
@@ -195,10 +195,7 @@ func listSubscriptions() bool {
 		log.Errorf("failed to unmarshal subscriptions, %v", err)
 		return false
 	}
-	if len(subs) > 0 {
-		return true
-	}
-	return false
+	return len(subs) > 0
 }
 
 func subscribeToEvents() {
@@ -211,7 +208,7 @@ RETRY:
 				log.Info("delete all subscriptions due to publisher health failure")
 				goto RETRY
 			}
-			if !listSubscriptions() {
+			if !checkSubscriptions() {
 				// re-subscribe in case of non-recoverable error at server side, for example
 				// lost of persist data in configmap
 				log.Infof("subscription not found for %s, resubscribe", p)
@@ -223,6 +220,7 @@ RETRY:
 		if !healthOK {
 			continue
 		}
+		allSubscribed := true
 		for _, s := range subs {
 			su, status, e := createSubscription(s.Resource)
 			if status == http.StatusConflict {
@@ -237,13 +235,16 @@ RETRY:
 				goto RETRY
 			} else if e != nil {
 				log.Errorf("failed to create subscription: %v", e)
+				allSubscribed = false
 			} else {
 				log.Infof("created subscription: %s", su.String())
 				s.URILocation = su.URILocation
 				s.ID = su.ID
-				subscribed[p] = true
-				pullEvents()
 			}
+		}
+		if allSubscribed {
+			log.Info("all subscriptions created successfully")
+			subscribed[p] = true
 		}
 	}
 }
@@ -251,7 +252,7 @@ RETRY:
 func createSubscription(resourceAddress string) (sub pubsub.PubSub, status int, err error) {
 	subURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
-		Path: fmt.Sprintf("%s%s", apiPath, "subscriptions")}}
+		Path: apiPath + "subscriptions"}}
 	endpointURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: localAPIAddr,
 		Path: "event"}}
@@ -277,7 +278,7 @@ func createSubscription(resourceAddress string) (sub pubsub.PubSub, status int, 
 }
 
 // getCurrentState get event state for the resource
-func getCurrentState(resource string) {
+func getCurrentState(resource string) error {
 	//create publisher
 	url := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
@@ -285,13 +286,14 @@ func getCurrentState(resource string) {
 	rc := restclient.New()
 	status, cloudEvent, err := rc.Get(url)
 	if status != http.StatusOK {
-		log.Errorf("CurrentState: error %d from url %s", status, url.String())
 		if err != nil {
-			log.Errorf("%s", err.Error())
+			log.Error(err)
 		}
+		return fmt.Errorf("CurrentState: error %d from url %s", status, url.String())
 	} else {
 		log.Debugf("Got CurrentState: %s ", string(cloudEvent))
 	}
+	return nil
 }
 
 // Consumer webserver
@@ -394,14 +396,16 @@ func pullEvents() {
 	}
 	for _, s := range subs {
 		getCurrentState(s.Resource)
+		if err := getCurrentState(s.Resource); err != nil {
+			log.Error(err)
+		}
 	}
 }
 
 func publisherHealthCheck(apiAddr string) bool {
-	path := fmt.Sprintf("%s%s", apiPath, "health")
 	healthURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
-		Path: path}}
+		Path: apiPath + "health"}}
 	ok, _ := common.APIHealthCheck(healthURL, HealthCheckRetryInterval*time.Second)
 	return ok
 }
