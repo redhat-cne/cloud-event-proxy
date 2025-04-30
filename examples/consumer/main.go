@@ -44,9 +44,6 @@ type ConsumerTypeEnum string
 
 var consumerType ConsumerTypeEnum
 
-// PublisherHealthOk ... check if publisher is oka assuming nly one publisher available
-var PublisherHealthOk bool
-
 const (
 	// PTP consumer
 	PTP ConsumerTypeEnum = "PTP"
@@ -100,7 +97,7 @@ func main() {
 		nodeName = mockResourceKey
 	}
 
-	enableStatusCheck := common.GetBoolEnv("ENABLE_STATUS_CHECK")
+	enableEventPull := common.GetBoolEnv("ENABLE_STATUS_CHECK")
 
 	consumerTypeEnv := os.Getenv("CONSUMER_TYPE")
 	if consumerTypeEnv == "" {
@@ -112,9 +109,11 @@ func main() {
 	isV1Api = common.IsV1Api(apiVersion)
 
 	if !isV1Api {
-		apiAddr = "ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043"
-		apiAddr = common.SanitizeTransportHost(apiAddr, nodeIP, nodeName)
-
+		// get the first publisher and replace the apiAddr
+		apiAddr = getFirstHTTPPublishers(nodeIP, nodeName, httpEventPublisher)
+		if apiAddr == "" {
+			log.Error("cannot find publisher,setting to default `\"localhost:8089\"` address")
+		}
 		apiPath = "/api/ocloudNotifications/v2/"
 		log.Infof("apiVersion=%s, updated apiAddr=%s, apiPath=%s", apiVersion, apiAddr, apiPath)
 	}
@@ -137,45 +136,26 @@ func main() {
 	}
 
 	updateHTTPPublishers(nodeIP, nodeName, httpEventPublisher)
+	subscribeToEvents()
 
-	// ping for status every n secs
-	wg.Add(1)
-	go func() { // in this example there will be only one publisher
-		defer wg.Done()
-		for range time.Tick(StatusCheckInterval * time.Second) {
-			for p, currenStatus := range eventPublishers {
-				newStatus := publisherHealthCheck(p)
-				PublisherHealthOk = newStatus
-				eventPublishers[p] = newStatus
-				if newStatus && !currenStatus {
-					log.Info("subscribing to events")
-					subscribeToEvents()
-				} else if !newStatus && currenStatus {
-					deleteAllSubscriptions()
-					log.Info("delete subscription.")
-				}
-			}
-		}
-	}()
-
+	// ping publisher API health status
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if enableStatusCheck {
+		for range time.Tick(HealthCheckInterval * time.Second) {
+			subscribeToEvents()
+		}
+	}()
+
+	// if enabled, pull events periodically
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if enableEventPull {
 			time.Sleep(5 * time.Second)
-			if PublisherHealthOk {
-				for _, s := range subs {
-					getCurrentState(s.Resource)
-				}
-			}
-			for range time.Tick(StatusCheckInterval * time.Second) {
-				if PublisherHealthOk {
-					for _, s := range subs {
-						getCurrentState(s.Resource)
-					}
-				} else {
-					log.Info("skipping since publisher not available ")
-				}
+			pullEvents()
+			for range time.Tick(eventPullInterval * time.Second) {
+				pullEvents()
 			}
 		}
 	}()
@@ -192,6 +172,9 @@ func deleteAllSubscriptions() {
 		Path: apiPath + "subscriptions"}}
 	rc := restclient.New()
 	rc.Delete(deleteURL)
+	for p := range subscribed {
+		subscribed[p] = false
+	}
 }
 
 func checkConsumerSidecarAPIHealth() {
@@ -282,8 +265,8 @@ RETRY:
 		}
 	}
 }
-func createSubscription(resourceAddress string) (sub pubsub.PubSub, err error) {
-	var status int
+
+func createSubscription(resourceAddress string) (sub pubsub.PubSub, status int, err error) {
 	subURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
 		Path: apiPath + "subscriptions"}}
@@ -296,13 +279,17 @@ func createSubscription(resourceAddress string) (sub pubsub.PubSub, err error) {
 
 	if subB, err = json.Marshal(&sub); err == nil {
 		rc := restclient.New()
-		if status, subB = rc.PostWithReturn(subURL, subB); status != http.StatusCreated {
-			err = fmt.Errorf("api at %s returned status %d for %s", subURL, status, resourceAddress)
-		} else {
+		status, subB = rc.PostWithReturn(subURL, subB)
+		if status == http.StatusCreated {
 			err = json.Unmarshal(subB, &sub)
+		} else {
+			err = fmt.Errorf("api at %s returned status %d for %s", subURL, status, resourceAddress)
+			if status == http.StatusConflict {
+				return
+			}
 		}
 	} else {
-		err = fmt.Errorf("failed to marshal subscription or %s", resourceAddress)
+		err = fmt.Errorf("failed to marshal subscription for %s", resourceAddress)
 	}
 	return
 }
@@ -474,7 +461,7 @@ func publisherHealthCheck(apiAddr string) bool {
 	healthURL := &types.URI{URL: url.URL{Scheme: "http",
 		Host: apiAddr,
 		Path: path}}
-	ok, _ := common.APIHealthCheck(healthURL, 2*time.Second)
+	ok, _ := common.APIHealthCheck(healthURL, HealthCheckRetryInterval*time.Second)
 	return ok
 }
 
@@ -484,13 +471,17 @@ func updateHTTPPublishers(nodeIP, nodeName string, addr ...string) {
 			continue
 		}
 		publisherServiceName := common.SanitizeTransportHost(s, nodeIP, nodeName)
-		PublisherHealthOk = publisherHealthCheck(publisherServiceName)
-		eventPublishers[publisherServiceName] = PublisherHealthOk
-		if PublisherHealthOk {
-			log.Info("healthy publisher; subscribing to events")
-			subscribeToEvents()
-		}
-
-		log.Infof("publisher endpoint updated from %s to %s healthStatusOk %t", s, publisherServiceName, PublisherHealthOk)
+		subscribed[publisherServiceName] = false
+		log.Infof("publisher endpoint updated from %s to %s", s, publisherServiceName)
 	}
+}
+
+func getFirstHTTPPublishers(nodeIP, nodeName string, addr ...string) string {
+	for _, s := range addr {
+		if s == "" {
+			continue
+		}
+		return common.SanitizeTransportHost(s, nodeIP, nodeName)
+	}
+	return ""
 }
