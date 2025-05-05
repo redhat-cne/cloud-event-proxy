@@ -18,7 +18,6 @@ const (
 	nodeName               = "test_node_name"
 	storePath              = "."
 	configMapRetryInterval = 3 * time.Second
-	apiVersion             = "2.0"
 )
 
 var (
@@ -97,7 +96,7 @@ func Subscriptions() *v1.ConfigMap {
 
 func TestClient_InitConfigMap(t *testing.T) {
 	setupClient()
-	err := clients.InitConfigMap(apiVersion, ".", nodeName, metav1.NamespaceSystem, configMapRetryInterval, 0)
+	err := clients.InitConfigMap(".", nodeName, metav1.NamespaceSystem, configMapRetryInterval, 0)
 	assert.Nil(t, err)
 	cm, e := clients.GetConfigMap(context.Background(), nodeName, metav1.NamespaceSystem)
 	assert.Nil(t, e)
@@ -106,7 +105,7 @@ func TestClient_InitConfigMap(t *testing.T) {
 
 func TestClient_GetConfigMap(t *testing.T) {
 	setupClient()
-	err := clients.InitConfigMap(apiVersion, ".", nodeName, metav1.NamespaceSystem, configMapRetryInterval, 0)
+	err := clients.InitConfigMap(".", nodeName, metav1.NamespaceSystem, configMapRetryInterval, 0)
 	assert.Nil(t, err)
 	cm, e := clients.GetConfigMap(context.Background(), nodeName, metav1.NamespaceSystem)
 	assert.Nil(t, e)
@@ -116,7 +115,7 @@ func TestClient_GetConfigMap(t *testing.T) {
 
 func Test_LoadingSubscriptionFromFileToCache(t *testing.T) {
 	setupClient()
-	err := clients.InitConfigMap(apiVersion, ".", nodeName, metav1.NamespaceSystem, configMapRetryInterval, 0)
+	err := clients.InitConfigMap(".", nodeName, metav1.NamespaceSystem, configMapRetryInterval, 0)
 	assert.Nil(t, err)
 	cm, e := clients.GetConfigMap(context.Background(), nodeName, metav1.NamespaceSystem)
 	assert.Nil(t, e)
