@@ -29,22 +29,22 @@ func WriteJSON(in *PubSub, writer io.Writer) error {
 	defer jsoniter.ConfigFastest.ReturnStream(stream)
 	stream.WriteObjectStart()
 
-	stream.WriteObjectField(in.GetResourceName())
+	stream.WriteObjectField("ResourceAddress")
 	stream.WriteString(in.GetResource())
 
 	stream.WriteMore()
-	stream.WriteObjectField(in.GetEndpointURIName())
+	stream.WriteObjectField("EndpointUri")
 	stream.WriteString(in.GetEndpointURI())
 
 	if in.GetID() != "" {
 		stream.WriteMore()
-		stream.WriteObjectField(in.GetIDName())
+		stream.WriteObjectField("SubscriptionId")
 		stream.WriteString(in.GetID())
 	}
 
 	if in.GetURILocation() != "" {
 		stream.WriteMore()
-		stream.WriteObjectField(in.GetURILocationName())
+		stream.WriteObjectField("UriLocation")
 		stream.WriteString(in.GetURILocation())
 	}
 

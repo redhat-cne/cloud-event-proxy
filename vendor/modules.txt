@@ -192,10 +192,9 @@ github.com/redhat-cne/rest-api
 github.com/redhat-cne/rest-api/pkg/localmetrics
 github.com/redhat-cne/rest-api/pkg/restclient
 github.com/redhat-cne/rest-api/v2
-# github.com/redhat-cne/sdk-go v1.23.1
+# github.com/redhat-cne/sdk-go v1.23.2
 ## explicit; go 1.23
 github.com/redhat-cne/sdk-go/pkg/channel
-github.com/redhat-cne/sdk-go/pkg/common
 github.com/redhat-cne/sdk-go/pkg/errorhandler
 github.com/redhat-cne/sdk-go/pkg/event
 github.com/redhat-cne/sdk-go/pkg/event/ptp

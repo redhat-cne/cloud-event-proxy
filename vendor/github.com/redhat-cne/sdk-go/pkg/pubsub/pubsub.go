@@ -17,7 +17,6 @@ package pubsub
 import (
 	"strings"
 
-	"github.com/redhat-cne/sdk-go/pkg/common"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 )
 
@@ -55,32 +54,4 @@ func (ps *PubSub) String() string {
 	b.WriteString("  SubscriptionId: " + ps.GetID() + "\n")
 	b.WriteString("  Resource: " + ps.GetResource() + "\n")
 	return b.String()
-}
-
-func (ps *PubSub) GetIDName() string {
-	if common.IsV1Api(ps.Version) {
-		return "id"
-	}
-	return "SubscriptionId"
-}
-
-func (ps *PubSub) GetEndpointURIName() string {
-	if common.IsV1Api(ps.Version) {
-		return "endpointUri"
-	}
-	return "EndpointUri"
-}
-
-func (ps *PubSub) GetURILocationName() string {
-	if common.IsV1Api(ps.Version) {
-		return "uriLocation"
-	}
-	return "UriLocation"
-}
-
-func (ps *PubSub) GetResourceName() string {
-	if common.IsV1Api(ps.Version) {
-		return "resource"
-	}
-	return "ResourceAddress"
 }
