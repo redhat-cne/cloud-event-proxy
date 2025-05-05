@@ -20,7 +20,6 @@ import (
 	"sync"
 
 	jsoniter "github.com/json-iterator/go"
-	"github.com/redhat-cne/sdk-go/pkg/common"
 )
 
 var iterPool = sync.Pool{
@@ -55,7 +54,6 @@ func readJSONFromIterator(out *PubSub, iterator *jsoniter.Iterator) error {
 		endpointUri string //nolint:revive
 		uriLocation string
 		resource    string
-		version     string
 	)
 
 	for key := iterator.ReadObject(); key != ""; key = iterator.ReadObject() {
@@ -74,16 +72,6 @@ func readJSONFromIterator(out *PubSub, iterator *jsoniter.Iterator) error {
 			uriLocation = iterator.ReadString()
 		case "ResourceAddress":
 			resource = iterator.ReadString()
-			version = common.RestAPIV2
-		case "id":
-			id = iterator.ReadString()
-		case "endpointUri":
-			endpointUri = iterator.ReadString()
-		case "uriLocation":
-			uriLocation = iterator.ReadString()
-		case "resource":
-			resource = iterator.ReadString()
-			version = common.RestAPIV1
 		default:
 			iterator.Skip()
 		}
@@ -104,7 +92,6 @@ func readJSONFromIterator(out *PubSub, iterator *jsoniter.Iterator) error {
 	out.SetEndpointURI(endpointUri) //nolint:errcheck
 	out.SetURILocation(uriLocation) //nolint:errcheck
 	out.SetResource(resource)       //nolint:errcheck
-	out.SetVersion(version)
 
 	return nil
 }
