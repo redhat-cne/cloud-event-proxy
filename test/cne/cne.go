@@ -110,6 +110,7 @@ var _ = ginkgo.Describe("validation", func() {
 			})
 
 			ginkgo.It("Should check for event received ", func() {
+				time.Sleep(60 * time.Second)
 				ginkgo.By("Checking  logs")
 				podLogs, err := pods.GetLog(&consumerPod, testutils.ConsumerContainerName)
 				gomega.Expect(err).NotTo(gomega.HaveOccurred(), "Error to find needed log due to %s", err)
