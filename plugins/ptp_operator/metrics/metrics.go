@@ -379,8 +379,11 @@ func getAlias(iface string) string {
 	if iface == "" {
 		return iface
 	}
-	r := []rune(iface)
-	return string(r[:len(r)-1]) + "x"
+	dotIndex := strings.Index(iface, ".")
+	if dotIndex == -1 {
+		return iface[:len(iface)-1] + "x"
+	}
+	return iface[:dotIndex-1] + "x" + iface[dotIndex:]
 }
 
 // SetMasterOffsetSource .. setting for testing purposes
