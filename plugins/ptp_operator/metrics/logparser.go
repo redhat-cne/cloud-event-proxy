@@ -391,11 +391,9 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 	//LOCKED->HOLDOVER
 	/// HOLDOVER-->FREERUN
 	// HOLDOVER-->LOCKED
-
-	_, phaseOffset, _, err := ptpStats[types.IFace(iface)].GetDependsOnValueState(dpllProcessName, pointer.String(iface), phaseStatus)
-	if err != nil {
-		log.Errorf("error parsing phase offset %s", err.Error())
-	}
+	//nolint:dogsled // Ignoring lint warning for blank identifiers in GetDependsOnValueState
+	_, phaseOffset, _, _ := ptpStats[types.IFace(iface)].GetDependsOnValueState(dpllProcessName, pointer.String(iface), phaseStatus)
+	// do not process error , if dpll phase is not available then it will print large offset forT-GM offset
 	ptpStats[masterType].SetLastOffset(int64(phaseOffset))
 	lastOffset := ptpStats[masterType].LastOffset()
 
