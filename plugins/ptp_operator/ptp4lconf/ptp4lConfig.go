@@ -36,6 +36,7 @@ var (
 
 const (
 	ptp4lGlobalSection = "global"
+	ptpConfigDir       = "/var/run/"
 )
 
 // PtpConfigUpdate ...  updated ptp config values
@@ -242,6 +243,11 @@ func readAllConfig(dir string) []*PtpConfigUpdate {
 }
 func readConfig(path string) (*PtpConfigUpdate, error) {
 	fName := filename(path)
+	path = filepath.Clean(path)
+	if !strings.HasPrefix(path, ptpConfigDir) {
+		log.Errorf("reading ptpconfig %s from unknon path ", path)
+		return nil, fmt.Errorf("reading ptpconfig %s from unknon path ", path)
+	}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		log.Errorf("error reading ptpconfig %s error %s", path, err)
