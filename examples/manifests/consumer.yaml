@@ -23,6 +23,7 @@ spec:
       containers:
         - name: cloud-event-consumer
           image: cloud-event-consumer
+          imagePullPolicy: Always
           args:
             - "--local-api-addr=127.0.0.1:9089"
             - "--api-path=/api/ocloudNotifications/v1/"
@@ -39,6 +40,7 @@ spec:
               value: "true"
         - name: cloud-event-sidecar
           image: cloud-event-sidecar
+          imagePullPolicy: Always
           args:
             - "--metrics-addr=127.0.0.1:9091"
             - "--store-path=/store"
