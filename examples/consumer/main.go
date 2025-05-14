@@ -257,7 +257,7 @@ func createSubscription(resourceAddress string) (sub pubsub.PubSub, status int, 
 		Host: localAPIAddr,
 		Path: "event"}}
 
-	sub = v1pubsub.NewPubSub(endpointURL, resourceAddress, "2.0")
+	sub = v1pubsub.NewPubSub(endpointURL, resourceAddress)
 	var subB []byte
 
 	if subB, err = json.Marshal(&sub); err == nil {

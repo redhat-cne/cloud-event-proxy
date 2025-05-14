@@ -74,14 +74,10 @@ lint:
 
 build-plugins:
 	go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
-	go build -a -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
 	go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
 
 build-ptp-operator-plugin:
 	go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
-
-build-http-plugin:
-	go build -a -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
 
 build-mock-plugin:
 	go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
@@ -121,7 +117,6 @@ gha:
 
 	GO111MODULE=off go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 	GO111MODULE=off go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
-	GO111MODULE=off go build -a -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
 	GO111MODULE=off STORE_PATH=/tmp/sub-store go test ./... --tags=unittests -coverprofile=cover.out
 
 docker-build:

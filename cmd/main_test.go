@@ -13,7 +13,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/redhat-cne/cloud-event-proxy/pkg/plugins"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -34,7 +33,6 @@ func TestSidecar_MainWithHTTP(t *testing.T) {
 	apiPort = 8990
 	defer storeCleanUp()
 	wg := &sync.WaitGroup{}
-	pl := plugins.Handler{Path: "../plugins"}
 	var storePath = "."
 	if sPath, ok := os.LookupEnv("STORE_PATH"); ok && sPath != "" {
 		storePath = sPath
@@ -65,20 +63,10 @@ func TestSidecar_MainWithHTTP(t *testing.T) {
 	wg.Add(1)
 	go ProcessOutChannel(wg, scConfig)
 
-	if scConfig.TransportHost.Type == common.HTTP {
-		log.Infof("loading HTTP server with host %s", scConfig.TransportHost.Host)
-		_, err = pl.LoadHTTPPlugin(wg, scConfig, nil, nil)
-		if err != nil {
-			t.Skipf("skipping HTTP usage, test will be reading dirctly from in channel. reason: %v", err)
-		}
-	} else {
-		log.Infof("No publishing service enabled")
-	}
-
 	//create publisher
 	// this is loopback on server itself. Since current pod does not create any server
 	endpointURL := fmt.Sprintf("%s%s", scConfig.BaseURL, "dummy")
-	createPub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), resourceAddress, scConfig.APIVersion)
+	createPub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), resourceAddress)
 	pub, err := common.CreatePublisher(scConfig, createPub)
 	assert.Nil(t, err)
 	assert.NotEmpty(t, pub.ID)
@@ -88,7 +76,7 @@ func TestSidecar_MainWithHTTP(t *testing.T) {
 	log.Infof("Publisher \n%s:", pub.String())
 
 	//Test subscription
-	createSub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), resourceAddress, scConfig.APIVersion)
+	createSub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), resourceAddress)
 	sub, err := common.CreateSubscription(scConfig, createSub)
 	assert.Nil(t, err)
 	assert.NotEmpty(t, sub.ID)

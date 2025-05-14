@@ -132,7 +132,7 @@ func TestGetCurrentStatOverrideFn(t *testing.T) {
 	var err error
 	endpointURL := fmt.Sprintf("%s%s", scConfig.BaseURL, "dummy")
 	for _, pTypes := range pubsubTypes {
-		pub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), path.Join(resourcePrefix, nodeName, string(pTypes.Resource)), scConfig.APIVersion)
+		pub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), path.Join(resourcePrefix, nodeName, string(pTypes.Resource)))
 		pub, err = common.CreatePublisher(scConfig, pub)
 		assert.Nil(t, err)
 		assert.NotEmpty(t, pub.ID)
