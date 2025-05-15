@@ -395,7 +395,6 @@ func pullEvents() {
 		}
 	}
 	for _, s := range subs {
-		getCurrentState(s.Resource)
 		if err := getCurrentState(s.Resource); err != nil {
 			log.Error(err)
 		}
