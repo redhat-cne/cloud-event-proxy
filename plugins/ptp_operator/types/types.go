@@ -17,6 +17,8 @@ type (
 	IFace string
 	// ConfigName ... config name
 	ConfigName string
+	// SyncState ... Sync state
+	SyncState int
 )
 
 const (
@@ -69,4 +71,26 @@ type EventPublisherType struct {
 	Resource  ptp.EventResource
 	PubID     string
 	Pub       *pubsub.PubSub
+}
+
+const (
+	// FREERUN
+	FREERUN SyncState = iota
+	// LOCKED
+	LOCKED
+	// HOLDOVER
+	HOLDOVER
+)
+
+func (syncState SyncState) String() string {
+	switch syncState {
+	case FREERUN:
+		return "FREERUN"
+	case LOCKED:
+		return "LOCKED"
+	case HOLDOVER:
+		return "HOLDOVER"
+	default:
+		return fmt.Sprintf("%d", int(syncState))
+	}
 }
