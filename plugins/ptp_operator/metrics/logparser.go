@@ -296,8 +296,7 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 		strings.Contains(output, "SYNCHRONIZATION_FAULT") ||
 		strings.Contains(output, "SLAVE to UNCALIBRATED") ||
 		strings.Contains(output, "MASTER to UNCALIBRATED on RS_SLAVE") ||
-		strings.Contains(output, "LISTENING to UNCALIBRATED on RS_SLAVE") ||
-		strings.Contains(output, "FAULTY to LISTENING on INIT_COMPLETE") { // added to manage two port case so its not breaking
+		strings.Contains(output, "LISTENING to UNCALIBRATED on RS_SLAVE") {
 		role = types.FAULTY
 		clockState = ptp.HOLDOVER
 	} else if strings.Contains(output, "SLAVE to MASTER") ||
