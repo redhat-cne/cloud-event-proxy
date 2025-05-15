@@ -192,16 +192,13 @@ github.com/redhat-cne/rest-api
 github.com/redhat-cne/rest-api/pkg/localmetrics
 github.com/redhat-cne/rest-api/pkg/restclient
 github.com/redhat-cne/rest-api/v2
-# github.com/redhat-cne/sdk-go v1.23.2
+# github.com/redhat-cne/sdk-go v1.23.3
 ## explicit; go 1.23
 github.com/redhat-cne/sdk-go/pkg/channel
-github.com/redhat-cne/sdk-go/pkg/errorhandler
 github.com/redhat-cne/sdk-go/pkg/event
 github.com/redhat-cne/sdk-go/pkg/event/ptp
 github.com/redhat-cne/sdk-go/pkg/event/redfish
 github.com/redhat-cne/sdk-go/pkg/localmetrics
-github.com/redhat-cne/sdk-go/pkg/protocol
-github.com/redhat-cne/sdk-go/pkg/protocol/http
 github.com/redhat-cne/sdk-go/pkg/pubsub
 github.com/redhat-cne/sdk-go/pkg/store
 github.com/redhat-cne/sdk-go/pkg/store/subscriber
@@ -210,7 +207,6 @@ github.com/redhat-cne/sdk-go/pkg/types
 github.com/redhat-cne/sdk-go/pkg/util/clock
 github.com/redhat-cne/sdk-go/pkg/util/wait
 github.com/redhat-cne/sdk-go/v1/event
-github.com/redhat-cne/sdk-go/v1/http
 github.com/redhat-cne/sdk-go/v1/pubsub
 github.com/redhat-cne/sdk-go/v1/subscriber
 # github.com/sirupsen/logrus v1.9.0

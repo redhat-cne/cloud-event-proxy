@@ -96,40 +96,6 @@ func TestLoadPTPPlugin(t *testing.T) {
 	}
 }
 
-func TestLoadHTTPPlugin(t *testing.T) {
-	os.Setenv("NODE_NAME", "test_node")
-	scConfig.CloseCh = make(chan struct{})
-	wg := &sync.WaitGroup{}
-	err := common.StartPubSubService(scConfig)
-	assert.Nil(t, err)
-
-	testCases := map[string]struct {
-		pgPath  string
-		wantErr error
-	}{
-		"Invalid Plugin Path": {
-			pgPath:  "wrong",
-			wantErr: fmt.Errorf("http plugin not found in the path wrong"),
-		},
-		"Valid Plugin Path": {
-			pgPath:  "../../plugins",
-			wantErr: nil,
-		},
-	}
-
-	for name, tc := range testCases {
-		t.Run(name, func(t *testing.T) {
-			pLoader = Handler{Path: tc.pgPath}
-			_, err := pLoader.LoadHTTPPlugin(wg, scConfig, nil, nil)
-			if tc.wantErr != nil && err != nil {
-				assert.EqualError(t, err, tc.wantErr.Error())
-			} else if tc.wantErr == nil {
-				assert.Nil(t, err)
-			}
-		})
-	}
-}
-
 func Test_End(t *testing.T) {
 	close(scConfig.CloseCh)
 }
