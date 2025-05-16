@@ -342,7 +342,6 @@ func GetPublishingCloudEvent(scConfig *SCConfiguration, cneEvent ceevent.Event) 
 
 // APIHealthCheck ... rest api should be ready before starting to consume api
 func APIHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err error) {
-	log.Printf("checking for rest service health\n")
 	for i := 0; i <= 5; i++ {
 		log.Infof("health check %s ", uri.String())
 		response, errResp := http.Get(uri.String())
@@ -372,7 +371,7 @@ func HTTPTransportHealthCheck(uri *types.URI, delay time.Duration) (ok bool, err
 		log.Infof("health check %s ", uri.String())
 		response, errResp := http.Get(uri.String())
 		if errResp != nil {
-			log.Warnf("try %d, return health check of the http transportfor error  %v", i, errResp)
+			log.Warnf("try %d, return health check of the http transport error  %v", i, errResp)
 			time.Sleep(delay)
 			err = errResp
 			continue
