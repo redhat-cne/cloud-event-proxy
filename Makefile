@@ -8,12 +8,17 @@ VERSION ?=latest
 IMG ?= quay.io/openshift/origin-cloud-event-proxy:$(VERSION)
 CONSUMER_IMG ?= quay.io/redhat-cne/cloud-event-consumer:$(VERSION)
 
-# Export GO111MODULE=on to enable project to be built from within GOPATH/src
 export GO111MODULE=on
 export CGO_ENABLED=1
 export GOFLAGS=-mod=vendor
 export COMMON_GO_ARGS=-race
+
+OS := $(shell uname -s)
+ifeq ($(OS), Darwin)
+export GOOS=darwin
+else
 export GOOS=linux
+endif
 
 ifeq (,$(shell go env GOBIN))
   GOBIN=$(shell go env GOPATH)/bin
@@ -21,20 +26,31 @@ else
   GOBIN=$(shell go env GOBIN)
 endif
 
-kustomize:
-ifeq (, $(shell which kustomize))
-		@{ \
-		set -e ;\
-		KUSTOMIZE_GEN_TMP_DIR=$$(mktemp -d) ;\
-		cd $$KUSTOMIZE_GEN_TMP_DIR ;\
-		go mod init tmp ;\
-		go get sigs.k8s.io/kustomize/kustomize/v3@v3.5.4 ;\
-		rm -rf $$KUSTOMIZE_GEN_TMP_DIR ;\
-		}
-KUSTOMIZE=$(GOBIN)/kustomize
-else
-KUSTOMIZE=$(shell which kustomize)
-endif
+export GOPATH=$(shell go env GOPATH)
+
+##@ Build Dependencies
+
+## Location to install dependencies to
+LOCALBIN ?= $(shell pwd)/bin
+$(LOCALBIN):
+	mkdir -p $(LOCALBIN)
+
+## Tool Versions
+KUSTOMIZE ?= $(LOCALBIN)/kustomize
+KUSTOMIZE_VERSION ?= v4.5.7
+KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
+
+GIT_COMMIT=$(shell git rev-list -1 HEAD)
+LINKER_RELEASE_FLAGS=-X main.GitCommit=$(GIT_COMMIT)
+
+.PHONY: kustomize
+kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
+$(KUSTOMIZE): $(LOCALBIN)
+	@if test -x $(LOCALBIN)/kustomize && ! $(LOCALBIN)/kustomize version | grep -q $(KUSTOMIZE_VERSION); then \
+		echo "$(LOCALBIN)/kustomize version is not expected $(KUSTOMIZE_VERSION). Removing it before installing."; \
+		rm -rf $(LOCALBIN)/kustomize; \
+	fi
+	test -s $(LOCALBIN)/kustomize || { curl -Ss $(KUSTOMIZE_INSTALL_SCRIPT) | bash -s -- $(subst v,,$(KUSTOMIZE_VERSION)) $(LOCALBIN); }
 
 deps-update:
 	go get github.com/redhat-cne/sdk-go@$(branch) && \
@@ -48,22 +64,18 @@ build:build-plugins test
 	go build -o ./build/cloud-event-proxy cmd/main.go
 
 build-only:
-	go build -o ./build/cloud-event-proxy cmd/main.go
+	go build -ldflags "${LINKER_RELEASE_FLAGS}" -o ./build/cloud-event-proxy cmd/main.go
 
 build-examples:
-	go build -o ./build/cloud-event-consumer ./examples/consumer/main.go
+	go build -ldflags "${LINKER_RELEASE_FLAGS}" -o ./build/cloud-event-consumer ./examples/consumer/main.go
 
 lint:
-	golangci-lint run
+	golangci-lint --enable gosec run
 
 build-plugins:
-	go build -a -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 	go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 	go build -a -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
 	go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
-
-build-amqp-plugin:
-	go build -a -o plugins/amqp_plugin.so -buildmode=plugin plugins/amqp/amqp_plugin.go
 
 build-ptp-operator-plugin:
 	go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
@@ -90,7 +102,6 @@ deploy-consumer:kustomize
 	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-sidecar=${IMG} && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl apply -f -
 
-# Deploy all in the configured Kubernetes cluster in ~/.kube/config
 undeploy-consumer:kustomize
 	cd ./examples/manifests  && $(KUSTOMIZE) edit set image cloud-event-sidecar=${IMG} && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl delete -f -
@@ -114,6 +125,18 @@ docker-build-consumer: #test ## Build docker image with the manager.
 
 docker-push-consumer: ## Push docker image with the manager.
 	docker push ${CONSUMER_IMG}
+
+podman-build: #test ## Build docker image with the manager.
+	podman build --no-cache -t ${IMG} .
+
+podman-push: ## Push docker image with the manager.
+	podman push ${IMG}
+
+podman-build-consumer: #test ## Build docker image with the manager.
+	podman build -f ./examples/consumer.Dockerfile -t ${CONSUMER_IMG} .
+
+podman-push-consumer: ## Push docker image with the manager.
+	podman push ${CONSUMER_IMG}
 
 fmt: ## Go fmt your code
 	hack/gofmt.sh
