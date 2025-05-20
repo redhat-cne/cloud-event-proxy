@@ -4,10 +4,15 @@ package pods
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
+	"time"
 
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/remotecommand"
 
@@ -64,4 +69,31 @@ func ExecCommand(cs *testclient.Set, pod corev1.Pod, containerName string, comma
 	})
 
 	return buf, err
+}
+
+func CheckSinglePodRunning(namespace, deployment, app string) {
+	label := fmt.Sprintf("app=%s", app)
+
+	ginkgo.By(fmt.Sprintf("Checking deployment %s is created", deployment))
+	gomega.Eventually(func() int {
+		deploy, err := testclient.Client.Deployments(namespace).Get(context.Background(), deployment, metav1.GetOptions{})
+		gomega.Expect(err).ToNot(gomega.HaveOccurred())
+		return int(deploy.Status.Replicas)
+	}, 5*time.Minute, 2*time.Second).Should(gomega.Equal(1))
+
+	ginkgo.By(fmt.Sprintf("Checking pod with label %s is created", label))
+	gomega.Eventually(func() int {
+		pods, err := testclient.Client.Pods(namespace).List(context.Background(), metav1.ListOptions{
+			LabelSelector: label})
+		gomega.Expect(err).ToNot(gomega.HaveOccurred())
+		return len(pods.Items)
+	}, 5*time.Minute, 2*time.Second).Should(gomega.Equal(1))
+
+	ginkgo.By(fmt.Sprintf("Checking pod with label %s is running", label))
+	gomega.Eventually(func() corev1.PodPhase {
+		pods, err := testclient.Client.Pods(namespace).List(context.Background(), metav1.ListOptions{
+			LabelSelector: label})
+		gomega.Expect(err).ToNot(gomega.HaveOccurred())
+		return pods.Items[0].Status.Phase
+	}, 5*time.Minute, 2*time.Second).Should(gomega.Equal(corev1.PodRunning))
 }

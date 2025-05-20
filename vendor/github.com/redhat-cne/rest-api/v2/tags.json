@@ -1,0 +1,12 @@
+{
+"tags": [
+    {
+        "name":"Subscriptions",
+        "description":"Manage Subscriptions"
+    },
+    {
+        "name":"Events",
+        "description":"Event Pull Status Notification"
+    }
+  ]
+}

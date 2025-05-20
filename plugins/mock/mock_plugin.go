@@ -81,9 +81,8 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 		}
 		return nil
 	}
-	if !common.IsV1Api(config.APIVersion) {
-		config.RestAPI.SetOnStatusReceiveOverrideFn(onCurrentStateFn)
-	}
+
+	config.RestAPI.SetOnStatusReceiveOverrideFn(onCurrentStateFn)
 
 	// create events periodically
 	time.Sleep(5 * time.Second)
@@ -113,7 +112,7 @@ func sendEvent(pub pubsub.PubSub, resourceAddress string) {
 func createPublisher(address string) (pub pubsub.PubSub, err error) {
 	// this is loopback on server itself. Since current pod does not create any server
 	returnURL := fmt.Sprintf("%s%s", config.BaseURL, "dummy")
-	pubToCreate := v1pubsub.NewPubSub(types.ParseURI(returnURL), address, config.APIVersion)
+	pubToCreate := v1pubsub.NewPubSub(types.ParseURI(returnURL), address)
 	pub, err = common.CreatePublisher(config, pubToCreate)
 	if err != nil {
 		log.Errorf("failed to create publisher %v", pub)

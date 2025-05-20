@@ -56,7 +56,6 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sub := pubsub.PubSub{}
-	sub.SetVersion(API_VERSION)
 	if err = json.Unmarshal(bodyBytes, &sub); err != nil {
 		respondWithStatusCode(w, http.StatusBadRequest, fmt.Sprintf("marshalling error %v", err))
 		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
@@ -183,7 +182,6 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pub := pubsub.PubSub{}
-	pub.SetVersion(API_VERSION)
 	if err = json.Unmarshal(bodyBytes, &pub); err != nil {
 		localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
 		respondWithError(w, "marshalling error")
@@ -236,7 +234,7 @@ func (s *Server) sendOut(eType channel.Type, sub *pubsub.PubSub) {
 
 func (s *Server) getSubscriptionByID(w http.ResponseWriter, r *http.Request) {
 	queries := mux.Vars(r)
-	subscriptionID, ok := queries["subscriptionid"]
+	subscriptionID, ok := queries["subscriptionId"]
 	if !ok {
 		respondWithStatusCode(w, http.StatusNotFound, "")
 		return
@@ -306,9 +304,9 @@ func (s *Server) deletePublisher(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) deleteSubscription(w http.ResponseWriter, r *http.Request) {
 	queries := mux.Vars(r)
-	subscriptionID, ok := queries["subscriptionid"]
+	subscriptionID, ok := queries["subscriptionId"]
 	if !ok {
-		respondWithError(w, "subscriptionid param is missing")
+		respondWithError(w, "subscriptionId param is missing")
 		return
 	}
 
@@ -500,7 +498,7 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 // pingForSubscribedEventStatus sends ping to the listening address in the producer to fire all status as events
 func (s *Server) pingForSubscribedEventStatus(w http.ResponseWriter, r *http.Request) {
 	queries := mux.Vars(r)
-	subscriptionID, ok := queries["subscriptionid"]
+	subscriptionID, ok := queries["subscriptionId"]
 	if !ok {
 		respondWithError(w, "subscription parameter not found")
 		return

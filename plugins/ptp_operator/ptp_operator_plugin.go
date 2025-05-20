@@ -39,7 +39,6 @@ import (
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptpSocket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
 	ptpTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
-	v1http "github.com/redhat-cne/sdk-go/v1/http"
 	log "github.com/sirupsen/logrus"
 
 	ptpMetrics "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
@@ -136,7 +135,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 					// delete all metrics related to process
 					ptpMetrics.DeleteProcessStatusMetricsForConfig(nodeName, "", "")
 					// delete all metrics related to ptp ha if haProfile is deleted
-					if haProfiles := eventManager.HAProfiles(); len(haProfiles) > 0 {
+					if _, haProfiles := eventManager.HAProfiles(); len(haProfiles) > 0 {
 						for _, p := range haProfiles {
 							ptpMetrics.DeletePTPHAMetrics(strings.TrimSpace(p))
 						}
@@ -169,13 +168,6 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 	onReceiveOverrideFn := getCurrentStatOverrideFn()
 
 	log.Infof("setting up status listener")
-	if config.TransportHost.Type == common.HTTP {
-		if httpInstance, ok := config.TransPortInstance.(*v1http.HTTP); ok {
-			httpInstance.SetOnStatusReceiveOverrideFn(onReceiveOverrideFn)
-		} else {
-			log.Error("could not set receiver for http ")
-		}
-	}
 	if !common.IsV1Api(config.APIVersion) {
 		config.RestAPI.SetOnStatusReceiveOverrideFn(onReceiveOverrideFn)
 	}
@@ -352,25 +344,8 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 }
 
 // return worst of FREERUN, HOLDOVER or LOCKED
-func getOverallState(current, new ptp.SyncState) ptp.SyncState {
-	if current == "" {
-		return new
-	}
-	switch new {
-	case ptp.FREERUN:
-		return ptp.FREERUN
-	case ptp.HOLDOVER:
-		if current == ptp.FREERUN {
-			return current
-		} else {
-			return new
-		}
-	case ptp.LOCKED:
-		return current
-	default:
-		log.Warnf("last sync state is unknown: %s", new)
-	}
-	return ""
+func getOverallState(current, updated ptp.SyncState) ptp.SyncState {
+	return ptpMetrics.OverallState(current, updated)
 }
 
 // update interface details  and threshold details when ptpConfig change found.
@@ -460,6 +435,7 @@ func processPtp4lConfigFileUpdates() {
 					Interfaces: ptpInterfaces,
 					Sections:   allSections,
 				}
+
 				// add to eventManager
 				eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
 				// clean up process metrics
@@ -584,7 +560,7 @@ func processPtp4lConfigFileUpdates() {
 func createPublisher(address string) (pub pubsub.PubSub, err error) {
 	// this is loop back on server itself. Since current pod does not create any server
 	returnURL := fmt.Sprintf("%s%s", config.BaseURL, "dummy")
-	pubToCreate := v1pubs.NewPubSub(types.ParseURI(returnURL), address, config.APIVersion)
+	pubToCreate := v1pubs.NewPubSub(types.ParseURI(returnURL), address)
 	pub, err = common.CreatePublisher(config, pubToCreate)
 	if err != nil {
 		log.Errorf("failed to create publisher %v", pub)

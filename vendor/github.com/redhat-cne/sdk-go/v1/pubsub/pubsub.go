@@ -44,12 +44,8 @@ var once sync.Once
 var mu sync.Mutex
 
 // NewPubSub create new publisher or subscriber
-func NewPubSub(endPointURI *types.URI, resource string, version string) pubsub.PubSub {
-	if version == "" {
-		version = "1.0"
-	}
+func NewPubSub(endPointURI *types.URI, resource string) pubsub.PubSub {
 	return pubsub.PubSub{
-		Version:     version,
 		EndPointURI: endPointURI,
 		Resource:    resource,
 	}
@@ -128,7 +124,6 @@ func (p *API) GetFromPubStore(address string) (pubsub.PubSub, error) {
 	for _, pub := range p.pubStore.Store {
 		if pub.GetResource() == address {
 			return pubsub.PubSub{
-				Version:     pub.Version,
 				ID:          pub.ID,
 				EndPointURI: pub.EndPointURI,
 				URILocation: pub.URILocation,
@@ -144,7 +139,6 @@ func (p *API) GetFromSubStore(address string) (pubsub.PubSub, error) {
 	for _, sub := range p.subStore.Store {
 		if sub.GetResource() == address {
 			return pubsub.PubSub{
-				Version:     sub.Version,
 				ID:          sub.ID,
 				EndPointURI: sub.EndPointURI,
 				URILocation: sub.URILocation,

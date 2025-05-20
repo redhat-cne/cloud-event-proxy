@@ -40,6 +40,9 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 KUSTOMIZE_VERSION ?= v4.5.7
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 
+GIT_COMMIT=$(shell git rev-list -1 HEAD)
+LINKER_RELEASE_FLAGS=-X main.GitCommit=$(GIT_COMMIT)
+
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
 $(KUSTOMIZE): $(LOCALBIN)
@@ -61,24 +64,20 @@ build:build-plugins test
 	go build -o ./build/cloud-event-proxy cmd/main.go
 
 build-only:
-	go build -o ./build/cloud-event-proxy cmd/main.go
+	go build -ldflags "${LINKER_RELEASE_FLAGS}" -o ./build/cloud-event-proxy cmd/main.go
 
 build-examples:
-	go build -o ./build/cloud-event-consumer ./examples/consumer/main.go
+	go build -ldflags "${LINKER_RELEASE_FLAGS}" -o ./build/cloud-event-consumer ./examples/consumer/main.go
 
 lint:
 	golangci-lint --enable gosec run
 
 build-plugins:
 	go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
-	go build -a -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
 	go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
 
 build-ptp-operator-plugin:
 	go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
-
-build-http-plugin:
-	go build -a -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
 
 build-mock-plugin:
 	go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
@@ -96,61 +95,68 @@ functests:
 
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
 deploy-consumer:kustomize
-	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-sidecar=${IMG} && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
+	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl apply -f -
 
 undeploy-consumer:kustomize
-	cd ./examples/manifests  && $(KUSTOMIZE) edit set image cloud-event-sidecar=${IMG} && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
+	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl delete -f -
-
-deploy-consumer-v2:kustomize
-	cd ./examples/manifests/v2 && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
-	$(KUSTOMIZE) build ./examples/manifests/v2 | kubectl apply -f -
-
-undeploy-consumer-v2:kustomize
-	cd ./examples/manifests/v2 && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
-	$(KUSTOMIZE) build ./examples/manifests/v2 | kubectl delete -f -
 
 # For GitHub Actions CI
 gha:
 	mkdir -p $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy
-	rm -rf $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy/*
-	cp -r cmd examples pkg plugins test $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy
-	cp -r vendor/* $(GOPATH)/src
+	@if [ "$$(realpath $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy)" != "$$(realpath .)" ]; then \
+		echo "✅ Safe to delete: cleaning GOPATH workspace..."; \
+		rm -rf $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy/*; \
+		cp -r cmd examples pkg plugins test $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy; \
+		cp -r vendor/* $(GOPATH)/src; \
+		rm -rf /tmp/sub-store && mkdir -p /tmp/sub-store; \
+	else \
+		echo "⚠️ Skipping delete: GOPATH is pointing to current working directory!"; \
+	fi
+
 	GO111MODULE=off go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 	GO111MODULE=off go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
-	GO111MODULE=off go build -a -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
-	rm -rf /tmp/sub-store && mkdir -p /tmp/sub-store
 	GO111MODULE=off STORE_PATH=/tmp/sub-store go test ./... --tags=unittests -coverprofile=cover.out
 
-docker-build: #test ## Build docker image with the manager.
-	docker build --no-cache -t ${IMG} .
+docker-build:
+	# make sure build the right target when developer using a Mac
+	if [ "$(OS)" = "Darwin" ]; then \
+		docker build --no-cache --platform=linux/amd64 -t ${IMG} .; \
+	else \
+		docker build --no-cache -t ${IMG} .; \
+	fi
 
-docker-push: ## Push docker image with the manager.
+docker-push:
 	docker push ${IMG}
 
-docker-build-consumer: #test ## Build docker image with the manager.
-	docker build -f ./examples/consumer.Dockerfile -t ${CONSUMER_IMG} .
+docker-build-consumer:
+	# make sure build the right target when developer using a Mac
+	if [ "$(OS)" = "Darwin" ]; then \
+		docker build --platform=linux/amd64 -f ./examples/consumer.Dockerfile -t ${CONSUMER_IMG} .; \
+	else \
+		docker build -f ./examples/consumer.Dockerfile -t ${CONSUMER_IMG} .; \
+	fi
 
-docker-push-consumer: ## Push docker image with the manager.
+docker-push-consumer:
 	docker push ${CONSUMER_IMG}
 
-podman-build: #test ## Build docker image with the manager.
+podman-build:
 	podman build --no-cache -t ${IMG} .
 
-podman-build-dlv: #test ## Build docker image with the manager.
+podman-build-dlv:
 	podman build -f Dockerfile.dlv --no-cache -t ${IMG} .
 
-podman-push: ## Push docker image with the manager.
+podman-push:
 	podman push ${IMG}
 
-podman-build-consumer: #test ## Build docker image with the manager.
+podman-build-consumer:
 	podman build -f ./examples/consumer.Dockerfile -t ${CONSUMER_IMG} .
 
-podman-build-consumer-dlv: #test ## Build docker image with the manager.
+podman-build-consumer-dlv:
 	podman build -f ./examples/consumer.Dockerfile.dlv -t ${CONSUMER_IMG} .
 
-podman-push-consumer: ## Push docker image with the manager.
+podman-push-consumer:
 	podman push ${CONSUMER_IMG}
 
 fmt: ## Go fmt your code

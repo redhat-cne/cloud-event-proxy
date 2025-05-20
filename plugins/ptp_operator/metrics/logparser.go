@@ -2,11 +2,13 @@ package metrics
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/event"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/stats"
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/utils"
 	"k8s.io/utils/pointer"
 
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
@@ -16,6 +18,7 @@ import (
 
 var (
 	ptpProcessStatusIdentifier = "PTP_PROCESS_STATUS"
+	numericOnly                = regexp.MustCompile(`^\d+$`)
 )
 
 func extractSummaryMetrics(processName, output string) (iface string, ptpOffset, maxPtpOffset, frequencyAdjustment, delay float64) {
@@ -252,12 +255,15 @@ func extractNmeaMetrics(processName, output string) (interfaceName string, statu
 //		"FAULTY to SLAVE on INIT_COMPLETE"
 //		"SLAVE to UNCALIBRATED on SYNCHRONIZATION_FAULT"
 //	     "MASTER to PASSIVE"
-func extractPTP4lEventState(output string, isFollowerOnly bool) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
+func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
 	// This makes the out to equal
-	// phc2sys[187248.740]:[ens5f0] CLOCK_REALTIME phc offset        12 s2 freq   +6879 delay    49
-	// phc2sys[187248.740]:[ens5f1] CLOCK_REALTIME phc offset        12 s2 freq   +6879 delay    49
+
 	// ptp4l[5199193.712]: [ptp4l.0.config] port 1: SLAVE to UNCALIBRATED on SYNCHRONIZATION_FAULT
-	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
+	// ptp4l[28914813.104]: [ptp4l.1.config] port 1 (ens2f0): SLAVE to UNCALIBRATED on RS_SLAVE
+	clockState = ptp.FREERUN
+	role = types.UNKNOWN
+
+	var replacer = strings.NewReplacer("[", " ", "]", " ", ":", " ")
 	output = replacer.Replace(output)
 
 	index := strings.Index(output, " port ")
@@ -271,18 +277,11 @@ func extractPTP4lEventState(output string, isFollowerOnly bool) (portID int, rol
 		return
 	}
 
-	portIndex := fields[1]
-	role = types.UNKNOWN
-
-	var e error
-	portID, e = strconv.Atoi(portIndex)
-	if e != nil {
-		log.Errorf("error parsing port id %s for output %s", e, output)
-		portID = 0
+	portID, err := handlePort(fields[1])
+	if err != nil {
 		return
 	}
 
-	clockState = ptp.FREERUN
 	if strings.Contains(output, "UNCALIBRATED to SLAVE") ||
 		strings.Contains(output, "LISTENING to SLAVE") {
 		role = types.SLAVE
@@ -297,7 +296,8 @@ func extractPTP4lEventState(output string, isFollowerOnly bool) (portID int, rol
 	} else if strings.Contains(output, "FAULT_DETECTED") ||
 		strings.Contains(output, "SYNCHRONIZATION_FAULT") ||
 		strings.Contains(output, "SLAVE to UNCALIBRATED") ||
-		strings.Contains(output, "MASTER to UNCALIBRATED on RS_SLAVE") {
+		strings.Contains(output, "MASTER to UNCALIBRATED on RS_SLAVE") ||
+		strings.Contains(output, "LISTENING to UNCALIBRATED on RS_SLAVE") {
 		role = types.FAULTY
 		clockState = ptp.HOLDOVER
 	} else if strings.Contains(output, "SLAVE to MASTER") ||
@@ -307,7 +307,9 @@ func extractPTP4lEventState(output string, isFollowerOnly bool) (portID int, rol
 	} else if strings.Contains(output, "SLAVE to LISTENING") {
 		role = types.LISTENING
 		clockState = ptp.HOLDOVER
-	} else if strings.Contains(output, "FAULTY to LISTENING") && isFollowerOnly {
+	} else if strings.Contains(output, "FAULTY to LISTENING") ||
+		strings.Contains(output, "UNCALIBRATED to LISTENING") ||
+		strings.Contains(output, "INITIALIZING to LISTENING") {
 		role = types.LISTENING
 	}
 	return
@@ -374,7 +376,7 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 		Metric:      nil,
 		NodeName:    ptpNodeName,
 	}
-	alias := getAlias(iface)
+	alias := utils.GetAlias(iface)
 
 	SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": alias}).Set(GetSyncStateID(syncState))
 	// status metrics
@@ -390,18 +392,68 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 	//LOCKED->HOLDOVER
 	/// HOLDOVER-->FREERUN
 	// HOLDOVER-->LOCKED
-
-	_, phaseOffset, _, err := ptpStats[types.IFace(iface)].GetDependsOnValueState(dpllProcessName, pointer.String(iface), phaseStatus)
-	if err != nil {
-		log.Errorf("error parsing phase offset %s", err.Error())
-	}
+	//nolint:dogsled // Ignoring lint warning for blank identifiers in GetDependsOnValueState
+	_, phaseOffset, _, _ := ptpStats[types.IFace(iface)].GetDependsOnValueState(dpllProcessName, pointer.String(iface), phaseStatus)
+	// do not process error , if dpll phase is not available then it will print large offset forT-GM offset
 	ptpStats[masterType].SetLastOffset(int64(phaseOffset))
 	lastOffset := ptpStats[masterType].LastOffset()
 
-	if clockState.State != lastClockState { // publish directly here
+	if clockState.State != lastClockState && clockState.State != "" { // publish directly here
 		log.Infof("%s sync state %s, last ptp state is : %s", masterResource, clockState.State, lastClockState)
-		p.PublishEvent(clockState.State, lastOffset, masterResource, ptp.PtpStateChange)
 		ptpStats[masterType].SetLastSyncState(clockState.State)
+		p.PublishEvent(clockState.State, lastOffset, masterResource, ptp.PtpStateChange)
+		UpdateSyncStateMetrics(processName, alias, ptpStats[masterType].LastSyncState())
+		UpdatePTPOffsetMetrics(processName, processName, alias, float64(lastOffset))
+	}
+}
+
+// ParseTBCLogs ... parse logs for various events
+func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, fields []string,
+	ptpStats stats.PTPStats) {
+	// T-BC[1743005894]:[ptp4l.0.config] ens7f0  offset  55 T-BC-STATUS s0
+	// 0    1            2               3       4       5  6           7
+	// T-BC 1743005894   ptp4l.0.config  ens7f0  offset  55 T-BC-STATUS s0
+	if strings.Contains(output, bcStatusIdentifier) {
+		if len(fields) < 8 {
+			log.Errorf("T-BC Status is not in right format %s", output)
+			return
+		}
+	} else {
+		return
+	}
+
+	iface := fields[3]
+	syncState := fields[7]
+	offset, _ := strconv.ParseInt(fields[5], 10, 64)
+	alias := utils.GetAlias(iface)
+	masterType := types.IFace(MasterClockType)
+
+	clockState := event.ClockState{
+		State:       GetSyncState(syncState),
+		IFace:       pointer.String(iface),
+		Process:     processName,
+		ClockSource: "T-BC",
+		Value:       nil,
+		Metric:      nil,
+		NodeName:    ptpNodeName,
+	}
+
+	ptpStats.CheckSource(masterType, configName, processName)
+
+	SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": alias}).Set(GetSyncStateID(syncState))
+	// status metrics
+	ptpStats[masterType].SetPtpDependentEventState(clockState, ptpStats.HasMetrics(processName), ptpStats.HasMetricHelp(processName))
+	ptpStats[masterType].SetAlias(alias)
+
+	ptpStats[masterType].SetLastOffset(offset)
+	lastOffset := ptpStats[masterType].LastOffset()
+	bcResource := fmt.Sprintf("%s/%s", alias, TBC)
+	lastSyncState := ptpStats[masterType].LastSyncState()
+
+	if clockState.State != lastSyncState { // publish directly here
+		log.Infof("%s sync state %s, last ptp state is : %s", bcResource, clockState.State, lastSyncState)
+		ptpStats[masterType].SetLastSyncState(clockState.State)
+		p.PublishEvent(clockState.State, lastOffset, bcResource, ptp.PtpStateChange)
 		UpdateSyncStateMetrics(processName, alias, ptpStats[masterType].LastSyncState())
 		UpdatePTPOffsetMetrics(processName, processName, alias, float64(lastOffset))
 	}
@@ -460,7 +512,7 @@ logStatusLoop:
 	}
 
 	if err == nil {
-		alias := getAlias(*iface)
+		alias := utils.GetAlias(*iface)
 		ptpStats[ifaceType].SetPtpDependentEventState(event.ClockState{
 			State:   GetSyncState(syncState),
 			Offset:  pointer.Float64(dpllOffset),
@@ -517,7 +569,7 @@ func (p *PTPEventManager) ParseGNSSLogs(processName, configName, output string, 
 
 	//openshift_ptp_offset_ns{from="gnss",iface="ens2f1",node="cnfde21.ptp.lab.eng.bos.redhat.com",process="gnss"} 0
 	if err == nil {
-		alias := getAlias(*iface)
+		alias := utils.GetAlias(*iface)
 		// last state of GNSS
 		lastState, errState := ptpStats[ifaceType].GetStateState(processName, iface)
 		pLabels := map[string]string{"from": processName, "node": ptpNodeName,
@@ -730,4 +782,23 @@ func GetSyncStateID(state string) float64 {
 	default:
 		return 0
 	}
+}
+
+func handlePort(portIndex string) (portID int, err error) {
+	if !numericOnly.MatchString(portIndex) {
+		// Skip any non-numeric portIndex like "b49691.fffe.a3f27c-1"
+		return
+	}
+
+	portID, err = strconv.Atoi(portIndex)
+	if err != nil {
+		log.Printf("Failed to convert portIndex to int: %v", err)
+		return
+	}
+	// Use portID as needed
+	return portID, err
+}
+
+func TestFuncExtractPTP4lEventState(output string) (portID int, role types.PtpPortRole, clockState ptp.SyncState) {
+	return extractPTP4lEventState(output)
 }
