@@ -42,7 +42,6 @@ func (ps *PubSubStore) Set(key string, val pubsub.PubSub) {
 	ps.Lock()
 	defer ps.Unlock()
 	storeSub := &pubsub.PubSub{
-		Version:     val.Version,
 		ID:          val.ID,
 		EndPointURI: val.EndPointURI,
 		URILocation: val.URILocation,

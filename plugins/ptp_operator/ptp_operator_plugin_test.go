@@ -37,7 +37,7 @@ import (
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptpTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
-	restapi "github.com/redhat-cne/rest-api"
+	restapi "github.com/redhat-cne/rest-api/v2"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	ptpEvent "github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"

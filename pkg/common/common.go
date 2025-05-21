@@ -34,8 +34,7 @@ import (
 	"github.com/redhat-cne/rest-api/pkg/localmetrics"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
-	restapi "github.com/redhat-cne/rest-api"
-	v2restapi "github.com/redhat-cne/rest-api/v2"
+	restapi "github.com/redhat-cne/rest-api/v2"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
@@ -167,7 +166,7 @@ type SCConfiguration struct {
 	clientID          uuid.UUID
 	StorageType       storageClient.StorageTypeType
 	K8sClient         *storageClient.Client
-	RestAPI           *v2restapi.Server
+	RestAPI           *restapi.Server
 }
 
 // ClientID ... read clientID from the configurations
@@ -220,29 +219,17 @@ func StartPubSubService(scConfig *SCConfiguration) (err error) {
 	if scConfig.TransportHost == nil {
 		scConfig.TransportHost.Type = UNKNOWN
 	}
-	if IsV1Api(scConfig.APIVersion) {
-		server := restapi.InitServer(scConfig.APIPort, scConfig.APIPath,
-			scConfig.StorePath, scConfig.EventInCh, scConfig.CloseCh)
-
-		server.Start()
-		err = server.EndPointHealthChk()
-		if err == nil {
-			scConfig.BaseURL = server.GetHostPath()
-			scConfig.APIPort = server.Port()
-		}
-	} else {
-		// reload sub store from configMap
-		scConfig.SubscriberAPI.ReloadStore()
-		// use EventOutCh instead since this is only used in producer side
-		server := v2restapi.InitServer(scConfig.APIPort, scConfig.TransportHost.Host, scConfig.APIPath,
-			scConfig.StorePath, scConfig.EventOutCh, scConfig.CloseCh, nil)
-		scConfig.RestAPI = server
-		server.Start()
-		err = server.EndPointHealthChk()
-		if err == nil {
-			scConfig.BaseURL = server.GetHostPath()
-			scConfig.APIPort = server.Port()
-		}
+	// reload sub store from configMap
+	scConfig.SubscriberAPI.ReloadStore()
+	// use EventOutCh instead since this is only used in producer side
+	server := restapi.InitServer(scConfig.APIPort, scConfig.TransportHost.Host, scConfig.APIPath,
+		scConfig.StorePath, scConfig.EventOutCh, scConfig.CloseCh, nil)
+	scConfig.RestAPI = server
+	server.Start()
+	err = server.EndPointHealthChk()
+	if err == nil {
+		scConfig.BaseURL = server.GetHostPath()
+		scConfig.APIPort = server.Port()
 	}
 	return err
 }

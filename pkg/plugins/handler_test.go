@@ -27,6 +27,7 @@ import (
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
+	subscriberApi "github.com/redhat-cne/sdk-go/v1/subscriber"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -49,7 +50,9 @@ func init() {
 		CloseCh:    make(chan struct{}),
 		APIPort:    8989,
 		APIPath:    "/api/cne/",
+		APIVersion: "2.0",
 		PubSubAPI:  v1pubsub.GetAPIInstance("../.."),
+		SubscriberAPI: subscriberApi.GetAPIInstance(storePath),
 		StorePath:  storePath,
 		BaseURL:    nil,
 		TransportHost: &common.TransportHost{
