@@ -55,6 +55,11 @@ import (
 	v1http "github.com/redhat-cne/sdk-go/v1/http"
 )
 
+const (
+	configMapRetryInterval = 3 * time.Second
+	configMapRetryCount    = 5
+)
+
 var (
 	// defaults
 	storePath               string
@@ -70,9 +75,12 @@ var (
 	amqInitTimeout          = 3 * time.Minute
 	nodeName                string
 	namespace               string
+	// GitCommit of current build set at build time
+	GitCommit = "Undefined"
 )
 
 func main() {
+	fmt.Printf("Git commit: %s\n", GitCommit)
 	// init
 	common.InitLogger()
 	flag.StringVar(&metricsAddr, "metrics-addr", ":9091", "The address the metric endpoint binds to.")
@@ -129,8 +137,8 @@ func main() {
 	}
 	if namespace != "" && nodeName != "" && scConfig.TransportHost.Type == common.HTTP {
 		// if consumer doesn't pass namespace then this will default to empty dir
-		if e := client.InitConfigMap(scConfig.StorePath, nodeName, namespace); e != nil {
-			log.Errorf("failed to initlialize configmap, subcription will be stored in empty dir %s", e.Error())
+		if e := client.InitConfigMap(scConfig.StorePath, nodeName, namespace, configMapRetryInterval, configMapRetryCount); e != nil {
+			log.Errorf("failed to initialize configmap, subscription will be stored in empty dir %s", e.Error())
 		} else {
 			scConfig.StorageType = storageClient.ConfigMap
 		}
@@ -206,7 +214,12 @@ func metricServer(address string) {
 	mux.Handle("/metrics", promhttp.Handler())
 
 	go wait.Until(func() {
-		err := http.ListenAndServe(address, mux)
+		server := &http.Server{
+			Addr:              address,
+			ReadHeaderTimeout: 5 * time.Second,
+			Handler:           mux,
+		}
+		err := server.ListenAndServe()
 		if err != nil {
 			log.Errorf("error with metrics server %s\n, will retry to establish", err.Error())
 		}
