@@ -25,6 +25,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -80,6 +82,30 @@ var (
 	// Git commit of current build set at build time
 	GitCommit = "Undefined"
 )
+
+func getMajorVersion(version string) (int, error) {
+	if version == "" {
+		return 1, nil
+	}
+	version = strings.TrimPrefix(version, "v")
+	version = strings.TrimPrefix(version, "V")
+	v := strings.Split(version, ".")
+	majorVersion, err := strconv.Atoi(v[0])
+	if err != nil {
+		log.Errorf("Error parsing major version from %s, %v", version, err)
+		return 1, err
+	}
+	return majorVersion, nil
+}
+
+func isV1Api(version string) bool {
+	if majorVersion, err := getMajorVersion(version); err == nil {
+		if majorVersion >= 2 {
+			return false
+		}
+	}
+	return true
+}
 
 func main() {
 	fmt.Printf("Git commit: %s\n", GitCommit)
@@ -158,7 +184,7 @@ func main() {
 	}()
 
 	pluginHandler = plugins.Handler{Path: "./plugins"}
-	if common.IsV1Api(scConfig.APIVersion) {
+	if isV1Api(scConfig.APIVersion) {
 		log.Fatal("REST API v1 is no longer supported. " +
 			"Please update the API version to 2.0.")
 	}
