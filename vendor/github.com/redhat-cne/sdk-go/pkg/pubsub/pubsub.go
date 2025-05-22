@@ -32,7 +32,6 @@ import (
 //
 // PubSub request model
 type PubSub struct {
-	Version string `json:"version" omit:"1.0"`
 	// ID of the pub/sub; is updated on successful creation of publisher/subscription.
 	ID string `json:"SubscriptionId" omit:"empty"`
 	// EndPointURI - A URI describing the event action link.
