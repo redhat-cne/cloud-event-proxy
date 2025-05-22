@@ -6,9 +6,13 @@ package main
 import (
 	"fmt"
 	"os"
+	"k8s.io/utils/pointer"
+	v2 "github.com/cloudevents/sdk-go/v2"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
+	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	"github.com/redhat-cne/sdk-go/pkg/types"
+	ceEvent "github.com/redhat-cne/sdk-go/pkg/event"
 
 	"sync"
 	"testing"
@@ -18,6 +22,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
+	subscriberApi "github.com/redhat-cne/sdk-go/v1/subscriber"
 )
 
 var (
@@ -29,7 +34,7 @@ func storeCleanUp() {
 	_ = scConfig.PubSubAPI.DeleteAllSubscriptions()
 }
 
-func TestSidecar_MainWithHTTP(t *testing.T) {
+func TestSidecar_Main(t *testing.T) {
 	apiPort = 8990
 	defer storeCleanUp()
 	wg := &sync.WaitGroup{}
@@ -42,8 +47,10 @@ func TestSidecar_MainWithHTTP(t *testing.T) {
 		EventOutCh: make(chan *channel.DataChan, channelBufferSize),
 		CloseCh:    make(chan struct{}),
 		APIPort:    apiPort,
-		APIPath:    "/api/ocloudNotifications/v1/",
+		APIPath:    "/api/ocloudNotifications/v2/",
+		APIVersion: "2.0",
 		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
+		SubscriberAPI: subscriberApi.GetAPIInstance(storePath),
 		StorePath:  storePath,
 		TransportHost: &common.TransportHost{
 			Type: common.HTTP,
@@ -73,6 +80,40 @@ func TestSidecar_MainWithHTTP(t *testing.T) {
 	assert.NotEmpty(t, pub.Resource)
 	assert.NotEmpty(t, pub.EndPointURI)
 	assert.NotEmpty(t, pub.URILocation)
+
+	onCurrentStateFn := func(e v2.Event, d *channel.DataChan) error {
+		if e.Source() != "" {
+			log.Infof("setting return address to %s", e.Source())
+			d.ReturnAddress = pointer.String(e.Source())
+		}
+		log.Infof("got status check call, fire events returning to %s", *d.ReturnAddress)
+		data := ceEvent.Data{
+			Version: ceEvent.APISchemaVersion,
+			Values: []ceEvent.DataValue{{
+				Resource:  "/mock",
+				DataType:  ceEvent.NOTIFICATION,
+				ValueType: ceEvent.ENUMERATION,
+				Value:     ptp.ACQUIRING_SYNC,
+			},
+				{
+					Resource:  "/mock",
+					DataType:  ceEvent.METRIC,
+					ValueType: ceEvent.DECIMAL,
+					Value:     "99.6",
+				},
+			},
+		}
+		re, mErr := common.CreateEvent(pub.ID, pub.Resource, "mock", data)
+		if mErr != nil {
+			log.Errorf("failed sending mock event on status pings %s", err)
+		} else {
+			if ceEvent, ceErr := common.GetPublishingCloudEvent(scConfig, re); ceErr == nil {
+				d.Data = ceEvent
+			}
+		}
+		return nil
+	}
+	scConfig.RestAPI.SetOnStatusReceiveOverrideFn(onCurrentStateFn)
 	log.Infof("Publisher \n%s:", pub.String())
 
 	//Test subscription
