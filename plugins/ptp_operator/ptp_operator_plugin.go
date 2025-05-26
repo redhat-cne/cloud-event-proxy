@@ -182,7 +182,6 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 	return func(e v2.Event, d *channel.DataChan) error {
 		var err error
 		if e.Source() != "" {
-			log.Infof("setting return address to %s", e.Source())
 			d.ReturnAddress = pointer.String(e.Source())
 		}
 		log.Infof("got status check call,send events for subscriber %s => %s", d.ClientID.String(), e.Source())
