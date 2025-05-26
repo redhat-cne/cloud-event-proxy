@@ -155,7 +155,6 @@ type SCConfiguration struct {
 	CloseCh    chan struct{}
 	APIPort    int
 	APIPath    string
-	APIVersion string
 	PubSubAPI  *v1pubsub.API
 	// this is used in V2 when pubsub is removed from local store
 	SubscriberAPI     *subscriberApi.API
@@ -310,23 +309,12 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 // PublishEventViaAPI ... publish events by not using http request but direct api
 func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event, resourceAddress string) error {
 	if ceEvent, err := GetPublishingCloudEvent(scConfig, cneEvent); err == nil {
-		if IsV1Api(scConfig.APIVersion) {
-			scConfig.EventInCh <- &channel.DataChan{
-				Type:     channel.EVENT,
-				Status:   channel.NEW,
-				Data:     ceEvent,
-				Address:  ceEvent.Source(), // this is the publishing address
-				ClientID: scConfig.ClientID(),
-			}
-		} else {
-			// use EventOutCh instead of EventInCh to bypass http transport
-			scConfig.EventOutCh <- &channel.DataChan{
-				Type:     channel.EVENT,
-				Status:   channel.NEW,
-				Data:     ceEvent,
-				Address:  resourceAddress, // this is the publishing address
-				ClientID: scConfig.ClientID(),
-			}
+		scConfig.EventOutCh <- &channel.DataChan{
+			Type:     channel.EVENT,
+			Status:   channel.NEW,
+			Data:     ceEvent,
+			Address:  resourceAddress, // this is the publishing address
+			ClientID: scConfig.ClientID(),
 		}
 
 		log.Debugf("event source %s sent to queue to process", ceEvent.Source())
@@ -344,11 +332,7 @@ func GetPublishingCloudEvent(scConfig *SCConfiguration, cneEvent ceevent.Event) 
 		localmetrics.UpdateEventPublishedCount(cneEvent.ID, localmetrics.FAIL, 1)
 		return nil, err
 	}
-	if IsV1Api(scConfig.APIVersion) {
-		ceEvent, err = cneEvent.NewCloudEvent(&pub)
-	} else {
-		ceEvent, err = cneEvent.NewCloudEventV2()
-	}
+	ceEvent, err = cneEvent.NewCloudEventV2()
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
 		return nil, fmt.Errorf("error converting to CloudEvents %s", err)
@@ -420,31 +404,4 @@ func InitLogger() {
 	}
 	// set global log level
 	log.SetLevel(ll)
-}
-
-// GetMajorVersion returns major version
-func GetMajorVersion(version string) (int, error) {
-	if version == "" {
-		return 1, nil
-	}
-	version = strings.TrimPrefix(version, "v")
-	version = strings.TrimPrefix(version, "V")
-	v := strings.Split(version, ".")
-	majorVersion, err := strconv.Atoi(v[0])
-	if err != nil {
-		log.Errorf("Error parsing major version from %s, %v", version, err)
-		return 1, err
-	}
-	return majorVersion, nil
-}
-
-// IsV1Api ...
-func IsV1Api(version string) bool {
-	if majorVersion, err := GetMajorVersion(version); err == nil {
-		if majorVersion >= 2 {
-			return false
-		}
-	}
-	// by default use V1
-	return true
 }

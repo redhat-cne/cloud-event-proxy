@@ -67,7 +67,6 @@ func TestMain(m *testing.M) {
 		CloseCh:       make(chan struct{}),
 		APIPort:       apiPort,
 		APIPath:       "/api/ocloudNotifications/v2/",
-		APIVersion:    "2.0",
 		PubSubAPI:     v1pubsub.GetAPIInstance(storePath),
 		SubscriberAPI: subscriberApi.GetAPIInstance(storePath),
 		StorePath:     storePath,
@@ -84,7 +83,7 @@ func TestMain(m *testing.M) {
 	c = make(chan os.Signal)
 	cleanUP()
 	common.StartPubSubService(scConfig)
-	pubsubTypes = InitPubSubTypes(scConfig)
+	pubsubTypes = InitPubSubTypes()
 	scConfig.RestAPI.SetOnStatusReceiveOverrideFn(getMockOverrideFn())
 	os.Exit(m.Run())
 }

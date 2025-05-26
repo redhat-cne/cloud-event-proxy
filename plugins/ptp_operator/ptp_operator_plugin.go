@@ -82,7 +82,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 	config = configuration
 	// register metrics type
 	ptpMetrics.RegisterMetrics(nodeName)
-	publishers = InitPubSubTypes(config)
+	publishers = InitPubSubTypes()
 
 	// 1. Create event Publication
 	var err error
@@ -168,9 +168,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 	onReceiveOverrideFn := getCurrentStatOverrideFn()
 
 	log.Infof("setting up status listener")
-	if !common.IsV1Api(config.APIVersion) {
-		config.RestAPI.SetOnStatusReceiveOverrideFn(onReceiveOverrideFn)
-	}
+	config.RestAPI.SetOnStatusReceiveOverrideFn(onReceiveOverrideFn)
 	return nil
 }
 
@@ -614,7 +612,7 @@ func HasEqualInterface(a []*string, b []*ptp4lconf.PTPInterface) bool {
 }
 
 // InitPubSubTypes ... initialize types of publishers for ptp operator
-func InitPubSubTypes(scConfig *common.SCConfiguration) map[ptp.EventType]*ptpTypes.EventPublisherType {
+func InitPubSubTypes() map[ptp.EventType]*ptpTypes.EventPublisherType {
 	InitPubs := make(map[ptp.EventType]*ptpTypes.EventPublisherType)
 	InitPubs[ptp.SyncStateChange] = &ptpTypes.EventPublisherType{
 		EventType: ptp.SyncStateChange,
@@ -624,16 +622,9 @@ func InitPubSubTypes(scConfig *common.SCConfiguration) map[ptp.EventType]*ptpTyp
 		EventType: ptp.OsClockSyncStateChange,
 		Resource:  ptp.OsClockSyncState,
 	}
-	if !common.IsV1Api(scConfig.APIVersion) {
-		InitPubs[ptp.PtpClockClassChange] = &ptpTypes.EventPublisherType{
-			EventType: ptp.PtpClockClassChange,
-			Resource:  ptp.PtpClockClass,
-		}
-	} else {
-		InitPubs[ptp.PtpClockClassChange] = &ptpTypes.EventPublisherType{
-			EventType: ptp.PtpClockClassChange,
-			Resource:  ptp.PtpClockClassV1,
-		}
+	InitPubs[ptp.PtpClockClassChange] = &ptpTypes.EventPublisherType{
+		EventType: ptp.PtpClockClassChange,
+		Resource:  ptp.PtpClockClass,
 	}
 	InitPubs[ptp.PtpStateChange] = &ptpTypes.EventPublisherType{
 		EventType: ptp.PtpStateChange,
