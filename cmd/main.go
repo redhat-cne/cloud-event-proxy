@@ -25,6 +25,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -81,6 +83,30 @@ var (
 	GitCommit = "Undefined"
 )
 
+func getMajorVersion(version string) (int, error) {
+	if version == "" {
+		return 1, nil
+	}
+	version = strings.TrimPrefix(version, "v")
+	version = strings.TrimPrefix(version, "V")
+	v := strings.Split(version, ".")
+	majorVersion, err := strconv.Atoi(v[0])
+	if err != nil {
+		log.Errorf("Error parsing major version from %s, %v", version, err)
+		return 1, err
+	}
+	return majorVersion, nil
+}
+
+func isV1Api(version string) bool {
+	if majorVersion, err := getMajorVersion(version); err == nil {
+		if majorVersion >= 2 {
+			return false
+		}
+	}
+	return true
+}
+
 func main() {
 	fmt.Printf("Git commit: %s\n", GitCommit)
 	// init
@@ -120,7 +146,6 @@ func main() {
 		CloseCh:       make(chan struct{}),
 		APIPort:       apiPort,
 		APIPath:       apiPath,
-		APIVersion:    apiVersion,
 		StorePath:     storePath,
 		PubSubAPI:     v1pubs.GetAPIInstance(storePath),
 		SubscriberAPI: subscriberApi.GetAPIInstance(storePath),
@@ -158,13 +183,13 @@ func main() {
 	}()
 
 	pluginHandler = plugins.Handler{Path: "./plugins"}
-	if common.IsV1Api(scConfig.APIVersion) {
+	if isV1Api(apiVersion) {
 		log.Fatal("REST API v1 is no longer supported. " +
 			"Please update the API version to 2.0.")
 	}
 	log.Infof(
 		"REST API config: version=%s, port=%d, path=%s.",
-		scConfig.APIVersion,
+		apiVersion,
 		scConfig.APIPort,
 		scConfig.APIPath)
 

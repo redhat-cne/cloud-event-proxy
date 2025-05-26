@@ -48,7 +48,6 @@ func TestSidecar_Main(t *testing.T) {
 		CloseCh:    make(chan struct{}),
 		APIPort:    apiPort,
 		APIPath:    "/api/ocloudNotifications/v2/",
-		APIVersion: "2.0",
 		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
 		SubscriberAPI: subscriberApi.GetAPIInstance(storePath),
 		StorePath:  storePath,
