@@ -404,7 +404,7 @@ func (l *LinuxPTPConfigMapUpdate) updatePtpConfig(nodeName string) (updated bool
 	}
 	nodeProfile = filepath.Clean(nodeProfile)
 	if !strings.HasPrefix(nodeProfile, l.profilePath) {
-		log.Errorf("reading nodeProfile %s from unknon path ", nodeProfile)
+		log.Errorf("reading nodeProfile %s from unknown path", nodeProfile)
 		return
 	}
 	nodeProfilesJSON, err := os.ReadFile(nodeProfile)
