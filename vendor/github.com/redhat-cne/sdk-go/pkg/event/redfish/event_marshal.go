@@ -23,7 +23,7 @@ import (
 )
 
 // WriteJSONEvent ...
-func WriteJSONEvent(in *Event, writer io.Writer, stream *jsoniter.Stream) error {
+func WriteJSONEvent(in *Event, _ io.Writer, stream *jsoniter.Stream) error {
 	stream.WriteObjectStart()
 
 	// Let's write the body

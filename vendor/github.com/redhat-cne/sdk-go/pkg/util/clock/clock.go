@@ -287,30 +287,30 @@ func (i *IntervalClock) Since(ts time.Time) time.Duration {
 
 // After is currently unimplemented, will panic.
 // TODO: make interval clock use FakeClock so this can be implemented.
-func (*IntervalClock) After(d time.Duration) <-chan time.Time {
+func (*IntervalClock) After(time.Duration) <-chan time.Time {
 	panic("IntervalClock doesn't implement After")
 }
 
 // AfterFunc is currently unimplemented, will panic.
 // TODO: make interval clock use FakeClock so this can be implemented.
-func (*IntervalClock) AfterFunc(d time.Duration, cb func()) Timer {
+func (*IntervalClock) AfterFunc(time.Duration, func()) Timer {
 	panic("IntervalClock doesn't implement AfterFunc")
 }
 
 // NewTimer is currently unimplemented, will panic.
 // TODO: make interval clock use FakeClock so this can be implemented.
-func (*IntervalClock) NewTimer(d time.Duration) Timer {
+func (*IntervalClock) NewTimer(time.Duration) Timer {
 	panic("IntervalClock doesn't implement NewTimer")
 }
 
 // NewTicker is currently unimplemented, will panic.
 // TODO: make interval clock use FakeClock so this can be implemented.
-func (*IntervalClock) NewTicker(d time.Duration) Ticker {
+func (*IntervalClock) NewTicker(time.Duration) Ticker {
 	panic("IntervalClock doesn't implement NewTicker")
 }
 
 // Sleep is currently unimplemented; will panic.
-func (*IntervalClock) Sleep(d time.Duration) {
+func (*IntervalClock) Sleep(time.Duration) {
 	panic("IntervalClock doesn't implement Sleep")
 }
 
