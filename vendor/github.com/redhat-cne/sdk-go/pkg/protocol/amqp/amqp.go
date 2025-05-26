@@ -85,7 +85,6 @@ type Router struct {
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
 func init() {
-	rand.Seed(time.Now().UnixNano())
 }
 
 // RandStringRunes ... for status bus address

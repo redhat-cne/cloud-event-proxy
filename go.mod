@@ -4,16 +4,16 @@ go 1.20
 
 require (
 	github.com/blang/semver v3.5.1+incompatible
-	github.com/cloudevents/sdk-go/v2 v2.13.0
+	github.com/cloudevents/sdk-go/v2 v2.15.2
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/golang/glog v1.0.0
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.0
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.23.0
 	github.com/prometheus/client_golang v1.14.0
-	github.com/redhat-cne/rest-api v0.1.1-0.20230417132116-46717e183c05
-	github.com/redhat-cne/sdk-go v0.1.1-0.20230417130643-d8a16493413b
+	github.com/redhat-cne/rest-api v1.20.0
+	github.com/redhat-cne/sdk-go v1.20.3
 	github.com/sirupsen/logrus v1.9.0
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/net v0.33.0
@@ -29,7 +29,7 @@ require (
 	github.com/Azure/go-amqp v0.17.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
-	github.com/cloudevents/sdk-go/protocol/amqp/v2 v2.13.0 // indirect
+	github.com/cloudevents/sdk-go/protocol/amqp/v2 v2.15.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/emicklei/go-restful v2.16.0+incompatible // indirect
 	github.com/evanphx/json-patch v4.12.0+incompatible // indirect
@@ -66,7 +66,7 @@ require (
 	golang.org/x/text v0.21.0 // indirect
 	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/protobuf v1.28.1 // indirect
+	google.golang.org/protobuf v1.33.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
