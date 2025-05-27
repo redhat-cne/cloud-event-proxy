@@ -246,7 +246,7 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 		}
 	}).Methods(http.MethodGet)
 
-	r.HandleFunc("/health", func(w http.ResponseWriter, req *http.Request) {
+	r.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	})
@@ -254,7 +254,7 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 	r.Handle("/event", eventHandler)
 	r.Handle("/subscription", subscriptionHandler)
 
-	err = r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
+	err = r.Walk(func(route *mux.Route, _ *mux.Router, _ []*mux.Route) error {
 		var pathTemplate, pathRegexp string
 		var queriesTemplates, queriesRegexps, methods []string
 		pathTemplate, err = route.GetPathTemplate()
@@ -393,7 +393,8 @@ func (h *Server) HTTPProcessor(wg *sync.WaitGroup) {
 	wg.Add(1)
 	go func(h *Server, wg *sync.WaitGroup) {
 		defer wg.Done()
-		for { //nolint:gosimple    Producer: Sender Object--->Event       Default Listener:Consumer
+		// Producer: Sender Object--->Event       Default Listener:Consumer
+		for { //nolint:gosimple
 			select {
 			case d := <-h.DataIn: //skips publisher object processing
 				if d.Type == channel.SUBSCRIBER && (d.Status == channel.NEW || d.Status == channel.DELETE) { // Listener  means subscriber aka sender
@@ -506,25 +507,24 @@ func (h *Server) HTTPProcessor(wg *sync.WaitGroup) {
 						for _, pubURL := range h.Publishers {
 							stateURL := fmt.Sprintf("%s%s/%s/%s", pubURL.String(), d.Address, d.ClientID, CURRENTSTATE)
 							// this is called form consumer, so sender object registered at consumer side
-							log.Infof("current state call :reaching out to %s", stateURL)
 							res, state, resErr := GetByte(stateURL)
 							if resErr == nil && state == http.StatusOK {
 								var cloudEvent cloudevents.Event
 								if err := json.Unmarshal(res, &cloudEvent); err != nil {
 									sendToStatusChannel(d, nil, d.ClientID, http.StatusBadRequest, []byte(err.Error()))
-									log.Infof("failed to send current state to %s for %s ", stateURL, d.Address)
+									log.Errorf("failed to get current state at %s for %s, unmarshal error %v", stateURL, d.Address, err)
 								} else {
 									sendToStatusChannel(d, &cloudEvent, d.ClientID, state, res)
 									log.Infof("success, status sent to %s for %s", stateURL, d.Address)
 								}
 							} else {
 								sendToStatusChannel(d, nil, d.ClientID, state, res)
-								log.Infof("failed to send current state to %s for %s", stateURL, d.Address)
+								log.Errorf("failed to get current state at %s for %s, status code %d", stateURL, d.Address, state)
 							}
 						}
 					} else {
 						sendToStatusChannel(d, nil, d.ClientID, http.StatusBadRequest, []byte("no publisher endpoint was configured to check current state."))
-						log.Infof("failed to send current state for %s", d.Address)
+						log.Errorf("no publishers found for %s", d.Address)
 					}
 				}
 			case <-h.CloseCh:
@@ -586,6 +586,7 @@ func (h *Server) SendTo(wg *sync.WaitGroup, clientID uuid.UUID, clientAddress, r
 				}
 				log.Errorf("connection lost addressing %s", clientAddress)
 			} else {
+				h.subscriberAPI.ResetFailCount(clientID)
 				localmetrics.UpdateEventCreatedCount(resourceAddress, localmetrics.SUCCESS, 1)
 				h.DataOut <- &channel.DataChan{
 					Address: resourceAddress,
@@ -604,7 +605,7 @@ func (h *Server) SendTo(wg *sync.WaitGroup, clientID uuid.UUID, clientAddress, r
 }
 
 // NewClient ...
-func (h *Server) NewClient(host string, connOption []httpP.Option) (httpClient.Client, error) {
+func (h *Server) NewClient(host string, _ []httpP.Option) (httpClient.Client, error) {
 	//--
 	c, err2 := cloudevents.NewClientHTTP(cloudevents.WithTarget(host))
 	if err2 != nil {
@@ -701,7 +702,7 @@ func (c *Protocol) Send(e cloudevents.Event) error {
 			Desc: "sender not found",
 		}
 	}
-	log.Infof("sending now %s, to  %s", e.Type(), c.Protocol.Target.String())
+	log.Tracef("sending now %s, to  %s", e.Type(), c.Protocol.Target.String())
 	sendCtx, sendCancel := context.WithTimeout(context.Background(), cancelTimeout)
 	defer sendCancel()
 	e.SetDataContentType(cloudevents.ApplicationJSON)
@@ -729,7 +730,6 @@ func (c *Protocol) Send(e cloudevents.Event) error {
 
 // Get ... getter method
 func Get(url string) (int, error) {
-	log.Infof("health check %s ", url)
 	// using variable url is security hole. Do we need to fix this
 	response, errResp := http.Get(url)
 	if errResp != nil {
@@ -745,7 +745,6 @@ func Get(url string) (int, error) {
 
 // GetByte ... getter method
 func GetByte(url string) ([]byte, int, error) {
-	log.Infof("health check %s ", url)
 	// using variable url is security hole. Do we need to fix this
 	response, errResp := http.Get(url)
 	if errResp != nil {

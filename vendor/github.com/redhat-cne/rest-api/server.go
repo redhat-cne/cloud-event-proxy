@@ -265,7 +265,7 @@ func (s *Server) Start() {
 
 	api.HandleFunc("/{resourceAddress:.*}/CurrentState", s.getCurrentState).Methods(http.MethodGet)
 
-	api.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	api.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		io.WriteString(w, "OK") //nolint:errcheck
 	}).Methods(http.MethodGet)
 
@@ -290,7 +290,7 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/badReq"
 	api.HandleFunc("/create/event", s.publishEvent).Methods(http.MethodPost)
 
-	err := r.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
+	err := r.Walk(func(route *mux.Route, _ *mux.Router, _ []*mux.Route) error {
 		pathTemplate, err := route.GetPathTemplate()
 		if err == nil {
 			log.Println("ROUTE:", pathTemplate)
