@@ -62,8 +62,8 @@ func GetAPIInstance(storeFilePath string) *API {
 			storeFilePath: storeFilePath,
 		}
 		hasDir(storeFilePath)
-		instance.ReloadStore()
 	})
+	instance.ReloadStore()
 	return instance
 }
 
@@ -80,9 +80,11 @@ func (p *API) ReloadStore() {
 					if err2 = json.Unmarshal(b, &sub); err2 == nil {
 						p.SubscriberStore.Set(sub.ClientID, sub)
 					} else {
-						log.Errorf("error parsing subscriber %s \n %s", string(b), err2.Error())
+						log.Errorf("error parsing subscriber %s\n %s", string(b), err2.Error())
 					}
 				}
+			} else {
+				log.Errorf("error loading file %s\n %s", fmt.Sprintf("%s/%s", p.storeFilePath, f), err1.Error())
 			}
 		}
 	}
@@ -251,17 +253,17 @@ func (p *API) GetSubscriberURLByResource(resource string) (urls []string) {
 }
 
 // GetClientIDByResource  get  subscriptionOne information
-func (p *API) GetClientIDByResource(resource string) (clientIds []uuid.UUID) {
+func (p *API) GetClientIDByResource(resource string) (clientIDs []uuid.UUID) {
 	p.SubscriberStore.RLock()
 	defer p.SubscriberStore.RUnlock()
 	for _, subs := range p.SubscriberStore.Store {
 		for _, sub := range subs.SubStore.Store {
 			if sub.GetResource() == resource {
-				clientIds = append(clientIds, subs.ClientID)
+				clientIDs = append(clientIDs, subs.ClientID)
 			}
 		}
 	}
-	return clientIds
+	return clientIDs
 }
 
 // GetClientIDAddressByResource  get  subscriptionOne information
@@ -346,6 +348,14 @@ func (p *API) IncFailCountToFail(clientID uuid.UUID) bool {
 	return false
 }
 
+// ResetFailCount ..reset fail count
+func (p *API) ResetFailCount(clientID uuid.UUID) {
+	if subStore, ok := p.SubscriberStore.Get(clientID); ok {
+		subStore.ResetFailCount()
+		p.SubscriberStore.Set(clientID, subStore)
+	}
+}
+
 // FailCountThreshold .. get threshold
 func (p *API) FailCountThreshold() int {
 	return subscriber.SetConnectionToFailAfter
@@ -370,10 +380,7 @@ func (p *API) SubscriberMarkedForDelete(clientID uuid.UUID) bool {
 
 // deleteAllFromFile deletes  publisher and subscriptionOne information from the file system
 func deleteAllFromFile(filePath string) error {
-	if err := os.Remove(filePath); err != nil {
-		return err
-	}
-	return nil
+	return os.Remove(filePath)
 }
 
 // DeleteFromFile is used to delete subscriptionOne from the file system
@@ -404,10 +411,7 @@ func deleteFromFile(sub pubsub.PubSub, filePath string) error {
 		log.Errorf("error deleting sub %v", err)
 		return err
 	}
-	if err := os.WriteFile(filePath, newBytes, 0666); err != nil {
-		return err
-	}
-	return nil
+	return os.WriteFile(filePath, newBytes, 0666)
 }
 
 // loadFromFile is used to read subscriptionOne/publisher from the file system
@@ -475,10 +479,7 @@ func writeToFile(subscriberClient subscriber.Subscriber, filePath string) error 
 		return err
 	}
 	log.Infof("persisting following contents %s to a file %s\n", string(newBytes), filePath)
-	if err := os.WriteFile(filePath, newBytes, 0666); err != nil {
-		return err
-	}
-	return nil
+	return os.WriteFile(filePath, newBytes, 0666)
 }
 
 func hasDir(path string) {
