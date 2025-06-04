@@ -8,6 +8,7 @@ import (
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/stats"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/utils"
 
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	log "github.com/sirupsen/logrus"
@@ -152,7 +153,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			case MasterClockType:
 				ptpInterface, _ = ptp4lCfg.ByRole(types.SLAVE)
 				if ptpInterface.Name != "" {
-					alias := getAlias(ptpInterface.Name)
+					alias := utils.GetAlias(ptpInterface.Name)
 					ptpStats[master].SetAlias(alias)
 					UpdatePTPMetrics(master, processName, alias, ptpOffset, maxPtpOffset, frequencyAdjustment, delay)
 				} else {
@@ -161,7 +162,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				}
 			default:
 				if processName == ts2phcProcessName {
-					alias := getAlias(interfaceName)
+					alias := utils.GetAlias(interfaceName)
 					ptpStats[master].SetAlias(alias)
 					UpdatePTPMetrics(master, processName, alias, ptpOffset, maxPtpOffset, frequencyAdjustment, delay)
 				}
@@ -172,7 +173,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			interfaceName, status, _, _ := extractNmeaMetrics(processName, output)
 			// ts2phc return actual interface name unlike ptp4l
 			ptpInterface = ptp4lconf.PTPInterface{Name: interfaceName}
-			alias := getAlias(interfaceName)
+			alias := utils.GetAlias(interfaceName)
 			// no event for nmeas status , change in GM will manage ptp events and sync states
 			UpdateNmeaStatusMetrics(processName, alias, status)
 		} else if strings.Contains(output, "process_status") &&
@@ -265,7 +266,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				if ptpInterface.Name != "" {
 					alias := ptpStats[types.IFace(interfaceName)].Alias()
 					if alias == "" {
-						alias = getAlias(ptpInterface.Name)
+						alias = utils.GetAlias(ptpInterface.Name)
 						ptpStats[types.IFace(interfaceName)].SetAlias(alias)
 					}
 					masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
@@ -279,7 +280,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				if processName == ts2phcProcessName {
 					alias := ptpStats[types.IFace(interfaceName)].Alias()
 					if alias == "" {
-						alias = getAlias(ptpInterface.Name)
+						alias = utils.GetAlias(ptpInterface.Name)
 						ptpStats[types.IFace(interfaceName)].SetAlias(alias)
 					}
 					// update ts2phc sync state to GM state if available,since GM State identifies PTP state
@@ -331,7 +332,7 @@ func (p *PTPEventManager) processDownEvent(profileName, processName string, ptpS
 				ptpStats[iface].SetLastSyncState(ptp.FREERUN)
 				alias := ptpStats[iface].Alias()
 				if alias == "" {
-					alias = getAlias(string(iface))
+					alias = utils.GetAlias(string(iface))
 				}
 				// update all ts2phc reported metrics as FREERUN
 				UpdateSyncStateMetrics(processName, alias, ptpStats[iface].LastSyncState())
@@ -365,12 +366,4 @@ func (p *PTPEventManager) validLogToProcess(profileName, processName string, iFa
 		return false
 	}
 	return true
-}
-
-func getAlias(iface string) string {
-	if iface == "" {
-		return iface
-	}
-	r := []rune(iface)
-	return string(r[:len(r)-1]) + "x"
 }
