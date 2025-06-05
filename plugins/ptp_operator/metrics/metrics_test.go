@@ -201,6 +201,7 @@ var testCases = []TestCase{
 		expectedRoleCheck:  true,
 		expectedRole:       types.FAULTY,
 		logPtp4lConfigName: logPtp4lConfigDualFollower.Name,
+		expectedEvent:      "event.sync.ptp-status.ptp-state-change",
 		skipCleanupMetrics: true,
 	},
 	{
@@ -211,6 +212,7 @@ var testCases = []TestCase{
 		expectedRoleCheck:  true,
 		expectedRole:       types.SLAVE,
 		logPtp4lConfigName: logPtp4lConfigDualFollower.Name,
+		expectedEvent:      "event.sync.ptp-status.ptp-state-change",
 		skipCleanupMetrics: true,
 	},
 	{
