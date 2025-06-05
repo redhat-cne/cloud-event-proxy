@@ -11,6 +11,7 @@ import (
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/stats"
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
+	"github.com/stretchr/testify/assert"
 	"sync"
 )
 
@@ -187,4 +188,37 @@ func TestConcurrentMapAccess(t *testing.T) {
 
 	// Wait for all goroutines to finish
 	wg.Wait()
+}
+
+func TestListHAProfilesWith(t *testing.T) {
+	// Setup
+	manager := &metrics.PTPEventManager{
+		Stats: map[types.ConfigName]stats.PTPStats{},
+		PtpConfigMapUpdates: &ptpConfig.LinuxPTPConfigMapUpdate{
+			PtpSettings: map[string]map[string]string{
+				"pProfile": {
+					"haProfiles": "profile1,profile2",
+				},
+			},
+		},
+	}
+
+	// Case 1: Found in node1
+	_, result := manager.ListHAProfilesWith("profile2")
+	assert.ElementsMatch(t, []string{"profile1", "profile2"}, result)
+
+	// Case 3: Not found
+	_, result = manager.ListHAProfilesWith("unknown")
+	assert.Equal(t, len(result), 0)
+
+	// Case 4: Empty input
+	_, result = manager.ListHAProfilesWith(" ")
+	assert.Equal(t, len(result), 0)
+
+	// Case 5: Empty settings
+	manager.PtpConfigMapUpdates = &ptpConfig.LinuxPTPConfigMapUpdate{
+		PtpSettings: map[string]map[string]string{},
+	}
+	_, result = manager.ListHAProfilesWith("profile1")
+	assert.Equal(t, len(result), 0)
 }

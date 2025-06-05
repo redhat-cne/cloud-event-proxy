@@ -1,0 +1,28 @@
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.22-openshift-4.18 AS builder
+ENV CGO_ENABLED=1
+ENV GOOS=linux
+ENV GOPATH=/go
+
+WORKDIR /
+COPY . .
+
+RUN GOFLAGS='' go install github.com/go-delve/delve/cmd/dlv@latest
+
+RUN go build -gcflags="all=-N -l" -o cloud-event-consumer ./examples/consumer/main.go
+
+FROM registry.ci.openshift.org/ocp/4.19:base-rhel9 AS bin
+COPY --from=builder /cloud-event-consumer /
+COPY --from=builder /go/bin/dlv /
+COPY --from=builder /usr/bin/go /usr/bin/go
+COPY --from=builder /usr/bin/go.real /usr/bin/go.real
+
+RUN mkdir /go
+LABEL io.k8s.display-name="Cloud Event Proxy Sample Consumer" \
+      io.k8s.description="This is a component of OpenShift Container Platform and provides a consumer sample to consume events." \
+      io.openshift.tags="openshift" \
+      maintainer="Aneesh Puttur <aputtur@redhat.com>"
+
+ENV GOROOT=/go \
+    PATH=$PATH:$GOROOT/bin
+
+ENTRYPOINT ["./cloud-event-consumer"]

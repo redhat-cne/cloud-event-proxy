@@ -117,15 +117,20 @@ undeploy-consumer-v2:kustomize
 # For GitHub Actions CI
 gha:
 	mkdir -p $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy
-	rm -rf $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy/*
-	cp -r cmd examples pkg plugins test $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy
-	cp -r vendor/* $(GOPATH)/src
+	@if [ "$$(realpath $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy)" != "$$(realpath .)" ]; then \
+		echo "✅ Safe to delete: cleaning GOPATH workspace..."; \
+		rm -rf $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy/*; \
+		cp -r cmd examples pkg plugins test $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy; \
+		cp -r vendor/* $(GOPATH)/src; \
+		rm -rf /tmp/sub-store && mkdir -p /tmp/sub-store; \
+	else \
+		echo "⚠️ Skipping delete: GOPATH is pointing to current working directory!"; \
+	fi
+
 	GO111MODULE=off go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
 	GO111MODULE=off go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
 	GO111MODULE=off go build -a -o plugins/http_plugin.so -buildmode=plugin plugins/http/http_plugin.go
-	rm -rf /tmp/sub-store && mkdir -p /tmp/sub-store
 	GO111MODULE=off STORE_PATH=/tmp/sub-store go test ./... --tags=unittests -coverprofile=cover.out
-
 
 docker-build:
 	# make sure build the right target when developer using a Mac
@@ -152,13 +157,19 @@ docker-push-consumer:
 podman-build:
 	podman build --no-cache -t ${IMG} .
 
-podman-push:
+podman-build-dlv: #test ## Build docker image with the manager.
+	podman build -f Dockerfile.dlv --no-cache -t ${IMG} .
+
+podman-push: ## Push docker image with the manager.
 	podman push ${IMG}
 
 podman-build-consumer:
 	podman build -f ./examples/consumer.Dockerfile -t ${CONSUMER_IMG} .
 
-podman-push-consumer:
+podman-build-consumer-dlv: #test ## Build docker image with the manager.
+	podman build -f ./examples/consumer.Dockerfile.dlv -t ${CONSUMER_IMG} .
+
+podman-push-consumer: ## Push docker image with the manager.
 	podman push ${CONSUMER_IMG}
 
 fmt: ## Go fmt your code

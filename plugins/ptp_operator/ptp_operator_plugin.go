@@ -136,7 +136,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 					// delete all metrics related to process
 					ptpMetrics.DeleteProcessStatusMetricsForConfig(nodeName, "", "")
 					// delete all metrics related to ptp ha if haProfile is deleted
-					if haProfiles := eventManager.HAProfiles(); len(haProfiles) > 0 {
+					if _, haProfiles := eventManager.HAProfiles(); len(haProfiles) > 0 {
 						for _, p := range haProfiles {
 							ptpMetrics.DeletePTPHAMetrics(strings.TrimSpace(p))
 						}
@@ -401,6 +401,7 @@ func processPtp4lConfigFileUpdates() {
 				ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
 				// read all interface names from the config
 				newInterfaces := ptpConfigEvent.GetAllInterface()
+				allSections := ptpConfigEvent.GetAllSections()
 				ptp4lConfig := eventManager.GetPTPConfig(ptpConfigFileName)
 
 				if ptp4lConfig.Profile == "" {
@@ -456,7 +457,9 @@ func processPtp4lConfigFileUpdates() {
 					Name:       string(ptpConfigFileName),
 					Profile:    *ptpConfigEvent.Profile,
 					Interfaces: ptpInterfaces,
+					Sections:   allSections,
 				}
+
 				// add to eventManager
 				eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
 				// clean up process metrics
