@@ -20,6 +20,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"os"
+	"path"
+	"strings"
+	"sync"
+	"testing"
+
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"github.com/google/uuid"
 	event2 "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/event"
@@ -28,12 +35,6 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	"k8s.io/utils/pointer"
-	"log"
-	"os"
-	"path"
-	"strings"
-	"sync"
-	"testing"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptpTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
@@ -294,6 +295,40 @@ func TestGetCurrentStatOverrideFn(t *testing.T) {
 			assert.Equal(t, expectedReturnAddr, *mockDataChan.ReturnAddress)
 		})
 	}
+}
+
+func TestGetCurrentStatOverrideFnConcurrentMapAccess(t *testing.T) {
+	eventManager = metrics.NewPTPEventManager("/cluster/node", pubsubTypes, nodeName, scConfig)
+	eventManager.MockTest(true)
+
+	event := buildEvent(nodeName, ptpEvent.PtpLockState, ptpEvent.PtpStateChange)
+	sData := []statsData{
+		{clockType: MasterClockType, configName: "ptp4l.0.config", processName: "ptp4l", alias: "ens1fx", iface: "ens1f0", syncState: ptpEvent.LOCKED},
+		{clockType: ClockRealTime, configName: "ptp4l.0.config", processName: "phc2sys", syncState: ptpEvent.FREERUN},
+	}
+
+	eventManager.Stats = getStats(sData, nil)
+	mockDataChan := &channel.DataChan{
+		ClientID: uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
+	}
+	overrideFn := getCurrentStatOverrideFn()
+
+	// Function to simulate concurrent reads
+	readFunc := func(wg *sync.WaitGroup) {
+		defer wg.Done()
+		overrideFn(event, mockDataChan)
+	}
+
+	var wg sync.WaitGroup
+	numGoroutines := 1000
+
+	// Start multiple goroutines to read the map
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go readFunc(&wg)
+	}
+	// Wait for all goroutines to finish
+	wg.Wait()
 }
 
 // Define the struct to match the JSON structure
