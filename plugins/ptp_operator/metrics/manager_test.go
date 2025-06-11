@@ -4,15 +4,17 @@
 package metrics_test
 
 import (
-	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
 	"testing"
+
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
+
+	"sync"
 
 	ptpConfig "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/config"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/stats"
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	"github.com/stretchr/testify/assert"
-	"sync"
 )
 
 func TestPTPEventManager_GenPTPEvent(t *testing.T) {
@@ -164,9 +166,9 @@ func TestConcurrentMapAccess(t *testing.T) {
 	}
 	manager.MockTest(true)
 	// Function to simulate concurrent writes
-	writeFunc := func(wg *sync.WaitGroup, key string, value stats.PTPStats) {
+	writeFunc := func(wg *sync.WaitGroup, key types.ConfigName, value stats.PTPStats) {
 		defer wg.Done()
-		manager.GetStats(types.ConfigName(configName))
+		manager.SetStats(key, value)
 	}
 
 	// Function to simulate concurrent reads
