@@ -20,6 +20,13 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"os"
+	"path"
+	"strings"
+	"sync"
+	"testing"
+
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"github.com/google/uuid"
 	event2 "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/event"
@@ -28,12 +35,6 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	"k8s.io/utils/pointer"
-	"log"
-	"os"
-	"path"
-	"strings"
-	"sync"
-	"testing"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptpTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
@@ -125,6 +126,178 @@ func ProcessInChannel() {
 }
 
 func TestGetCurrentStatOverrideFn(t *testing.T) {
+	// Setup
+	//CLIENT SUBSCRIPTION: create a subscription to consume events
+
+	var err error
+	endpointURL := fmt.Sprintf("%s%s", scConfig.BaseURL, "dummy")
+	for _, pTypes := range pubsubTypes {
+		pub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), path.Join(resourcePrefix, nodeName, string(pTypes.Resource)))
+		pub, err = common.CreatePublisher(scConfig, pub)
+		assert.Nil(t, err)
+		assert.NotEmpty(t, pub.ID)
+		assert.NotEmpty(t, pub.URILocation)
+		pTypes.PubID = pub.ID
+		pTypes.Pub = &pub
+	}
+	assert.Equal(t, 7, len(pubsubTypes))
+	eventManager = metrics.NewPTPEventManager("/cluster/node", pubsubTypes, nodeName, scConfig)
+	eventManager.MockTest(true)
+
+	tests := []struct {
+		name                    string
+		eventSource             ptpEvent.EventResource
+		eventType               ptpEvent.EventType
+		expectedSyncState       ptpTypes.SyncState
+		expectedResourceAddress string
+		statsData               []statsData
+		depsClockState          []event2.ClockState
+	}{
+		{
+			name:                    "PTP State is Locked - Single Event",
+			expectedSyncState:       ptpTypes.LOCKED,
+			eventSource:             ptpEvent.PtpLockState,
+			eventType:               ptpEvent.PtpStateChange,
+			expectedResourceAddress: fmt.Sprintf("/cluster/node/%s/%s/%s", nodeName, "ens1fx", MasterClockType),
+			statsData: []statsData{
+				{clockType: MasterClockType, configName: "ptp4l.0.config", processName: "ptp4l", alias: "ens1fx", iface: "ens1f0", syncState: ptpEvent.LOCKED},
+			},
+		},
+		{
+			name:                    "OS CLOCK event not found",
+			expectedSyncState:       ptpTypes.FREERUN,
+			eventSource:             ptpEvent.OsClockSyncState,
+			eventType:               ptpEvent.OsClockSyncStateChange,
+			expectedResourceAddress: fmt.Sprintf("/cluster/node/%s/%s", nodeName, "event-not-found"),
+			statsData: []statsData{
+				{clockType: MasterClockType, configName: "ptp4l.0.config", processName: "phc2sys", alias: "ens1fx", iface: "ens1f0", syncState: ptpEvent.LOCKED},
+			},
+		},
+		{
+			name:                    "OS CLOCK is Locked - Single Event",
+			expectedSyncState:       ptpTypes.LOCKED,
+			eventSource:             ptpEvent.OsClockSyncState,
+			eventType:               ptpEvent.OsClockSyncStateChange,
+			expectedResourceAddress: fmt.Sprintf("/cluster/node/%s/%s", nodeName, ClockRealTime),
+			statsData: []statsData{
+				{clockType: ClockRealTime, configName: "ptp4l.0.config", processName: "phc2sys", alias: "", iface: "", syncState: ptpEvent.LOCKED},
+			},
+		},
+		{
+			name:                    "SyncStatusState := LOCKED Master + FREERUN OS",
+			eventSource:             ptpEvent.SyncStatusState,
+			eventType:               ptpEvent.SyncStateChange,
+			expectedSyncState:       ptpTypes.FREERUN,
+			expectedResourceAddress: fmt.Sprintf("/cluster/node/%s%s", nodeName, ptpEvent.SyncStatusState),
+			statsData: []statsData{
+				{clockType: MasterClockType, configName: "ptp4l.0.config", processName: "ptp4l", alias: "ens1fx", iface: "ens1f0", syncState: ptpEvent.LOCKED},
+				{clockType: ClockRealTime, configName: "ptp4l.0.config", processName: "phc2sys", syncState: ptpEvent.FREERUN},
+			},
+		},
+		{
+			name:                    "SyncStatusState:= FREERUN Master + FREERUN OS",
+			eventSource:             ptpEvent.SyncStatusState,
+			eventType:               ptpEvent.SyncStateChange,
+			expectedSyncState:       ptpTypes.FREERUN,
+			expectedResourceAddress: fmt.Sprintf("/cluster/node/%s%s", nodeName, ptpEvent.SyncStatusState),
+			statsData: []statsData{
+				{clockType: MasterClockType, configName: "ptp4l.0.config", processName: "ptp4l", alias: "ens1fx", iface: "ens1f0", syncState: ptpEvent.FREERUN},
+				{clockType: ClockRealTime, configName: "ptp4l.0.config", processName: "phc2sys", syncState: ptpEvent.FREERUN},
+			},
+		},
+		{
+			name:                    "SyncStatusState:= LOCKED Master + LOCKED OS",
+			eventSource:             ptpEvent.SyncStatusState,
+			eventType:               ptpEvent.SyncStateChange,
+			expectedSyncState:       ptpTypes.LOCKED,
+			expectedResourceAddress: fmt.Sprintf("/cluster/node/%s%s", nodeName, ptpEvent.SyncStatusState),
+			statsData: []statsData{
+				{clockType: MasterClockType, configName: "ptp4l.0.config", processName: "ptp4l", alias: "ens1fx", iface: "ens1f0", syncState: ptpEvent.LOCKED},
+				{clockType: ClockRealTime, configName: "ptp4l.0.config", processName: "phc2sys", syncState: ptpEvent.LOCKED},
+			},
+		},
+		{
+			name:                    "SyncStatusState:= T-GM everything is  locked ",
+			eventSource:             ptpEvent.SyncStatusState,
+			eventType:               ptpEvent.SyncStateChange,
+			expectedSyncState:       ptpTypes.LOCKED,
+			expectedResourceAddress: fmt.Sprintf("/cluster/node/%s%s", nodeName, ptpEvent.SyncStatusState),
+			statsData: []statsData{
+				{clockType: MasterClockType, configName: "ptp4l.0.config", processName: "ptp4l", alias: "ens1fx", iface: "ens1f0", syncState: ptpEvent.LOCKED},
+				{clockType: ClockRealTime, configName: "ptp4l.0.config", processName: "phc2sys", syncState: ptpEvent.LOCKED},
+			},
+			depsClockState: []event2.ClockState{
+				{ClockSource: event2.GNSS, Process: gnssProcessName, Offset: pointer.Float64(1.0), IFace: pointer.String("ens1f0"), State: ptpEvent.LOCKED},
+				{ClockSource: event2.DPLL, Process: "dpll", Offset: pointer.Float64(1.0), IFace: pointer.String("ens1f0"), State: ptpEvent.LOCKED},
+				{ClockSource: event2.GM, Process: "gm", Offset: pointer.Float64(1.0), IFace: pointer.String("ens1f0"), State: ptpEvent.LOCKED},
+			},
+		},
+		{
+			name:                    "SyncStatusState:= T-GM everything is  locked ",
+			eventSource:             ptpEvent.SyncStatusState,
+			eventType:               ptpEvent.SyncStateChange,
+			expectedSyncState:       ptpTypes.FREERUN,
+			expectedResourceAddress: fmt.Sprintf("/cluster/node/%s%s", nodeName, ptpEvent.SyncStatusState),
+			statsData: []statsData{
+				{clockType: MasterClockType, configName: "ptp4l.0.config", processName: "ptp4l", alias: "ens1fx", iface: "ens1f0", syncState: ptpEvent.LOCKED},
+				{clockType: ClockRealTime, configName: "ptp4l.0.config", processName: "phc2sys", syncState: ptpEvent.FREERUN},
+			},
+			depsClockState: []event2.ClockState{
+				{ClockSource: event2.GNSS, Process: gnssProcessName, Offset: pointer.Float64(1.0), IFace: pointer.String("ens1f0"), State: ptpEvent.LOCKED},
+				{ClockSource: event2.DPLL, Process: "dpll", Offset: pointer.Float64(1.0), IFace: pointer.String("ens1f0"), State: ptpEvent.LOCKED},
+				{ClockSource: event2.GM, Process: "gm", Offset: pointer.Float64(1.0), IFace: pointer.String("ens1f0"), State: ptpEvent.LOCKED},
+			},
+		},
+		{
+			name:                    "SyncStatusState:= T-GM not everything is locked ",
+			eventSource:             ptpEvent.SyncStatusState,
+			eventType:               ptpEvent.SyncStateChange,
+			expectedSyncState:       ptpTypes.LOCKED,
+			expectedResourceAddress: fmt.Sprintf("/cluster/node/%s%s", nodeName, ptpEvent.SyncStatusState),
+			statsData: []statsData{
+				{clockType: MasterClockType, configName: "ptp4l.0.config", processName: "ptp4l", alias: "ens1fx", iface: "ens1f0", syncState: ptpEvent.LOCKED},
+				{clockType: ClockRealTime, configName: "ptp4l.0.config", processName: "phc2sys", syncState: ptpEvent.LOCKED},
+			},
+			depsClockState: []event2.ClockState{
+				{ClockSource: event2.GNSS, Process: gnssProcessName, Offset: pointer.Float64(1.0), IFace: pointer.String("ens1f0"), State: ptpEvent.LOCKED},
+				{ClockSource: event2.DPLL, Process: "dpll", Offset: pointer.Float64(1.0), IFace: pointer.String("ens1f0"), State: ptpEvent.FREERUN},
+				{ClockSource: event2.GM, Process: "gm", Offset: pointer.Float64(1.0), IFace: pointer.String("ens1f0"), State: ptpEvent.LOCKED},
+			},
+		},
+	}
+
+	// Iterate over test cases
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			event := buildEvent(nodeName, tt.eventSource, tt.eventType)
+			eventManager.Stats = getStats(tt.statsData, tt.depsClockState)
+
+			// Initialize Stats object
+			// Invoke the function
+			// Mock input
+			mockDataChan := &channel.DataChan{
+				ClientID: uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
+			}
+
+			overrideFn := getCurrentStatOverrideFn()
+			err := overrideFn(event, mockDataChan)
+
+			// Assertions
+			assert.NoError(t, err, "Expected no error from getCurrentStatOverrideFn")
+			assert.NotNil(t, mockDataChan.Data, "Expected DataChan.Data to be populated")
+			eventReceived, err2 := v1event.GetCloudNativeEvents(*mockDataChan.Data)
+
+			assert.Nil(t, err2)
+			assert.Equal(t, tt.expectedSyncState.String(), eventReceived.Data.Values[0].Value, "Expected SyncState to match event state")
+			assert.Equal(t, tt.expectedResourceAddress, eventReceived.Data.Values[0].Resource, "Expected resource to match expected resource")
+			expectedReturnAddr := fmt.Sprintf("/cluster/node/%s%s", nodeName, string(tt.eventSource))
+			assert.Equal(t, expectedReturnAddr, *mockDataChan.ReturnAddress)
+		})
+	}
+}
+
+func TestGetCurrentStatOverrideFnConcurrentMapAccess(t *testing.T) {
 	// Setup
 	//CLIENT SUBSCRIPTION: create a subscription to consume events
 
