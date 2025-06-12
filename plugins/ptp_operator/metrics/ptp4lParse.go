@@ -117,8 +117,8 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			if ptpStats[master].ProcessName() == masterOffsetSource {
 				alias := ptpStats[master].Alias()
 				masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
-				p.PublishEvent(syncState, ptpStats[master].LastOffset(), masterResource, ptp.PtpStateChange)
 				ptpStats[master].SetLastSyncState(syncState)
+				p.PublishEvent(syncState, ptpStats[master].LastOffset(), masterResource, ptp.PtpStateChange)
 				UpdateSyncStateMetrics(ptpStats[master].ProcessName(), alias, syncState)
 				// Put CLOCK_REALTIME in FREERUN state
 				var ptpOpts *ptpConfig.PtpProcessOpts
@@ -157,8 +157,8 @@ func handleHoldOverState(ptpManager *PTPEventManager,
 				log.Infof("HOLDOVER timeout after %d secs,setting clock state to FREERUN from HOLDOVER state for %s",
 					holdoverTimeout, master)
 				masterResource := fmt.Sprintf("%s/%s", mStats.Alias(), MasterClockType)
-				ptpManager.PublishEvent(ptp.FREERUN, ptpStats[MasterClockType].LastOffset(), masterResource, ptp.PtpStateChange)
 				ptpStats[MasterClockType].SetLastSyncState(ptp.FREERUN)
+				ptpManager.PublishEvent(ptp.FREERUN, ptpStats[MasterClockType].LastOffset(), masterResource, ptp.PtpStateChange)
 				UpdateSyncStateMetrics(mStats.ProcessName(), mStats.Alias(), ptp.FREERUN)
 				// don't check of os clock sync state if phc2 not enabled
 				if cStats, ok := ptpStats[ClockRealTime]; ok && ptpOpts != nil && ptpOpts.Phc2SysEnabled() {
