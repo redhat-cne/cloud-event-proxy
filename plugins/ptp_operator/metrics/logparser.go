@@ -7,6 +7,7 @@ import (
 
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/event"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/stats"
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/utils"
 	"k8s.io/utils/pointer"
 
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
@@ -365,7 +366,7 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 		Metric:      nil,
 		NodeName:    ptpNodeName,
 	}
-	alias := getAlias(iface)
+	alias := utils.GetAlias(iface)
 
 	SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": alias}).Set(GetSyncStateID(syncState))
 	// status metrics
@@ -451,7 +452,7 @@ logStatusLoop:
 	}
 
 	if err == nil {
-		alias := getAlias(*iface)
+		alias := utils.GetAlias(*iface)
 		ptpStats[ifaceType].SetPtpDependentEventState(event.ClockState{
 			State:   GetSyncState(syncState),
 			Offset:  pointer.Float64(dpllOffset),
@@ -508,7 +509,7 @@ func (p *PTPEventManager) ParseGNSSLogs(processName, configName, output string, 
 
 	//openshift_ptp_offset_ns{from="gnss",iface="ens2f1",node="cnfde21.ptp.lab.eng.bos.redhat.com",process="gnss"} 0
 	if err == nil {
-		alias := getAlias(*iface)
+		alias := utils.GetAlias(*iface)
 		// last state of GNSS
 		lastState, errState := ptpStats[ifaceType].GetStateState(processName, iface)
 		pLabels := map[string]string{"from": processName, "node": ptpNodeName,
