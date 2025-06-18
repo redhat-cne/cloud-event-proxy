@@ -200,10 +200,10 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 		} else if strings.Contains(e.Source(), string(ptp.SyncStatusState)) {
 			eventType = ptp.SyncStateChange
 			eventSource = ptp.SyncStatusState
-		} else if strings.Contains(e.Source(), string(ptp.SynceStateChange)) {
+		} else if strings.Contains(e.Source(), string(ptp.SynceLockState)) {
 			eventType = ptp.SynceStateChange
-			eventSource = ptp.SyncStatusState
-		} else if strings.Contains(e.Source(), string(ptp.SynceClockQualityChange)) {
+			eventSource = ptp.SynceLockState
+		} else if strings.Contains(e.Source(), string(ptp.SynceClockQuality)) {
 			eventType = ptp.SynceClockQualityChange
 			eventSource = ptp.SynceClockQuality
 		} else {
