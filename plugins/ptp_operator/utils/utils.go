@@ -2,6 +2,7 @@ package utils
 
 import "strings"
 
+// GetAlias returns masked version of interface name
 func GetAlias(ifname string) string {
 	alias := ""
 	if ifname != "" {
