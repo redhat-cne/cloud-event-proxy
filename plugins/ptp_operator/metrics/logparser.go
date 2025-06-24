@@ -400,10 +400,10 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 	ptpStats[masterType].SetLastOffset(int64(phaseOffset))
 	lastOffset := ptpStats[masterType].LastOffset()
 
-	if clockState.State != lastClockState { // publish directly here
+	if clockState.State != lastClockState && clockState.State != "" { // publish directly here
 		log.Infof("%s sync state %s, last ptp state is : %s", masterResource, clockState.State, lastClockState)
-		p.PublishEvent(clockState.State, lastOffset, masterResource, ptp.PtpStateChange)
 		ptpStats[masterType].SetLastSyncState(clockState.State)
+		p.PublishEvent(clockState.State, lastOffset, masterResource, ptp.PtpStateChange)
 		UpdateSyncStateMetrics(processName, alias, ptpStats[masterType].LastSyncState())
 		UpdatePTPOffsetMetrics(processName, processName, alias, float64(lastOffset))
 	}
