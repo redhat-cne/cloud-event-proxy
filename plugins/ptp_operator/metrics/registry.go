@@ -219,11 +219,11 @@ func DeleteThresholdMetrics(profile string) {
 func UpdateSyncStateMetrics(process, iface string, state ptp.SyncState) {
 	var clockState float64
 	if state == ptp.LOCKED {
-		clockState = 1
+		clockState = float64(types.LOCKED)
 	} else if state == ptp.FREERUN {
-		clockState = 0
+		clockState = float64(types.FREERUN)
 	} else if state == ptp.HOLDOVER {
-		clockState = 2
+		clockState = float64(types.HOLDOVER)
 	}
 	// prevent reporting wrong metrics
 	if iface == master && process == phc2sysProcessName {
