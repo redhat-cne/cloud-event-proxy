@@ -139,6 +139,7 @@ func main() {
 	}
 	/****/
 
+	log.Info("DZK dummy change")
 	// Use kubeconfig to create client config.
 	client, err := storageClient.NewClient()
 	if err != nil {
