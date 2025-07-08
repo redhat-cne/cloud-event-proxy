@@ -136,7 +136,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 					// delete all metrics related to process
 					ptpMetrics.DeleteProcessStatusMetricsForConfig(nodeName, "", "")
 					// delete all metrics related to ptp ha if haProfile is deleted
-					if haProfiles := eventManager.HAProfiles(); len(haProfiles) > 0 {
+					if _, haProfiles := eventManager.HAProfiles(); len(haProfiles) > 0 {
 						for _, p := range haProfiles {
 							ptpMetrics.DeletePTPHAMetrics(strings.TrimSpace(p))
 						}
@@ -241,9 +241,8 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 		}
 
 		var overallSyncState ptp.SyncState
-
-		for _, ptpStats := range eventManager.Stats { // configname->PTPStats
-			for ptpInterface, s := range ptpStats { // iface->stats
+		for config := range eventManager.Stats { // configname->PTPStats
+			for ptpInterface, s := range eventManager.GetStats(config) { // iface->stats
 				switch ptpInterface {
 				case ptpMetrics.MasterClockType:
 					if s.Alias() != "" {
@@ -344,7 +343,7 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 				return err
 			}
 			d.Data.SetSource(string(eventSource))
-			log.Errorf("could not find any events for requested resource type %s", e.Source())
+			log.Errorf("event data not found for requested resource type %s", e.Source())
 			return nil
 		}
 		return nil
@@ -353,23 +352,7 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 
 // return worst of FREERUN, HOLDOVER or LOCKED
 func getOverallState(current, updated ptp.SyncState) ptp.SyncState {
-	if current == "" {
-		return updated
-	}
-	switch updated {
-	case ptp.FREERUN:
-		return ptp.FREERUN
-	case ptp.HOLDOVER:
-		if current == ptp.FREERUN {
-			return current
-		}
-		return updated
-	case ptp.LOCKED:
-		return current
-	default:
-		log.Warnf("last sync state is unknown: %s", updated)
-	}
-	return ""
+	return ptpMetrics.OverallState(current, updated)
 }
 
 // update interface details  and threshold details when ptpConfig change found.
