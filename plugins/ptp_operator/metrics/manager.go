@@ -537,7 +537,7 @@ func (p *PTPEventManager) HAProfiles() (profile string, profiles []string) {
 		defer p.lock.RUnlock()
 		for profileName, ptpSettings := range p.PtpConfigMapUpdates.PtpSettings {
 			if ptpSettings != nil {
-				if haProfile, ok := ptpSettings["haProfiles"]; ok {
+				if haProfile, ok := ptpSettings[ptpConfig.HaProfileIdentifier]; ok {
 					profile = profileName
 					rawProfiles := strings.Split(haProfile, ",")
 					for _, hp := range rawProfiles {
@@ -549,6 +549,27 @@ func (p *PTPEventManager) HAProfiles() (profile string, profiles []string) {
 		}
 	}
 	return
+}
+
+// IsTBCProfile checks if the given profile name is a TBC profile.
+func (p *PTPEventManager) IsTBCProfile(name string) bool {
+	// Iterate through the TBCProfiles slice
+	for _, profileName := range p.PtpConfigMapUpdates.TBCProfiles {
+		if profileName == name {
+			return true // Found a match
+		}
+	}
+	return false
+}
+
+func (p *PTPEventManager) GetProfileType(name string) ptp4lconf.PtpProfileType {
+	// Iterate through the TBCProfiles slice
+	for _, profileName := range p.PtpConfigMapUpdates.TBCProfiles {
+		if profileName == name {
+			return ptp4lconf.TBC // Found a match
+		}
+	}
+	return ptp4lconf.NONE
 }
 
 func (p *PTPEventManager) ListHAProfilesWith(currentProfile string) (profile string, profiles []string) {

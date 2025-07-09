@@ -18,7 +18,7 @@ import (
 var classChangeIdentifier = "CLOCK_CLASS_CHANGE"
 var gnssEventIdentifier = "gnss_status"
 var gmStatusIdentifier = "T-GM-STATUS"
-var bcStatusIdentifier = "T-BC"
+var bcStatusIdentifier = "T-BC-STATUS"
 
 // ParsePTP4l ... parse ptp4l for various events
 func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, output string, fields []string,
@@ -101,8 +101,9 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			// update role metrics
 			UpdateInterfaceRoleMetrics(processName, ptpIFace, role)
 		}
-		if lastRole != types.SLAVE { //tsphc doesnt have slave port and doesnt have fault state yet
+		if ptp4lCfg.ProfileType == ptp4lconf.TBC || lastRole != types.SLAVE { //tsphc doesn't have slave port and doesnt have fault state yet
 			return // no need to go to holdover state if the Fault was not in master(slave) port
+			// t-bc handles role changes differently in linux-ptp-daemon
 		}
 		if _, ok := ptpStats[master]; !ok { //
 			log.Errorf("no offset stats found for master for  portid %d with role %s (the port started in fault state)", portID, role)

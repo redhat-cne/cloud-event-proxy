@@ -90,7 +90,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			log.Errorf("failed to extract %s", msg)
 		}
 	}()
-
+	log.Infof(msg)
 	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
 	output := replacer.Replace(msg)
 	fields := strings.Fields(output)
@@ -109,6 +109,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	// if log is having ts2phc then it will replace it with ptp4l
 	configName = strings.Replace(configName, ts2phcProcessName, ptp4lProcessName, 1)
 	ptp4lCfg := p.GetPTPConfig(types.ConfigName(configName))
+
 	// ptp stats goes by config either ptp4l ot pch2sys
 	// master (slave) interface can be configured in ptp4l but  offset provided by ts2phc
 	ptpStats := p.GetStats(types.ConfigName(configName))
@@ -192,8 +193,6 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			// ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay    374976
 			// phc2sys[4268818.286]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -62 s0 freq  -78368 delay   1100
 			// phc2sys[4268818.287]: [ptp4l.0.config] ens5f0 phc offset       -47 s2 freq   -2047 delay   2438
-			// ts2phc[82674.465]: [ts2phc.0.cfg] nmea delay: 88403525 ns
-			// ts2phc[82674.465]: [ts2phc.0.cfg] ens2f1 extts index 0 at 1673031129.000000000 corr 0 src 1673031129.911642976 diff 0
 			// ts2phc[82674.465]: [ts2phc.0.cfg] ens2f1 master offset          0 s2 freq      -0
 			// ts2phc[82674.465]: ts2phc.0.config] ens7f0       offset         1  s3 freq      +1 holdover
 			// Use threshold to CLOCK_REALTIME==SLAVE, rest send clock state to metrics no events
@@ -249,6 +248,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			case ClockRealTime: // CLOCK_REALTIME is active slave interface
 				//  for HA we can not rely on master ;since there will be 2 or more leaders; this condition will be skipped
 				// ptpStats clock realtime has its own stats objects
+				//TODO: NEED TO VISIT THIS LOGIC FOR UNASSISTED BOUNDARY CLOCK
 				if r, ok := ptpStats[master]; ok && r.Role() == types.SLAVE { // publish event only if the master role is active
 					// when related slave is faulty the holdover will make clock clear time as FREERUN
 					p.GenPTPEvent(profileName, ptpStats[ClockRealTime], interfaceName, int64(ptpOffset), syncState, ptp.OsClockSyncStateChange)
@@ -273,15 +273,15 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				// Report events for master  by masking the index  number of the slave interface
 				if ptpInterface.Name != "" {
 					alias := ptpStats[types.IFace(interfaceName)].Alias()
-					if alias == "" {
-						alias = utils.GetAlias(ptpInterface.Name)
-						ptpStats[types.IFace(interfaceName)].SetAlias(alias)
+					// forT-BC only update metrics/ but we are missing maxAbs for T-BC, fro now it will use  T-BC offsets
+					UpdatePTPMetrics(offsetSource, processName, alias, ptpOffset, float64(ptpStats[types.IFace(interfaceName)].MaxAbs()),
+						frequencyAdjustment, delay)
+					if ptp4lCfg.ProfileType == ptp4lconf.TBC {
+						return // TBC does not trigger event for  master offset
 					}
 					masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
 					p.GenPTPEvent(profileName, ptpStats[types.IFace(interfaceName)], masterResource, int64(ptpOffset), syncState, ptp.PtpStateChange)
 					UpdateSyncStateMetrics(processName, alias, ptpStats[types.IFace(interfaceName)].LastSyncState())
-					UpdatePTPMetrics(offsetSource, processName, alias, ptpOffset, float64(ptpStats[types.IFace(interfaceName)].MaxAbs()),
-						frequencyAdjustment, delay)
 					ptpStats[types.IFace(interfaceName)].AddValue(int64(ptpOffset))
 				}
 			default: // for ts2phc the master stats are not updated at all, so rely on interface
@@ -301,7 +301,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 					// use gm state to identify syncState
 					// master will hold multiple ts2phc state as one state based on GM state
 					// HANDLE case where there is no GM status but only ts2phc
-					if !ptpStats[master].HasProcessEnabled(gmProcessName) {
+					if !ptpStats[master].HasProcessEnabled(gmProcessName) && ptp4lCfg.ProfileType != ptp4lconf.TBC {
 						p.GenPTPEvent(profileName, ptpStats[types.IFace(interfaceName)], masterResource, int64(ptpOffset), syncState, ptp.PtpStateChange)
 					} else {
 						threshold := p.PtpThreshold(profileName, false)

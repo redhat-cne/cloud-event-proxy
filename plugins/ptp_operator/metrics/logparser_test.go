@@ -353,6 +353,47 @@ func Test_ParseGmLogs(t *testing.T) {
 	}
 }
 
+func Test_ParsTBCLogs(t *testing.T) {
+	var eventManager *metrics.PTPEventManager
+	tc := []testCase{
+		{
+			processName:   "T-BC",
+			output:        "T-BC 1689014431 ts2phc.0.config ens2f1 offset  123  T-BC-STATUS s0",
+			expectedState: ptp.FREERUN,
+			interfaceName: "ens2f1",
+		},
+		{
+			processName:   "T-BC",
+			output:        "T-BC 1689014431 ts2phc.0.config ens2f1 offset  123  T-BC-STATUS s1",
+			expectedState: ptp.HOLDOVER,
+			interfaceName: "ens2f1",
+		},
+		{
+			processName:   "T-BC",
+			output:        "T-BC 1689014431 ts2phc.0.config ens2f1 offset  123  T-BC-STATUS s2",
+			expectedState: ptp.LOCKED,
+			interfaceName: "ens2f1",
+		},
+	}
+	eventManager = metrics.NewPTPEventManager("", initPubSubTypes(), "tetsnode", nil)
+	eventManager.MockTest(true)
+	eventManager.Stats[types.ConfigName(ptp4lConfig.Name)] = make(stats.PTPStats)
+	ptpStats := eventManager.GetStats(types.ConfigName(configName))
+	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
+	for _, tt := range tc {
+		tt := tt
+		output := replacer.Replace(tt.output)
+		fields := strings.Fields(output)
+		ptpStats[types.IFace(tt.interfaceName)] = &stats.Stats{}
+		masterType := types.IFace(metrics.MasterClockType)
+		ptpStats[masterType] = &stats.Stats{}
+		eventManager.ParseTBCLogs(tt.processName, configName, output, fields, ptpStats)
+		lastState, errState := ptpStats[masterType].GetStateState(tt.processName, pointer.String(tt.interfaceName))
+		assert.Equal(t, errState, nil)
+		assert.Equal(t, tt.expectedState, lastState)
+	}
+}
+
 func TestExtractPTP4lEventState(t *testing.T) {
 	tests := []struct {
 		name          string

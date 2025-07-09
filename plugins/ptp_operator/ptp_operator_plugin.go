@@ -379,8 +379,9 @@ func processPtp4lConfigFileUpdates() {
 
 				if ptp4lConfig.Profile == "" {
 					ptp4lConfig.Profile = *ptpConfigEvent.Profile
-					eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
 				}
+				// if profile is not set then set it to default profile
+				ptp4lConfig.ProfileType = eventManager.GetProfileType(ptp4lConfig.Profile)
 
 				// loop through to find if any interface changed
 				if eventManager.Ptp4lConfigInterfaces[ptpConfigFileName] != nil &&
@@ -432,6 +433,9 @@ func processPtp4lConfigFileUpdates() {
 					Interfaces: ptpInterfaces,
 					Sections:   allSections,
 				}
+				// if profile is not set then set it to default profile
+				ptp4lConfig.ProfileType = eventManager.GetProfileType(ptp4lConfig.Profile)
+				eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
 
 				// add to eventManager
 				eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
@@ -478,6 +482,9 @@ func processPtp4lConfigFileUpdates() {
 				// time="2024-03-19T19:40:16Z" level=info msg="updating ptp config changes for phc2sys.2.config"
 				if eventManager.PtpConfigMapUpdates.HAProfile == ptp4lConfig.Profile {
 					eventManager.PtpConfigMapUpdates.HAProfile = "" // clear profile
+				}
+				if eventManager.GetProfileType(ptp4lConfig.Profile) != ptp4lconf.NONE {
+					eventManager.PtpConfigMapUpdates.TBCProfiles = []string{} // clear
 				}
 				// clean up synce metrics
 				for d, s := range ptpStats {
