@@ -19,6 +19,7 @@ import (
 	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/utils"
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	log "github.com/sirupsen/logrus"
 	"k8s.io/utils/pointer"
@@ -124,8 +125,7 @@ func (p *PTPEventState) UpdateCurrentEventState(c ClockState, metrics map[string
 		}
 		if clockState.IFace != nil {
 			iface := *clockState.IFace
-			r := []rune(iface)
-			alias := string(r[:len(r)-1]) + "x"
+			alias := utils.GetAlias(iface)
 			for k, v := range c.Value {
 				if clockState.Metric[k].metricGauge != nil {
 					clockState.Metric[k].metricGauge.With(map[string]string{"from": clockState.Process, "process": clockState.Process,
@@ -190,8 +190,7 @@ func (p *PTPEventState) UpdateCurrentEventState(c ClockState, metrics map[string
 			if clockState.IFace != nil {
 				iface = *clockState.IFace
 			}
-			r := []rune(iface)
-			alias := string(r[:len(r)-1]) + "x"
+			alias := utils.GetAlias(iface)
 			metrics[k].metricGauge.With(map[string]string{"from": clockState.Process, "process": clockState.Process,
 				"node": clockState.NodeName, "iface": alias}).Set(float64(v))
 		}
@@ -270,8 +269,7 @@ func (p *PTPEventState) DeleteAllMetrics(m []*prometheus.GaugeVec) {
 			if dd.IFace == nil {
 				continue
 			}
-			r := []rune(*dd.IFace)
-			alias := string(r[:len(r)-1]) + "x"
+			alias := utils.GetAlias(*dd.IFace)
 			if dd.Metric != nil {
 				// unregister metric
 				for _, v := range dd.Metric {
