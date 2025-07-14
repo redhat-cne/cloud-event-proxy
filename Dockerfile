@@ -14,9 +14,14 @@ FROM registry.ci.openshift.org/ocp/4.20:base-rhel9 AS bin
 COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/build/cloud-event-proxy /
 COPY --from=builder /go/src/github.com/redhat-cne/cloud-event-proxy/plugins/*.so /plugins/
 
+COPY hack/healthcheck.sh /usr/local/bin/healthcheck.sh
+RUN chmod +x /usr/local/bin/healthcheck.sh
+
 LABEL io.k8s.display-name="Cloud Event Proxy" \
       io.k8s.description="This is a component of OpenShift Container Platform and provides a side car to handle cloud events." \
       io.openshift.tags="openshift" \
       maintainer="Aneesh Puttur <aputtur@redhat.com>"
 
-ENTRYPOINT ["./cloud-event-proxy"]
+COPY hack/entrypoint.sh /
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
