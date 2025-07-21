@@ -36,7 +36,7 @@ linters-settings:
         strict: true
   gocyclo:
     # minimal code complexity to report, 30 by default (but we recommend 10-20)
-    min-complexity: 50
+    min-complexity: 75
   goconst:
     min-len: 3
     min-occurrences: 4

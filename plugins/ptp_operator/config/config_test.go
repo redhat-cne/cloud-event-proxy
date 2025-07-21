@@ -152,7 +152,7 @@ func Test_Config(t *testing.T) {
 					tc.wantProfile[i].PtpClockThreshold.Close = ptpUpdate.EventThreshold[*p.Name].Close
 					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, ptpUpdate.EventThreshold[*p.Name])
 					assert.Equal(t, *tc.wantProfile[i].Name, *p.Name)
-					assert.Equal(t, tc.wantProfile[i].PtpSettings["haProfiles"], p.PtpSettings["haProfiles"])
+					assert.Equal(t, tc.wantProfile[i].PtpSettings[ptpConfig.HaProfileIdentifier], p.PtpSettings[ptpConfig.HaProfileIdentifier])
 				}
 			} else {
 				for i, p := range ptpUpdate.NodeProfiles {

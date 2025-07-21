@@ -97,7 +97,7 @@ func TestPTPEventManager_GenPTPEvent(t *testing.T) {
 			expectedEvents:    []ptp.EventType{ptp.PtpStateChange, ptp.SyncStateChange},
 		},
 		{
-			name:              "holdover to locked state",
+			name:              "locked to holdover state",
 			ptpProfileName:    "T-GM",
 			oStats:            stats.NewStats("T-GM"),
 			eventResourceName: "resource3",
@@ -110,7 +110,7 @@ func TestPTPEventManager_GenPTPEvent(t *testing.T) {
 			expectedEvents:    []ptp.EventType{ptp.PtpStateChange, ptp.SyncStateChange},
 		},
 		{
-			name:              "holdover to locked state",
+			name:              "holdover to holdover state",
 			ptpProfileName:    "T-GM",
 			oStats:            stats.NewStats("T-GM"),
 			eventResourceName: "resource3",

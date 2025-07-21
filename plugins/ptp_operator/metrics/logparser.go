@@ -410,21 +410,39 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 // ParseTBCLogs ... parse logs for various events
 func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, fields []string,
 	ptpStats stats.PTPStats) {
-	// T-BC[1743005894]:[ptp4l.0.config] ens7f0  offset  55 T-BC-STATUS s0
-	// 0    1            2               3       4       5  6           7
-	// T-BC 1743005894   ptp4l.0.config  ens7f0  offset  55 T-BC-STATUS s0
+	/*LOCKED
+	0       1              2     	  3       4       5         6           7
+	T-BC 1689014436   ts2phc.1.config ens7f0  offset  123       T-BC-STATUS s2
+	FREERUN
+	T-BC 1689014436   ts2phc.1.config ens7f0  offset  123 T-BC-STATUS s0
+	T-BC 1689014436   ts2phc.1.config ens7f0  offset  123 T-BC-STATUS s1
+	HOLDOVER
+	0       1              2     	   3       4         5         6           7          8
+	T-BC 1689014436  ts2phc.1.config ens7f0  offset      123    T-BC-STATUS   s3      holdover
+	(edited)*/
+	// T-BC 1689014436  ts2phc.1.config ens7f0  offset  55 T-BC-STATUS s0
+	// 0           1            2              3       4       5     6         7
+	// T-BC    1689014436   ts2phc.1.config  ens7f0  offset  55   T-BC-STATUS s0
+	// before passing config-name was replaced by ptp4l , but log will have ts2phc which we ignore
+	// if log is having ts2phc then it will replace it with ptp4l
+
 	if strings.Contains(output, bcStatusIdentifier) {
 		if len(fields) < 8 {
 			log.Errorf("T-BC Status is not in right format %s", output)
 			return
 		}
+		ptpStats.CheckSource(master, configName, ts2phcProcessName)
 	} else {
 		return
 	}
 
 	iface := fields[3]
 	syncState := fields[7]
-	offset, _ := strconv.ParseInt(fields[5], 10, 64)
+	offs, err := strconv.ParseInt(fields[5], 10, 64)
+	if err != nil {
+		log.Errorf("unable to parse T-BC offset %q: %v", fields[5], err)
+		return
+	}
 	alias := utils.GetAlias(iface)
 	masterType := types.IFace(MasterClockType)
 
@@ -432,30 +450,47 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 		State:       GetSyncState(syncState),
 		IFace:       pointer.String(iface),
 		Process:     processName,
-		ClockSource: "T-BC",
+		ClockSource: TBC,
 		Value:       nil,
 		Metric:      nil,
 		NodeName:    ptpNodeName,
 	}
-
-	ptpStats.CheckSource(masterType, configName, processName)
 
 	SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": alias}).Set(GetSyncStateID(syncState))
 	// status metrics
 	ptpStats[masterType].SetPtpDependentEventState(clockState, ptpStats.HasMetrics(processName), ptpStats.HasMetricHelp(processName))
 	ptpStats[masterType].SetAlias(alias)
 
-	ptpStats[masterType].SetLastOffset(offset)
+	// If GM is locked/Freerun/Holdover then ptp state change event
+	masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
+	lastClockState := ptpStats[masterType].LastSyncState()
+	ptpStats[masterType].SetLastOffset(offs)
 	lastOffset := ptpStats[masterType].LastOffset()
-	bcResource := fmt.Sprintf("%s/%s", alias, TBC)
-	lastSyncState := ptpStats[masterType].LastSyncState()
 
-	if clockState.State != lastSyncState { // publish directly here
-		log.Infof("%s sync state %s, last ptp state is : %s", bcResource, clockState.State, lastSyncState)
+	if clockState.State != lastClockState && clockState.State != "" { // publish directly here
+		log.Infof("%s sync state %s, last ptp state is : %s", masterResource, clockState.State, lastClockState)
 		ptpStats[masterType].SetLastSyncState(clockState.State)
-		p.PublishEvent(clockState.State, lastOffset, bcResource, ptp.PtpStateChange)
+		p.PublishEvent(clockState.State, lastOffset, masterResource, ptp.PtpStateChange)
 		UpdateSyncStateMetrics(processName, alias, ptpStats[masterType].LastSyncState())
 		UpdatePTPOffsetMetrics(processName, processName, alias, float64(lastOffset))
+		// if there is phc2sys ooptions enabled then when the clock is FREERUN annouce OSCLOCK as FREERUN
+		if clockState.State == ptp.FREERUN {
+			// loop thourgh eventManager.PtpConfigMapUpdates.TBCProfiles
+			// message tage for ptp4l.1.config with T-BC-Profile but t-Bc is reporting from ts2phc.0.conifg
+			// so clock_realtime is not assigned to same config ?
+			cStats, osStatsOK := ptpStats[ClockRealTime]
+			if !osStatsOK || cStats.LastSyncState() == ptp.FREERUN {
+				// ClockRealTime stats not available, nothing to publish or already  in FREERUN
+				return
+			}
+			if p.mock {
+				p.mockEvent = []ptp.EventType{ptp.OsClockSyncStateChange}
+				log.Infof("PublishEvent state=%s, ptpOffset=%d, source=%s, eventType=%s", ptp.FREERUN, FreeRunOffsetValue, ClockRealTime, ptp.OsClockSyncStateChange)
+				return
+			}
+			p.GenPTPEvent(configName, cStats, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
+			UpdateSyncStateMetrics(phc2sysProcessName, ClockRealTime, ptp.FREERUN)
+		}
 	}
 }
 

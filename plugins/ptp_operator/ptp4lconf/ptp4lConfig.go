@@ -42,6 +42,14 @@ const (
 	ptpConfigDir       = "/var/run/"
 )
 
+type PtpProfileType string
+
+const (
+	TBC  PtpProfileType = "TBC"
+	TGM  PtpProfileType = "TGM"
+	NONE PtpProfileType = "NONE"
+)
+
 // PtpConfigUpdate ...  updated ptp config values
 type PtpConfigUpdate struct {
 	Name      *string `json:"name,omitempty"`
@@ -134,10 +142,11 @@ type PTPInterface struct {
 
 // PTP4lConfig ... get filename, profile name and interfaces
 type PTP4lConfig struct {
-	Name       string
-	Profile    string
-	Interfaces []*PTPInterface
-	Sections   map[string]map[string]string
+	Name        string
+	Profile     string
+	Interfaces  []*PTPInterface
+	Sections    map[string]map[string]string
+	ProfileType PtpProfileType
 }
 
 // ByRole ... get interface name by ptp port role

@@ -42,11 +42,13 @@ const (
 	// DefaultUpdateInterval for watching ptpconfigmap update
 	DefaultUpdateInterval = 60
 	// DefaultProfilePath  default ptp profile path
-	DefaultProfilePath       = "/etc/linuxptp"
-	maxOffsetThreshold int64 = 100 // in nano secs
-	minOffsetThreshold int64 = -100
-	holdoverTimeout    int64 = 5
-	ignorePtp4lSection       = "global"
+	DefaultProfilePath         = "/etc/linuxptp"
+	maxOffsetThreshold   int64 = 100 // in nano secs
+	minOffsetThreshold   int64 = -100
+	holdoverTimeout      int64 = 5
+	ignorePtp4lSection         = "global"
+	HaProfileIdentifier        = "haProfiles"
+	TbcProfileIdentifier       = "controllingProfile"
 )
 
 // PtpProfile ... ptp profile
@@ -149,6 +151,7 @@ type LinuxPTPConfigMapUpdate struct {
 	PtpSettings                 map[string]map[string]string
 	fileWatcherUpdateInProgress bool
 	HAProfile                   string
+	TBCProfiles                 []string // list of TBC profiles
 }
 
 // AppliedNodeProfileJSON ....
@@ -309,14 +312,26 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 // UpdatePTPSetting ... ptp settings
 func (l *LinuxPTPConfigMapUpdate) UpdatePTPSetting() {
 	l.HAProfile = ""
+	l.TBCProfiles = nil
 	for _, profile := range l.NodeProfiles {
-		l.PtpSettings[*profile.Name] = profile.PtpSettings
-		if profile.PtpSettings != nil {
-			for _, ptpSettings := range profile.PtpSettings {
-				if ptpSettings == "haProfiles" {
-					l.HAProfile = *profile.Name // there can be only one profile
-				}
-			}
+		name := *profile.Name
+		settings := profile.PtpSettings // map[string]string
+		l.PtpSettings[name] = settings
+		// Log everything
+		log.Infof("ptpSettings for profile %s: %v", name, settings)
+		// HA profile?
+		// ptpSettings:
+		//      haProfiles: "profile1,profile2"
+		if _, ok := settings[HaProfileIdentifier]; ok {
+			l.HAProfile = name
+		}
+		// T-BC / controllingProfile?
+		// ptpSettings:
+		//controllingProfile: 01-tbc-tr
+		if cp, ok := settings[TbcProfileIdentifier]; ok {
+			// Append both the profile name and its controllingProfile value
+			// e.g., "01-tbc-tr" assuming single value
+			l.TBCProfiles = append(l.TBCProfiles, name, cp)
 		}
 	}
 }
