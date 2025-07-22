@@ -273,6 +273,10 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				// Report events for master  by masking the index  number of the slave interface
 				if ptpInterface.Name != "" {
 					alias := ptpStats[types.IFace(interfaceName)].Alias()
+					if alias == "" {
+						alias = utils.GetAlias(ptpInterface.Name)
+						ptpStats[types.IFace(interfaceName)].SetAlias(alias)
+					}
 					// forT-BC only update metrics/ but we are missing maxAbs for T-BC, fro now it will use  T-BC offsets
 					UpdatePTPMetrics(offsetSource, processName, alias, ptpOffset, float64(ptpStats[types.IFace(interfaceName)].MaxAbs()),
 						frequencyAdjustment, delay)
