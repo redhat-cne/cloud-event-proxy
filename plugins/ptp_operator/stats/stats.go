@@ -34,7 +34,7 @@ type Stats struct {
 	lastOffset             int64
 	lastSyncState          ptp.SyncState
 	aliasName              string
-	clackClass             int64
+	clockClass             int64
 	role                   types.PtpPortRole
 	ptpDependentEventState *event.PTPEventState
 	configDeleted          bool
@@ -119,7 +119,7 @@ func (s *Stats) Offset() int64 {
 
 // ClockClass return last known ClockClass
 func (s *Stats) ClockClass() int64 {
-	return s.clackClass
+	return s.clockClass
 }
 
 // Alias return alias name
@@ -154,7 +154,7 @@ func (s *Stats) reset() { //nolint:unused
 	s.role = types.UNKNOWN
 	s.frequencyAdjustment = 0
 	s.delay = 0
-	s.clackClass = 0
+	s.clockClass = 0
 	s.configDeleted = false
 	s.processName = ""
 	s.lastOffset = 0
@@ -183,7 +183,7 @@ func (s *Stats) SetLastOffset(val int64) {
 
 // SetClockClass ... set last clock class value
 func (s *Stats) SetClockClass(val int64) {
-	s.clackClass = val
+	s.clockClass = val
 }
 
 // SetLastSyncState ... set last sync state
