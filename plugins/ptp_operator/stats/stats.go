@@ -31,10 +31,10 @@ type Stats struct {
 	sumDiffSqr             int64
 	frequencyAdjustment    int64
 	delay                  int64
-	lastOffset             int64
-	lastSyncState          ptp.SyncState
+	lastOffset             *int64
+	lastSyncState          *ptp.SyncState
 	aliasName              string
-	clockClass             int64
+	clockClass             *int64
 	role                   types.PtpPortRole
 	ptpDependentEventState *event.PTPEventState
 	configDeleted          bool
@@ -112,16 +112,6 @@ func (s *Stats) SetProcessName(processName string) {
 	s.processName = processName
 }
 
-// Offset return last known offset
-func (s *Stats) Offset() int64 {
-	return s.lastOffset
-}
-
-// ClockClass return last known ClockClass
-func (s *Stats) ClockClass() int64 {
-	return s.clockClass
-}
-
 // Alias return alias name
 func (s *Stats) Alias() string {
 	return s.aliasName
@@ -133,7 +123,7 @@ func (s *Stats) SetAlias(val string) {
 }
 
 // SyncState return last known SyncState state
-func (s *Stats) SyncState() ptp.SyncState {
+func (s *Stats) SyncState() *ptp.SyncState {
 	return s.lastSyncState
 }
 
@@ -144,21 +134,24 @@ func (s *Stats) ConfigName() string {
 
 // reset status
 func (s *Stats) reset() { //nolint:unused
+	s.offsetSource = ""
+	s.processName = ""
 	s.num = 0
 	s.max = 0
-	s.mean = 0
 	s.min = 0
-	s.sumDiffSqr = 0
+	s.mean = 0
 	s.sumSqr = 0
-	s.aliasName = ""
-	s.role = types.UNKNOWN
+	s.sumDiffSqr = 0
 	s.frequencyAdjustment = 0
 	s.delay = 0
-	s.clockClass = 0
+	s.lastOffset = nil
+	s.lastSyncState = nil
+	s.aliasName = ""
+	s.clockClass = nil
+	s.role = types.UNKNOWN
+	s.ptpDependentEventState = nil
 	s.configDeleted = false
-	s.processName = ""
-	s.lastOffset = 0
-	s.offsetSource = ""
+	s.syncE = nil
 }
 
 // NewStats ... create new stats
@@ -178,17 +171,17 @@ func (s *Stats) SetDelay(val int64) {
 
 // SetLastOffset ... set last offset value
 func (s *Stats) SetLastOffset(val int64) {
-	s.lastOffset = val
+	s.lastOffset = &val
 }
 
 // SetClockClass ... set last clock class value
 func (s *Stats) SetClockClass(val int64) {
-	s.clockClass = val
+	s.clockClass = &val
 }
 
 // SetLastSyncState ... set last sync state
 func (s *Stats) SetLastSyncState(val ptp.SyncState) {
-	s.lastSyncState = val
+	s.lastSyncState = &val
 }
 
 // FrequencyAdjustment ... get frequency adjustment value
@@ -201,13 +194,18 @@ func (s *Stats) Delay() int64 {
 	return s.delay
 }
 
-// LastOffset ... last offset value
-func (s *Stats) LastOffset() int64 {
+// LastOffset ... return pointer to last offset
+func (s *Stats) LastOffset() *int64 {
 	return s.lastOffset
 }
 
-// LastSyncState ... last sync state
-func (s *Stats) LastSyncState() ptp.SyncState {
+// ClockClass return pointer to last known ClockClass
+func (s *Stats) ClockClass() *int64 {
+	return s.clockClass
+}
+
+// LastSyncState ... return pointer to last sync state
+func (s *Stats) LastSyncState() *ptp.SyncState {
 	return s.lastSyncState
 }
 

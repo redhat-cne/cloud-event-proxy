@@ -47,7 +47,8 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 
 			ClockClassMetrics.With(prometheus.Labels{
 				"process": processName, "node": ptpNodeName}).Set(clockClass)
-			if ptpStats[master].ClockClass() != int64(clockClass) {
+			// if clock class has never been set, or it is not the same as the one reported by ptp4l, update the clock class
+			if ptpStats[master].ClockClass() != int64(clockClass) || !ptpStats[master].IsClockClassSet() {
 				ptpStats[master].SetClockClass(int64(clockClass))
 				p.PublishClockClassEvent(clockClass, masterResource, ptp.PtpClockClassChange)
 			}

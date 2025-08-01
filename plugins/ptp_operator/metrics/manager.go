@@ -291,9 +291,8 @@ func (p *PTPEventManager) publishSyncEEvent(syncState ptp.SyncState, source stri
 }
 
 // GetPTPEventsData ... get PTP event data object
-func (p *PTPEventManager) GetPTPEventsData(state ptp.SyncState, ptpOffset int64, source string, eventType ptp.EventType) *ceevent.Data {
-	// create an event
-	if state == "" {
+func (p *PTPEventManager) GetPTPEventsData(state *ptp.SyncState, ptpOffset *int64, source string, eventType ptp.EventType) *ceevent.Data {
+	if state == nil || ptpOffset == nil {
 		return nil
 	}
 	// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
@@ -341,9 +340,13 @@ func (p *PTPEventManager) GetPTPCloudEvents(data ceevent.Data, eventType ptp.Eve
 }
 
 // PublishEvent ...publish events
-func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, source string, eventType ptp.EventType) {
-	// create an event
-	if state == "" {
+func (p *PTPEventManager) PublishEvent(state *ptp.SyncState, ptpOffset *int64, source string, eventType ptp.EventType) {
+	if state == nil {
+		log.Errorf("PublishEvent failed, state is nil, source=%s, eventType=%s", source, eventType)
+		return
+	}
+	if ptpOffset == nil {
+		log.Errorf("PublishEvent failed, ptpOffset is nil, source=%s, eventType=%s", source, eventType)
 		return
 	}
 	if p.mock {
@@ -351,7 +354,7 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, sou
 		if eventType == ptp.PtpStateChange || eventType == ptp.OsClockSyncStateChange {
 			p.mockEvent = append(p.mockEvent, ptp.SyncStateChange)
 		}
-		log.Infof("PublishEvent state=%s, ptpOffset=%d, source=%s, eventType=%s", state, ptpOffset, source, eventType)
+		log.Infof("PublishEvent state=%s, ptpOffset=%d, source=%s, eventType=%s", *state, *ptpOffset, source, eventType)
 		return
 	}
 
@@ -362,13 +365,20 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, sou
 	// publish the event again as overall sync state
 	// SyncStateChange is the overall sync state including PtpStateChange and OsClockSyncStateChange
 	if eventType == ptp.PtpStateChange || eventType == ptp.OsClockSyncStateChange {
-		nodeState := p.GetNodeSyncState(state)
-		if state != p.lastOverallSyncState {
+		nodeState := ""
+		if state != nil {
+			nodeState = p.GetNodeSyncState(*state)
+		}
+		if *state != p.lastOverallSyncState {
+			if p.lastOverallSyncState == nil {
+				log.Errorf("PublishEvent failed, lastOverallSyncState is nil, source=%s, eventType=%s", source, eventType)
 			eventType = ptp.SyncStateChange
 			source = string(p.publisherTypes[eventType].Resource)
 			data = p.GetPTPEventsData(state, ptpOffset, source, eventType)
 			resourceAddress = path.Join(p.resourcePrefix, p.nodeName, source)
-			p.publish(*data, resourceAddress, eventType)
+			if data != nil {
+				p.publish(*data, resourceAddress, eventType)
+			}
 			p.lastOverallSyncState = nodeState
 		}
 	}
@@ -610,10 +620,13 @@ func (p *PTPEventManager) GetNodeSyncState(currentState ptp.SyncState) ptp.SyncS
 				continue
 			}
 			s := stat.LastSyncState()
-			if s != ptp.FREERUN && s != ptp.HOLDOVER && s != ptp.LOCKED {
+			if s == nil {
 				continue
 			}
-			finalState = OverallState(s, finalState)
+			if *s != ptp.FREERUN && *s != ptp.HOLDOVER && *s != ptp.LOCKED {
+				continue
+			}
+			finalState = OverallState(*s, finalState)
 			found = true
 		}
 	}
