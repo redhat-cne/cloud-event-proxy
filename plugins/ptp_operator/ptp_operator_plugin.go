@@ -59,6 +59,8 @@ const (
 	ClockRealTime = "CLOCK_REALTIME"
 	// MasterClockType is the slave sync slave clock to master
 	MasterClockType = "master"
+	EventNotFound   = "event-not-found"
+	PTPNotSet       = "ptp-not-set"
 )
 
 var (
@@ -211,7 +213,7 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 			return fmt.Errorf("could not find any events for requested resource type %s", e.Source())
 		}
 		if len(eventManager.Stats) == 0 {
-			data := eventManager.GetPTPEventsData(ptp.FREERUN, 0, "ptp-not-set", eventType)
+			data := eventManager.GetPTPEventsData(ptp.FREERUN, 0, PTPNotSet, eventType)
 			d.Data, err = eventManager.GetPTPCloudEvents(*data, eventType)
 			if err != nil {
 				return err
@@ -244,7 +246,12 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 						data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType))
 					case ptp.PtpClockClassChange:
 						clockClass := fmt.Sprintf("%s/%s", string(ptpInterface), ptpMetrics.ClockClass)
-						data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.ClockClass(), clockClass, eventType))
+						// make sure clock class has real value
+						if s.ClockClass() != 0 {
+							data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.ClockClass(), clockClass, eventType))
+						} else {
+							log.Debugf("Skipping PTP clock class change event for %s - clockClass not populated yet", string(ptpInterface))
+						}
 					case ptp.SyncStateChange:
 						overallSyncState = getOverallState(overallSyncState, s.SyncState())
 					}
@@ -327,7 +334,7 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 			}
 			d.Data.SetSource(string(eventSource))
 		} else {
-			data = eventManager.GetPTPEventsData(ptp.FREERUN, 0, "event-not-found", eventType)
+			data = eventManager.GetPTPEventsData(ptp.FREERUN, 0, EventNotFound, eventType)
 			d.Data, err = eventManager.GetPTPCloudEvents(*data, eventType)
 			if err != nil {
 				return err

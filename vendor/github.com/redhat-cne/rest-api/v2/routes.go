@@ -40,6 +40,17 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	// the following special resource addresses are used in POST /subscriptions to
+	// send initial notification to test EndpointURI in order to successfully
+	// create a subscription when event data is not available.
+
+	// EventNotFound is a special resource address set when event data is not found.
+	EventNotFound = "event-not-found"
+	// PTPNotSet is a special resource address set when PTP stats is not yet populated.
+	PTPNotSet = "ptp-not-set"
+)
+
 // createSubscription create subscription and send it to a channel that is shared by middleware to process
 // Creates a new subscription .
 // If subscription exists with same resource then existing subscription is returned .
@@ -485,10 +496,22 @@ func (s *Server) getCurrentState(w http.ResponseWriter, r *http.Request) {
 	if s.statusReceiveOverrideFn != nil {
 		if statusErr := s.statusReceiveOverrideFn(*e, &out); statusErr != nil {
 			respondWithStatusCode(w, http.StatusNotFound, statusErr.Error())
-		} else if out.Data != nil {
-			respondWithJSON(w, http.StatusOK, *out.Data)
-		} else {
+		} else if out.Data == nil {
 			respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("event not found for %s", resourceAddress))
+		} else {
+			// Unmarshal the cloud event data to check for resource data
+			var eventData cne.Data
+			if out.Data.Data() == nil {
+				respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("event data is empty for %s", resourceAddress))
+			} else if err := json.Unmarshal(out.Data.Data(), &eventData); err != nil {
+				respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("failed to unmarshal event data for %s: %v", resourceAddress, err))
+			} else if len(eventData.Values) == 0 || eventData.Values[0].Resource == "" {
+				respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("event data invalid for %s", resourceAddress))
+			} else if strings.HasSuffix(eventData.Values[0].Resource, EventNotFound) || strings.HasSuffix(eventData.Values[0].Resource, PTPNotSet) {
+				respondWithStatusCode(w, http.StatusNotFound, fmt.Sprintf("event data not found for %s", resourceAddress))
+			} else {
+				respondWithJSON(w, http.StatusOK, *out.Data)
+			}
 		}
 	} else {
 		respondWithStatusCode(w, http.StatusNotFound, "onReceive function not defined")
