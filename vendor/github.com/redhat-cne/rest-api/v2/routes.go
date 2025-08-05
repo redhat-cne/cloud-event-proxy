@@ -56,7 +56,6 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sub := pubsub.PubSub{}
-	sub.SetVersion(API_VERSION)
 	if err = json.Unmarshal(bodyBytes, &sub); err != nil {
 		respondWithStatusCode(w, http.StatusBadRequest, fmt.Sprintf("marshalling error %v", err))
 		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
@@ -183,7 +182,6 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pub := pubsub.PubSub{}
-	pub.SetVersion(API_VERSION)
 	if err = json.Unmarshal(bodyBytes, &pub); err != nil {
 		localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
 		respondWithError(w, "marshalling error")

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/golang/glog"
@@ -66,14 +65,9 @@ func NewClient() (*Client, error) {
 }
 
 // CreateConfigMap ... create configmap
-func (sClient *Client) CreateConfigMap(ctx context.Context, apiVersion, nodeName, namespace string) (cm *corev1.ConfigMap, err error) {
+func (sClient *Client) CreateConfigMap(ctx context.Context, nodeName, namespace string) (cm *corev1.ConfigMap, err error) {
 	cm, err = sClient.GetConfigMap(ctx, nodeName, namespace)
 	if err == nil {
-		// clean up configMap if apiVersion changed
-		if apiVersion != "" && !validateConfigMap(apiVersion, cm) {
-			log.Warnf("ConfigMap %s is not compatible with the current version %s. Cleaning up.", cm.Name, apiVersion)
-			return sClient.cleanupConfigMap(ctx, cm, namespace)
-		}
 		log.Infof("ConfigMap %s already exists", cm.Name)
 		return cm, nil
 	}
@@ -116,7 +110,7 @@ func (sClient *Client) UpdateConfigMap(ctx context.Context, data []subscriber.Su
 	var err error
 	cm, err = sClient.GetConfigMap(ctx, nodeName, namespace)
 	if err != nil {
-		if cm, err = sClient.CreateConfigMap(ctx, "", nodeName, namespace); err != nil {
+		if cm, err = sClient.CreateConfigMap(ctx, nodeName, namespace); err != nil {
 			log.Errorf("Error fetching configmap %s", err.Error())
 			return err
 		}
@@ -154,12 +148,12 @@ func (sClient *Client) UpdateConfigMap(ctx context.Context, data []subscriber.Su
 }
 
 // InitConfigMap ... using configmap
-func (sClient *Client) InitConfigMap(apiVersion, storePath, nodeName, namespace string, delay time.Duration, retry int) error {
+func (sClient *Client) InitConfigMap(storePath, nodeName, namespace string, delay time.Duration, retry int) error {
 	var err error
 	var cm *corev1.ConfigMap
 
 	for i := 0; i <= retry; i++ {
-		cm, err = sClient.CreateConfigMap(context.Background(), apiVersion, nodeName, namespace)
+		cm, err = sClient.CreateConfigMap(context.Background(), nodeName, namespace)
 		if err == nil {
 			break
 		}
@@ -193,58 +187,4 @@ func (sClient *Client) InitConfigMap(apiVersion, storePath, nodeName, namespace 
 		}
 	}
 	return nil
-}
-
-func (sClient *Client) cleanupConfigMap(ctx context.Context, cm *corev1.ConfigMap, namespace string) (*corev1.ConfigMap, error) {
-	cm.Data = make(map[string]string)
-	_, err := sClient.clientSet.CoreV1().ConfigMaps(namespace).Update(ctx, cm, metav1.UpdateOptions{})
-	if err != nil {
-		log.Errorf("error updating configmap %s", err.Error())
-		return cm, err
-	}
-	log.Info("configmap cleaned up")
-	return cm, nil
-}
-
-func validateSubscriberVersion(apiVersion string, sub subscriber.Subscriber) bool {
-	if sub.SubStore == nil || len(sub.SubStore.Store) == 0 {
-		return true
-	}
-
-	for _, v := range sub.SubStore.Store {
-		if !isVersionsCompatible(v.GetVersion(), apiVersion) {
-			log.Errorf("subscriber version %s is not compatible with the current version %s", v.GetVersion(), apiVersion)
-			return false
-		}
-	}
-	return true
-}
-
-func validateConfigMap(apiVersion string, cm *corev1.ConfigMap) bool {
-	for _, subscriberData := range cm.Data {
-		if subscriberData == "" {
-			continue
-		}
-		var subscriberErr error
-		subscriber := subscriber.Subscriber{}
-		if err := json.Unmarshal([]byte(subscriberData), &subscriber); err == nil {
-			_, subscriberErr = json.MarshalIndent(&subscriber, "", " ")
-			if subscriberErr != nil {
-				log.Errorf("error marshalling subscriber data from configmap: %s", subscriberErr.Error())
-				return false
-			}
-			if !validateSubscriberVersion(apiVersion, subscriber) {
-				return false
-			}
-		} else {
-			log.Errorf("validateConfigMap: error unmarshalling data from configmap: %s", err.Error())
-			return false
-		}
-	}
-	return true
-}
-
-// isVersionsCompatible compares major versions assuming inputs are valid
-func isVersionsCompatible(ver1, ver2 string) bool {
-	return strings.Split(ver1, ".")[0] == strings.Split(ver2, ".")[0]
 }

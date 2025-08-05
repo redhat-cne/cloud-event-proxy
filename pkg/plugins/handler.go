@@ -21,13 +21,8 @@ import (
 	"plugin"
 	"sync"
 
-	cloudevents "github.com/cloudevents/sdk-go/v2"
-	"github.com/redhat-cne/sdk-go/pkg/channel"
-
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	log "github.com/sirupsen/logrus"
-
-	v1http "github.com/redhat-cne/sdk-go/v1/http"
 )
 
 // Handler handler for loading plugins
@@ -88,39 +83,4 @@ func (pl Handler) LoadMockPlugin(wg *sync.WaitGroup, scConfig *common.SCConfigur
 		log.Errorf("Mock Plugin has no 'Start(*sync.WaitGroup, *common.SCConfiguration,  fn func(e interface{}) error)(error)' function")
 	}
 	return startFunc(wg, scConfig, fn)
-}
-
-// LoadHTTPPlugin loads http test  plugin
-func (pl Handler) LoadHTTPPlugin(wg *sync.WaitGroup, scConfig *common.SCConfiguration,
-	onStatusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error, fn func(e interface{}) error) (*v1http.HTTP, error) {
-	httPlugin, err := filepath.Glob(fmt.Sprintf("%s/http_plugin.so", pl.Path))
-	if err != nil {
-		log.Errorf("cannot load http plugin %v", err)
-	}
-	if len(httPlugin) == 0 {
-		return nil, fmt.Errorf("http plugin not found in the path %s", pl.Path)
-	}
-	p, err := plugin.Open(httPlugin[0])
-	if err != nil {
-		log.Errorf("cannot open http plugin %v", err)
-		return nil, err
-	}
-
-	symbol, err := p.Lookup("Start")
-	if err != nil {
-		log.Errorf("cannot open http plugin start method %v", err)
-		return nil, err
-	}
-	startFunc, ok := symbol.(func(*sync.WaitGroup, *common.SCConfiguration, func(e cloudevents.Event, dataChan *channel.DataChan) error, func(e interface{}) error) (*v1http.HTTP, error))
-	if !ok {
-		log.Errorf("HTTP Plugin has no 'Start(*sync.WaitGroup, *common.SCConfiguration,func(e cloudevents.Event, dataChan *channel.DataChan) error, fn func(e interface{}) error)(error)' function")
-		return nil, fmt.Errorf("HTTP Plugin has no 'Start(*sync.WaitGroup, *common.SCConfiguration,func(e cloudevents.Event, dataChan *channel.DataChan) error, fn func(e interface{}) error)(error)' function")
-	}
-	httpInstance, err := startFunc(wg, scConfig, onStatusReceiveOverrideFn, fn)
-	if err != nil {
-		log.Errorf("error starting http at %s error: %v", scConfig.TransportHost.URL, err)
-		return httpInstance, err
-	}
-	scConfig.TransPortInstance = httpInstance
-	return httpInstance, nil
 }

@@ -39,7 +39,6 @@ import (
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptpSocket "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/socket"
 	ptpTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
-	v1http "github.com/redhat-cne/sdk-go/v1/http"
 	log "github.com/sirupsen/logrus"
 
 	ptpMetrics "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
@@ -83,7 +82,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 	config = configuration
 	// register metrics type
 	ptpMetrics.RegisterMetrics(nodeName)
-	publishers = InitPubSubTypes(config)
+	publishers = InitPubSubTypes()
 
 	// 1. Create event Publication
 	var err error
@@ -169,16 +168,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 	onReceiveOverrideFn := getCurrentStatOverrideFn()
 
 	log.Infof("setting up status listener")
-	if config.TransportHost.Type == common.HTTP {
-		if httpInstance, ok := config.TransPortInstance.(*v1http.HTTP); ok {
-			httpInstance.SetOnStatusReceiveOverrideFn(onReceiveOverrideFn)
-		} else {
-			log.Error("could not set receiver for http ")
-		}
-	}
-	if !common.IsV1Api(config.APIVersion) {
-		config.RestAPI.SetOnStatusReceiveOverrideFn(onReceiveOverrideFn)
-	}
+	config.RestAPI.SetOnStatusReceiveOverrideFn(onReceiveOverrideFn)
 	return nil
 }
 
@@ -567,7 +557,7 @@ func processPtp4lConfigFileUpdates() {
 func createPublisher(address string) (pub pubsub.PubSub, err error) {
 	// this is loop back on server itself. Since current pod does not create any server
 	returnURL := fmt.Sprintf("%s%s", config.BaseURL, "dummy")
-	pubToCreate := v1pubs.NewPubSub(types.ParseURI(returnURL), address, config.APIVersion)
+	pubToCreate := v1pubs.NewPubSub(types.ParseURI(returnURL), address)
 	pub, err = common.CreatePublisher(config, pubToCreate)
 	if err != nil {
 		log.Errorf("failed to create publisher %v", pub)
@@ -621,7 +611,7 @@ func HasEqualInterface(a []*string, b []*ptp4lconf.PTPInterface) bool {
 }
 
 // InitPubSubTypes ... initialize types of publishers for ptp operator
-func InitPubSubTypes(scConfig *common.SCConfiguration) map[ptp.EventType]*ptpTypes.EventPublisherType {
+func InitPubSubTypes() map[ptp.EventType]*ptpTypes.EventPublisherType {
 	InitPubs := make(map[ptp.EventType]*ptpTypes.EventPublisherType)
 	InitPubs[ptp.SyncStateChange] = &ptpTypes.EventPublisherType{
 		EventType: ptp.SyncStateChange,
@@ -631,16 +621,9 @@ func InitPubSubTypes(scConfig *common.SCConfiguration) map[ptp.EventType]*ptpTyp
 		EventType: ptp.OsClockSyncStateChange,
 		Resource:  ptp.OsClockSyncState,
 	}
-	if !common.IsV1Api(scConfig.APIVersion) {
-		InitPubs[ptp.PtpClockClassChange] = &ptpTypes.EventPublisherType{
-			EventType: ptp.PtpClockClassChange,
-			Resource:  ptp.PtpClockClass,
-		}
-	} else {
-		InitPubs[ptp.PtpClockClassChange] = &ptpTypes.EventPublisherType{
-			EventType: ptp.PtpClockClassChange,
-			Resource:  ptp.PtpClockClassV1,
-		}
+	InitPubs[ptp.PtpClockClassChange] = &ptpTypes.EventPublisherType{
+		EventType: ptp.PtpClockClassChange,
+		Resource:  ptp.PtpClockClass,
 	}
 	InitPubs[ptp.PtpStateChange] = &ptpTypes.EventPublisherType{
 		EventType: ptp.PtpStateChange,

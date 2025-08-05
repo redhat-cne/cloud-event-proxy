@@ -38,7 +38,7 @@ import (
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptpTypes "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
-	restapi "github.com/redhat-cne/rest-api"
+	restapi "github.com/redhat-cne/rest-api/v2"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	ptpEvent "github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
@@ -68,7 +68,6 @@ func TestMain(m *testing.M) {
 		CloseCh:       make(chan struct{}),
 		APIPort:       apiPort,
 		APIPath:       "/api/ocloudNotifications/v2/",
-		APIVersion:    "2.0",
 		PubSubAPI:     v1pubsub.GetAPIInstance(storePath),
 		SubscriberAPI: subscriberApi.GetAPIInstance(storePath),
 		StorePath:     storePath,
@@ -85,7 +84,7 @@ func TestMain(m *testing.M) {
 	c = make(chan os.Signal)
 	cleanUP()
 	common.StartPubSubService(scConfig)
-	pubsubTypes = InitPubSubTypes(scConfig)
+	pubsubTypes = InitPubSubTypes()
 	scConfig.RestAPI.SetOnStatusReceiveOverrideFn(getMockOverrideFn())
 	os.Exit(m.Run())
 }
@@ -133,7 +132,7 @@ func TestGetCurrentStatOverrideFn(t *testing.T) {
 	var err error
 	endpointURL := fmt.Sprintf("%s%s", scConfig.BaseURL, "dummy")
 	for _, pTypes := range pubsubTypes {
-		pub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), path.Join(resourcePrefix, nodeName, string(pTypes.Resource)), scConfig.APIVersion)
+		pub := v1pubsub.NewPubSub(types.ParseURI(endpointURL), path.Join(resourcePrefix, nodeName, string(pTypes.Resource)))
 		pub, err = common.CreatePublisher(scConfig, pub)
 		assert.Nil(t, err)
 		assert.NotEmpty(t, pub.ID)

@@ -128,7 +128,6 @@ func (p *API) GetSubFromSubscriptionsStore(clientID uuid.UUID, address string) (
 		for _, sub := range subscriber.SubStore.Store {
 			if sub.GetResource() == address {
 				return pubsub.PubSub{
-					Version:     sub.Version,
 					ID:          sub.ID,
 					EndPointURI: sub.EndPointURI,
 					URILocation: sub.URILocation,

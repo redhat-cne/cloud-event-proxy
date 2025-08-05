@@ -164,13 +164,6 @@ func readDataValue(iter *jsoniter.Iterator) ([]DataValue, error) {
 				dv.ValueType = ValueType(iter.ReadString())
 			case "value":
 				cacheValue = iter.Read()
-			// tolerant older releases
-			case "resource":
-				dv.Resource = iter.ReadString()
-			case "dataType":
-				dv.DataType = DataType(iter.ReadString())
-			case "valueType":
-				dv.ValueType = ValueType(iter.ReadString())
 			default:
 				iter.Skip()
 			}

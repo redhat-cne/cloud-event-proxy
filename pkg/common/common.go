@@ -34,8 +34,7 @@ import (
 	"github.com/redhat-cne/rest-api/pkg/localmetrics"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
-	restapi "github.com/redhat-cne/rest-api"
-	v2restapi "github.com/redhat-cne/rest-api/v2"
+	restapi "github.com/redhat-cne/rest-api/v2"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
@@ -156,7 +155,6 @@ type SCConfiguration struct {
 	CloseCh    chan struct{}
 	APIPort    int
 	APIPath    string
-	APIVersion string
 	PubSubAPI  *v1pubsub.API
 	// this is used in V2 when pubsub is removed from local store
 	SubscriberAPI     *subscriberApi.API
@@ -167,7 +165,7 @@ type SCConfiguration struct {
 	clientID          uuid.UUID
 	StorageType       storageClient.StorageTypeType
 	K8sClient         *storageClient.Client
-	RestAPI           *v2restapi.Server
+	RestAPI           *restapi.Server
 }
 
 // ClientID ... read clientID from the configurations
@@ -220,29 +218,17 @@ func StartPubSubService(scConfig *SCConfiguration) (err error) {
 	if scConfig.TransportHost == nil {
 		scConfig.TransportHost.Type = UNKNOWN
 	}
-	if IsV1Api(scConfig.APIVersion) {
-		server := restapi.InitServer(scConfig.APIPort, scConfig.APIPath,
-			scConfig.StorePath, scConfig.EventInCh, scConfig.CloseCh)
-
-		server.Start()
-		err = server.EndPointHealthChk()
-		if err == nil {
-			scConfig.BaseURL = server.GetHostPath()
-			scConfig.APIPort = server.Port()
-		}
-	} else {
-		// reload sub store from configMap
-		scConfig.SubscriberAPI.ReloadStore()
-		// use EventOutCh instead since this is only used in producer side
-		server := v2restapi.InitServer(scConfig.APIPort, scConfig.TransportHost.Host, scConfig.APIPath,
-			scConfig.StorePath, scConfig.EventOutCh, scConfig.CloseCh, nil)
-		scConfig.RestAPI = server
-		server.Start()
-		err = server.EndPointHealthChk()
-		if err == nil {
-			scConfig.BaseURL = server.GetHostPath()
-			scConfig.APIPort = server.Port()
-		}
+	// reload sub store from configMap
+	scConfig.SubscriberAPI.ReloadStore()
+	// use EventOutCh instead since this is only used in producer side
+	server := restapi.InitServer(scConfig.APIPort, scConfig.TransportHost.Host, scConfig.APIPath,
+		scConfig.StorePath, scConfig.EventOutCh, scConfig.CloseCh, nil)
+	scConfig.RestAPI = server
+	server.Start()
+	err = server.EndPointHealthChk()
+	if err == nil {
+		scConfig.BaseURL = server.GetHostPath()
+		scConfig.APIPort = server.Port()
 	}
 	return err
 }
@@ -323,23 +309,12 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 // PublishEventViaAPI ... publish events by not using http request but direct api
 func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event, resourceAddress string) error {
 	if ceEvent, err := GetPublishingCloudEvent(scConfig, cneEvent); err == nil {
-		if IsV1Api(scConfig.APIVersion) {
-			scConfig.EventInCh <- &channel.DataChan{
-				Type:     channel.EVENT,
-				Status:   channel.NEW,
-				Data:     ceEvent,
-				Address:  ceEvent.Source(), // this is the publishing address
-				ClientID: scConfig.ClientID(),
-			}
-		} else {
-			// use EventOutCh instead of EventInCh to bypass http transport
-			scConfig.EventOutCh <- &channel.DataChan{
-				Type:     channel.EVENT,
-				Status:   channel.NEW,
-				Data:     ceEvent,
-				Address:  resourceAddress, // this is the publishing address
-				ClientID: scConfig.ClientID(),
-			}
+		scConfig.EventOutCh <- &channel.DataChan{
+			Type:     channel.EVENT,
+			Status:   channel.NEW,
+			Data:     ceEvent,
+			Address:  resourceAddress, // this is the publishing address
+			ClientID: scConfig.ClientID(),
 		}
 
 		log.Debugf("event source %s sent to queue to process", ceEvent.Source())
@@ -357,11 +332,7 @@ func GetPublishingCloudEvent(scConfig *SCConfiguration, cneEvent ceevent.Event) 
 		localmetrics.UpdateEventPublishedCount(cneEvent.ID, localmetrics.FAIL, 1)
 		return nil, err
 	}
-	if IsV1Api(scConfig.APIVersion) {
-		ceEvent, err = cneEvent.NewCloudEvent(&pub)
-	} else {
-		ceEvent, err = cneEvent.NewCloudEventV2()
-	}
+	ceEvent, err = cneEvent.NewCloudEventV2()
 	if err != nil {
 		localmetrics.UpdateEventPublishedCount(pub.Resource, localmetrics.FAIL, 1)
 		return nil, fmt.Errorf("error converting to CloudEvents %s", err)
@@ -433,31 +404,4 @@ func InitLogger() {
 	}
 	// set global log level
 	log.SetLevel(ll)
-}
-
-// GetMajorVersion returns major version
-func GetMajorVersion(version string) (int, error) {
-	if version == "" {
-		return 1, nil
-	}
-	version = strings.TrimPrefix(version, "v")
-	version = strings.TrimPrefix(version, "V")
-	v := strings.Split(version, ".")
-	majorVersion, err := strconv.Atoi(v[0])
-	if err != nil {
-		log.Errorf("Error parsing major version from %s, %v", version, err)
-		return 1, err
-	}
-	return majorVersion, nil
-}
-
-// IsV1Api ...
-func IsV1Api(version string) bool {
-	if majorVersion, err := GetMajorVersion(version); err == nil {
-		if majorVersion >= 2 {
-			return false
-		}
-	}
-	// by default use V1
-	return true
 }

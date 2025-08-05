@@ -64,7 +64,6 @@ var healthCheckPause = 2 * time.Second
 type ServerStatus int
 
 const (
-	API_VERSION           = "2.0"
 	HTTPReadHeaderTimeout = 2 * time.Second
 )
 
