@@ -330,7 +330,7 @@ func isOffsetInRange(ptpOffset, maxOffsetThreshold, minOffsetThreshold int64) bo
 	return false
 }
 
-func parsePTPStatus(output string, fields []string) (int64, error) {
+func (p *PTPEventManager) parsePTPStatus(output string, fields []string) (int64, error) {
 	// ptp4l 5196819.100 ptp4l.0.config PTP_PROCESS_STOPPED:0/1
 
 	if len(fields) < 5 {
@@ -343,6 +343,7 @@ func parsePTPStatus(output string, fields []string) (int64, error) {
 		log.Error("error process status value")
 		return PtpProcessDown, err
 	}
+	p.updateProcessStatus(types.ConfigName(fields[2]), fields[0], (status == 1))
 	// ptp4l 5196819.100 ptp4l.0.config PTP_PROCESS_STOPPED:0/1
 	UpdateProcessStatusMetrics(fields[0], fields[2], status)
 	return status, nil

@@ -206,7 +206,7 @@ var testCases = []TestCase{
 		skipCleanupMetrics:     true,
 	},
 	{
-		log:                    "ptp4l[4270543.688]: [ptp4l.1.config:5] port 2 (ens3f1): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)",
+		log:                    "ptp4l[4270543.688]: [ptp4l.1.config:5] port 2 (ens3f1): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)", // Will fail if run independently
 		from:                   "master",
 		process:                "ptp4l",
 		iface:                  "ens3fx",
@@ -218,7 +218,7 @@ var testCases = []TestCase{
 		skipSetLastSyncState:   true,
 	},
 	{
-		log:                    "ptp4l[4270543.688]: [ptp4l.1.config:5] port 1 (ens3f0): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)",
+		log:                    "ptp4l[4270543.688]: [ptp4l.1.config:5] port 1 (ens3f0): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)", // Will fail if run independently
 		from:                   "master",
 		process:                "ptp4l",
 		iface:                  "ens3f0",
@@ -392,6 +392,9 @@ var testCases = []TestCase{
 }
 
 func setup() {
+	mockFS := &metrics.MockFileSystem{}
+	scConfig = &common.SCConfiguration{StorePath: "/tmp/store"}
+	metrics.Filesystem = mockFS
 	ptpEventManager = metrics.NewPTPEventManager(resourcePrefix, InitPubSubTypes(), "tetsnode", scConfig)
 	ptpEventManager.MockTest(true)
 
@@ -452,57 +455,59 @@ func TestMain(m *testing.M) {
 
 // this test works for v2 only , there is no sync state event for v1
 func Test_ExtractMetrics(t *testing.T) {
-	assert := assert.New(t)
 	for _, tc := range testCases {
 		tc := tc
 		tc.node = MYNODE
-		if !tc.skipCleanupMetrics {
-			tc.cleanupMetrics()
-		}
-		if !tc.skipSetLastSyncState {
-			setLastSyncState(tc.iface, tc.lastSyncState, tc.logPtp4lConfigName)
-		}
-		ptpEventManager.ResetMockEvent()
-		ptpEventManager.ExtractMetrics(tc.log)
+		t.Run(tc.log, func(t *testing.T) {
+			assert := assert.New(t)
+			if !tc.skipCleanupMetrics {
+				tc.cleanupMetrics()
+			}
+			if !tc.skipSetLastSyncState {
+				setLastSyncState(tc.iface, tc.lastSyncState, tc.logPtp4lConfigName)
+			}
+			ptpEventManager.ResetMockEvent()
+			ptpEventManager.ExtractMetrics(tc.log)
 
-		if tc.expectedRoleCheck {
-			role := metrics.InterfaceRole.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface})
-			statsAddValue(tc.iface, int64(testutil.ToFloat64(role)), tc.logPtp4lConfigName)
-			value := types.PtpPortRole(testutil.ToFloat64(role))
-			assert.Equal(tc.expectedRole, value, "ptp role does not match\n%s", tc.String())
-		}
+			if tc.expectedRoleCheck {
+				role := metrics.InterfaceRole.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface})
+				statsAddValue(tc.iface, int64(testutil.ToFloat64(role)), tc.logPtp4lConfigName)
+				value := types.PtpPortRole(testutil.ToFloat64(role))
+				assert.Equal(tc.expectedRole, value, "ptp role does not match\n%s", tc.String())
+			}
 
-		if tc.expectedPtpOffsetCheck {
-			ptpOffset := metrics.PtpOffset.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface})
-			statsAddValue(tc.iface, int64(testutil.ToFloat64(ptpOffset)), tc.logPtp4lConfigName)
-			assert.Equal(tc.expectedPtpOffset, testutil.ToFloat64(ptpOffset), "PtpOffset does not match\n%s", tc.String())
-		}
-		if tc.expectedPtpMaxOffsetCheck {
-			ptpMaxOffset := metrics.PtpMaxOffset.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface})
-			assert.Equal(tc.expectedPtpMaxOffset, testutil.ToFloat64(ptpMaxOffset), "PtpMaxOffset does not match\n%s", tc.String())
-		}
-		if tc.expectedPtpFrequencyAdjustmentCheck {
-			ptpFrequencyAdjustment := metrics.PtpFrequencyAdjustment.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface})
-			assert.Equal(tc.expectedPtpFrequencyAdjustment, testutil.ToFloat64(ptpFrequencyAdjustment), "PtpFrequencyAdjustment does not match\n%s", tc.String())
-		}
-		if tc.expectedPtpDelayCheck {
-			ptpDelay := metrics.PtpDelay.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface})
-			assert.Equal(tc.expectedPtpDelay, testutil.ToFloat64(ptpDelay), "PtpDelay does not match\n%s", tc.String())
-		}
-		if tc.expectedSyncStateCheck {
-			clockState := metrics.SyncState.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface})
+			if tc.expectedPtpOffsetCheck {
+				ptpOffset := metrics.PtpOffset.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface})
+				statsAddValue(tc.iface, int64(testutil.ToFloat64(ptpOffset)), tc.logPtp4lConfigName)
+				assert.Equal(tc.expectedPtpOffset, testutil.ToFloat64(ptpOffset), "PtpOffset does not match\n%s", tc.String())
+			}
+			if tc.expectedPtpMaxOffsetCheck {
+				ptpMaxOffset := metrics.PtpMaxOffset.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface})
+				assert.Equal(tc.expectedPtpMaxOffset, testutil.ToFloat64(ptpMaxOffset), "PtpMaxOffset does not match\n%s", tc.String())
+			}
+			if tc.expectedPtpFrequencyAdjustmentCheck {
+				ptpFrequencyAdjustment := metrics.PtpFrequencyAdjustment.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface})
+				assert.Equal(tc.expectedPtpFrequencyAdjustment, testutil.ToFloat64(ptpFrequencyAdjustment), "PtpFrequencyAdjustment does not match\n%s", tc.String())
+			}
+			if tc.expectedPtpDelayCheck {
+				ptpDelay := metrics.PtpDelay.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface})
+				assert.Equal(tc.expectedPtpDelay, testutil.ToFloat64(ptpDelay), "PtpDelay does not match\n%s", tc.String())
+			}
+			if tc.expectedSyncStateCheck {
+				clockState := metrics.SyncState.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface})
 
-			cs := testutil.ToFloat64(clockState)
-			assert.Equal(tc.expectedSyncState, cs, "SyncState does not match\n%s", tc.String())
-		}
-		if tc.expectedNmeaStatusCheck {
-			nmeaStatus := metrics.NmeaStatus.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface})
-			assert.Equal(tc.expectedNmeaStatus, testutil.ToFloat64(nmeaStatus), "NmeaStatus does not match\n%s", tc.String())
-		}
-		if tc.expectedClockClassMetricsCheck {
-			clockClassMetrics := metrics.ClockClassMetrics.With(map[string]string{"process": tc.process, "config": "ptp4l.0.config", "node": tc.node})
-			assert.Equal(tc.expectedClockClassMetrics, testutil.ToFloat64(clockClassMetrics), "ClockClassMetrics does not match\n%s", tc.String())
-		}
-		assert.Equal(tc.expectedEvent, ptpEventManager.GetMockEvent(), "Expected Event does not match\n%s", tc.String())
+				cs := testutil.ToFloat64(clockState)
+				assert.Equal(tc.expectedSyncState, cs, "SyncState does not match\n%s", tc.String())
+			}
+			if tc.expectedNmeaStatusCheck {
+				nmeaStatus := metrics.NmeaStatus.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface})
+				assert.Equal(tc.expectedNmeaStatus, testutil.ToFloat64(nmeaStatus), "NmeaStatus does not match\n%s", tc.String())
+			}
+			if tc.expectedClockClassMetricsCheck {
+				clockClassMetrics := metrics.ClockClassMetrics.With(map[string]string{"process": tc.process, "config": "ptp4l.0.config", "node": tc.node})
+				assert.Equal(tc.expectedClockClassMetrics, testutil.ToFloat64(clockClassMetrics), "ClockClassMetrics does not match\n%s", tc.String())
+			}
+			assert.Equal(tc.expectedEvent, ptpEventManager.GetMockEvent(), "Expected Event does not match\n%s", tc.String())
+		})
 	}
 }

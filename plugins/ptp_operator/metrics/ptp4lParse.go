@@ -74,8 +74,8 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 
 		if lastRole != role {
 			/*
-			   If role changes from FAULTY to SLAVE/PASSIVE/MASTER , then cancel HOLDOVER timer
-			    and publish metrics
+				If role changes from FAULTY to SLAVE/PASSIVE/MASTER , then cancel HOLDOVER timer
+					and publish metrics
 			*/
 			/* with ts2phc enabled , when ptp4l reports port goes to faulty
 			there is no HOLDOVER State
@@ -95,6 +95,10 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			}
 			log.Infof("update interface %s with portid %d from role %s to role %s  out %s", ptpIFace, portID, lastRole, role, output)
 			ptp4lCfg.Interfaces[portID-1].UpdateRole(role)
+			err = p.saveToStore()
+			if err != nil {
+				log.Errorf("failed to save metrics to store: %s", err)
+			}
 
 			// update role metrics
 			UpdateInterfaceRoleMetrics(processName, ptpIFace, role)
