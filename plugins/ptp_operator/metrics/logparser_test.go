@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/event"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
 
@@ -518,6 +519,7 @@ func TestParsePTP4l(t *testing.T) {
 		ptp4lCfg            *ptp4lconf.PTP4lConfig
 		lastSyncState       ptp.SyncState // what ws the last sync state before entering new state
 		expectedError       bool
+		expectedMockWrites  int
 	}{
 		{
 			name:        "valid CLOCK_CLASS_CHANGE event",
@@ -577,6 +579,7 @@ func TestParsePTP4l(t *testing.T) {
 			expectedStateChange: true,
 			lastSyncState:       ptp.LOCKED,
 			expectedError:       false,
+			expectedMockWrites:  1,
 		},
 		{
 			name:        "FAULTY Changing to SLAVE",
@@ -639,6 +642,7 @@ func TestParsePTP4l(t *testing.T) {
 			lastSyncState:       ptp.FREERUN,
 			expectedStateChange: true,
 			expectedError:       false,
+			expectedMockWrites:  1,
 		},
 		{
 			name:        "SLAVE Changing to LISTENING",
@@ -670,13 +674,19 @@ func TestParsePTP4l(t *testing.T) {
 			lastSyncState:       ptp.LOCKED,
 			expectedStateChange: true,
 			expectedError:       false,
+			expectedMockWrites:  1,
 		},
 	}
-	ptpEventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "tetsnode", nil)
+
+	// Mock os out so tests don't write to store
+	mockFS := &metrics.MockFileSystem{}
+	metrics.Filesystem = mockFS
+	ptpEventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "tetsnode", &common.SCConfiguration{StorePath: "/tmp/store"})
 	ptpEventManager.MockTest(true)
 	for _, followers := range []int{1, 2} {
 		followers := followers // 👈 capture the value of `followers` too
 		for _, tt := range tests {
+			mockFS.Clear()
 			tt := tt // Important: capture tt for each iteration
 			tt.ptp4lCfg = deepCopyPTP4lCfg(tt.ptp4lCfg)
 			t.Run(tt.name, func(t *testing.T) {
@@ -694,6 +704,7 @@ func TestParsePTP4l(t *testing.T) {
 				if tt.expectedStateChange {
 					assert.Equal(t, tt.expectedMasterState, ptpStats[metrics.MasterClockType].LastSyncState(), fmt.Sprintf("%s-followers(%d) state = %v; want %v", tt.name, followers, ptpStats[metrics.MasterClockType].LastSyncState(), tt.expectedMasterState))
 				}
+				assert.Equal(t, tt.expectedMockWrites, mockFS.WriteCount)
 			})
 		}
 	}

@@ -102,6 +102,15 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 
 	// Initialize the Event Manager
 	eventManager = ptpMetrics.NewPTPEventManager(resourcePrefix, publishers, nodeName, config)
+	_, err = eventManager.LoadFromStore(config)
+	if err != nil {
+		log.Warn(err)
+	}
+	err = eventManager.TriggerLogs()
+	if err != nil {
+		log.Warn(err)
+	}
+	eventManager.SetInitalMetrics()
 	wg.Add(1)
 	// create socket listener
 	go listenToSocket(wg)
