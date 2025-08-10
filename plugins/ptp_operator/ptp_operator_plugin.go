@@ -422,16 +422,56 @@ func processPtp4lConfigFileUpdates() {
 				var ptpInterfaces []*ptp4lconf.PTPInterface
 				for index, ptpInterface := range newInterfaces {
 					role := ptpTypes.UNKNOWN
-					if p, e := ptp4lConfig.ByInterface(*ptpInterface); e == nil && p.PortID == index+1 { // maintain role
-						role = p.Role
-					} // else new config order is not same
-					ptpIFace := &ptp4lconf.PTPInterface{
-						Name:     *ptpInterface,
-						PortID:   index + 1,
-						PortName: fmt.Sprintf("%s%d", "port ", index+1),
-						Role:     role,
+
+					// Check if interface section exists in config
+					if interfaceSection, exists := allSections[*ptpInterface]; exists {
+						// Try to preserve existing role if interface exists and port ID matches
+						if p, e := ptp4lConfig.ByInterface(*ptpInterface); e == nil && p.PortID == index+1 {
+							role = p.Role
+						} else {
+							// Assign role based on serverOnly (new) or masterOnly (deprecated) parameter from config
+							// serverOnly takes precedence over masterOnly for backward compatibility
+							if serverOnlyValue, hasServerOnly := interfaceSection["serverOnly"]; hasServerOnly {
+								if serverOnlyValue == "1" {
+									role = ptpTypes.MASTER
+								} else if serverOnlyValue == "0" {
+									role = ptpTypes.SLAVE
+								}
+							} else if masterOnlyValue, hasMasterOnly := interfaceSection["masterOnly"]; hasMasterOnly {
+								if masterOnlyValue == "1" {
+									role = ptpTypes.MASTER
+								} else if masterOnlyValue == "0" {
+									role = ptpTypes.SLAVE
+								}
+							} else {
+								// Check global clientOnly/slaveOnly setting if no interface-specific parameters
+								if globalSection, hasGlobal := allSections["global"]; hasGlobal {
+									if globalClientOnly, hasGlobalClientOnly := globalSection["clientOnly"]; hasGlobalClientOnly && globalClientOnly == "1" {
+										role = ptpTypes.SLAVE
+									} else if globalSlaveOnly, hasGlobalSlaveOnly := globalSection["slaveOnly"]; hasGlobalSlaveOnly && globalSlaveOnly == "1" {
+										role = ptpTypes.SLAVE
+									} else {
+										// Default to SLAVE if no masterOnly/slaveOnly parameters (OC scenario)
+										role = ptpTypes.SLAVE
+									}
+								} else {
+									// Default to SLAVE if no global section (OC scenario)
+									role = ptpTypes.SLAVE
+								}
+							}
+						}
+
+						ptpIFace := &ptp4lconf.PTPInterface{
+							Name:     *ptpInterface,
+							PortID:   index + 1,
+							PortName: fmt.Sprintf("%s%d", "port ", index+1),
+							Role:     role,
+						}
+						ptpInterfaces = append(ptpInterfaces, ptpIFace)
+
+						// Update interface role metrics
+						ptpMetrics.UpdateInterfaceRoleMetrics(ptp4lProcessName, *ptpInterface, role)
 					}
-					ptpInterfaces = append(ptpInterfaces, ptpIFace)
 				}
 				// updated ptp4lConfig is ready
 				ptp4lConfig = &ptp4lconf.PTP4lConfig{
@@ -442,8 +482,6 @@ func processPtp4lConfigFileUpdates() {
 				}
 				// if profile is not set then set it to default profile
 				ptp4lConfig.ProfileType = eventManager.GetProfileType(ptp4lConfig.Profile)
-				eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
-
 				// add to eventManager
 				eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
 				// clean up process metrics
@@ -611,7 +649,7 @@ func processMessages(c net.Conn) {
 	}
 }
 
-// HasEqualInterface checks if configmap  changes has same interface
+// HasEqualInterface checks if configmap changes have the same interface list (names and order).
 func HasEqualInterface(a []*string, b []*ptp4lconf.PTPInterface) bool {
 	if len(a) != len(b) {
 		return false

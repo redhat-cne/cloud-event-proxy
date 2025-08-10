@@ -292,17 +292,13 @@ func (p *PTPEventManager) publishSyncEEvent(syncState ptp.SyncState, source stri
 
 // GetPTPEventsData ... get PTP event data object
 func (p *PTPEventManager) GetPTPEventsData(state ptp.SyncState, ptpOffset int64, source string, eventType ptp.EventType) *ceevent.Data {
-	// create an event
-	if state == "" {
-		return nil
-	}
 	// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
 	eventSource := path.Join(p.resourcePrefix, p.nodeName, source)
 	data := ceevent.Data{
 		Version: ceevent.APISchemaVersion,
 		Values:  []ceevent.DataValue{},
 	}
-	if eventType != ptp.PtpClockClassChange && eventType != ptp.SynceClockQualityChange {
+	if eventType != ptp.PtpClockClassChange && eventType != ptp.SynceClockQualityChange && state != "" {
 		data.Values = append(data.Values, ceevent.DataValue{
 			Resource:  eventSource,
 			DataType:  ceevent.NOTIFICATION,
