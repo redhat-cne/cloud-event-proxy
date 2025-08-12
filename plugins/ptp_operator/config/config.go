@@ -312,8 +312,8 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPSetting() {
 	for _, profile := range l.NodeProfiles {
 		l.PtpSettings[*profile.Name] = profile.PtpSettings
 		if profile.PtpSettings != nil {
-			for _, ptpSettings := range profile.PtpSettings {
-				if ptpSettings == "haProfiles" {
+			for key := range profile.PtpSettings {
+				if key == "haProfiles" {
 					l.HAProfile = *profile.Name // there can be only one profile
 				}
 			}
