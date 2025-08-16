@@ -15,6 +15,7 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/pubsub"
 
 	"github.com/redhat-cne/sdk-go/pkg/errorhandler"
+	cne "github.com/redhat-cne/sdk-go/pkg/event"
 
 	"github.com/gorilla/mux"
 	"github.com/redhat-cne/sdk-go/pkg/types"
@@ -47,11 +48,13 @@ type Protocol struct {
 type ServiceResourcePath string
 
 const (
-	DEFAULT      ServiceResourcePath = ""
-	HEALTH       ServiceResourcePath = "/health"
-	EVENT        ServiceResourcePath = "/event"
-	SUBSCRIPTION ServiceResourcePath = "/subscription"
-	CURRENTSTATE                     = "CurrentState"
+	DEFAULT       ServiceResourcePath = ""
+	HEALTH        ServiceResourcePath = "/health"
+	EVENT         ServiceResourcePath = "/event"
+	SUBSCRIPTION  ServiceResourcePath = "/subscription"
+	CURRENTSTATE                      = "CurrentState"
+	EventNotFound                     = "event-not-found"
+	PTPNotSet                         = "ptp-not-set"
 )
 
 // Server ...
@@ -227,16 +230,36 @@ func (h *Server) Start(wg *sync.WaitGroup) error {
 					localmetrics.UpdateStatusCheckCount(out.Address, localmetrics.FAILED, 1)
 					w.WriteHeader(http.StatusBadRequest)
 					_ = json.NewEncoder(w).Encode(map[string]string{"message": statusErr.Error()})
-				} else if out.Data != nil {
-					localmetrics.UpdateStatusCheckCount(out.Address, localmetrics.SUCCESS, 1)
-					out.Status = channel.SUCCESS
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusOK)
-					_ = json.NewEncoder(w).Encode(*out.Data)
-				} else {
+				} else if out.Data == nil {
 					out.Status = channel.FAILED
 					w.WriteHeader(http.StatusBadRequest)
 					_ = json.NewEncoder(w).Encode(map[string]string{"message": "resource not found"})
+				} else {
+					// Unmarshal the cloud event data to check for resource data
+					var eventData cne.Data
+					if out.Data.Data() == nil {
+						out.Status = channel.FAILED
+						w.WriteHeader(http.StatusBadRequest)
+						_ = json.NewEncoder(w).Encode(map[string]string{"message": "event data is empty"})
+					} else if err = json.Unmarshal(out.Data.Data(), &eventData); err != nil {
+						out.Status = channel.FAILED
+						w.WriteHeader(http.StatusBadRequest)
+						_ = json.NewEncoder(w).Encode(map[string]string{"message": "failed to unmarshal event data :" + err.Error()})
+					} else if len(eventData.Values) == 0 || eventData.Values[0].Resource == "" {
+						out.Status = channel.FAILED
+						w.WriteHeader(http.StatusBadRequest)
+						_ = json.NewEncoder(w).Encode(map[string]string{"message": "event data invalid"})
+					} else if strings.HasSuffix(eventData.Values[0].Resource, EventNotFound) || strings.HasSuffix(eventData.Values[0].Resource, PTPNotSet) {
+						out.Status = channel.FAILED
+						w.WriteHeader(http.StatusBadRequest)
+						_ = json.NewEncoder(w).Encode(map[string]string{"message": "event data not found"})
+					} else {
+						localmetrics.UpdateStatusCheckCount(out.Address, localmetrics.SUCCESS, 1)
+						out.Status = channel.SUCCESS
+						w.Header().Set("Content-Type", "application/json")
+						w.WriteHeader(http.StatusOK)
+						_ = json.NewEncoder(w).Encode(*out.Data)
+					}
 				}
 			} else {
 				out.Status = channel.FAILED
