@@ -93,7 +93,7 @@ var (
 			Namespace: ptpNamespace,
 			Subsystem: ptpSubsystem,
 			Name:      "clock_class",
-			Help:      "6 = Locked, 7 = PRC unlocked in-spec, 52/187 = PRC unlocked out-of-spec, 248 = Default, 255 = Slave Only Clock",
+			Help:      "6 = Locked, 7 = PRC unlocked in-spec, 52/187 = PRC unlocked out-of-spec, 135 = T-BC holdover in-spec, 165 = T-BC holdover out-of-spec, 248 = Default, 255 = Slave Only Clock",
 		}, []string{"process", "node"})
 
 	// ProcessStatus  ... update process status
