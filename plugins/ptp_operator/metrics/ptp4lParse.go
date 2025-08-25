@@ -45,7 +45,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
 
 			ClockClassMetrics.With(prometheus.Labels{
-				"process": processName, "node": ptpNodeName}).Set(clockClass)
+				"process": processName, "config": configName, "node": ptpNodeName}).Set(clockClass)
 			if ptpStats[master].ClockClass() != int64(clockClass) {
 				ptpStats[master].SetClockClass(int64(clockClass))
 				p.PublishClockClassEvent(clockClass, masterResource, ptp.PtpClockClassChange)
