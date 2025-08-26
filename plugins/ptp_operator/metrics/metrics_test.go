@@ -209,7 +209,7 @@ var testCases = []TestCase{
 		log:                    "ptp4l[4270543.688]: [ptp4l.1.config:5] port 2 (ens3f1): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)",
 		from:                   "master",
 		process:                "ptp4l",
-		iface:                  "ens3fx",
+		iface:                  "ens3f1",
 		logPtp4lConfigName:     logPtp4lConfigDualFollower.Name,
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.HOLDOVER),
@@ -236,7 +236,7 @@ var testCases = []TestCase{
 		log:                    "dpll[1000000100]:[ts2phc.0.config] ens7f0 frequency_status 3 offset 5 phase_status 3 pps_status 1 s2",
 		from:                   "master",
 		process:                "dpll",
-		iface:                  "ens7fx",
+		iface:                  "ens7f0",
 		lastSyncState:          ptp.FREERUN,
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.LOCKED),
@@ -249,7 +249,7 @@ var testCases = []TestCase{
 		log:                    "dpll[1000000110]:[ts2phc.0.config] ens7f0 frequency_status 3 offset 5 phase_status 3 pps_status 0 s0",
 		from:                   "master",
 		process:                "dpll",
-		iface:                  "ens7fx",
+		iface:                  "ens7f0",
 		lastSyncState:          ptp.LOCKED,
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.FREERUN),
@@ -262,7 +262,7 @@ var testCases = []TestCase{
 		log:                    "dpll[1000000120]:[ts2phc.0.config] ens7f0 frequency_status 3 offset 7 phase_status 3 pps_status 0 s1",
 		from:                   "master",
 		process:                "dpll",
-		iface:                  "ens7fx",
+		iface:                  "ens7f0",
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.HOLDOVER),
 		expectedPpsStatusCheck: true,
@@ -274,7 +274,7 @@ var testCases = []TestCase{
 		log:                     "ts2phc[1000000200]:[ts2phc.0.config] ens2f0 nmea_status 0 offset 999999 s0",
 		from:                    "master",
 		process:                 "ts2phc",
-		iface:                   "ens2fx",
+		iface:                   "ens2f0",
 		lastSyncState:           ptp.LOCKED,
 		expectedNmeaStatusCheck: true,
 		expectedNmeaStatus:      0,
@@ -285,7 +285,7 @@ var testCases = []TestCase{
 		log:                     "ts2phc[1000000210]:[ts2phc.0.config] ens2f0 nmea_status 1 offset 0 s2",
 		from:                    "master",
 		process:                 "ts2phc",
-		iface:                   "ens2fx",
+		iface:                   "ens2f0",
 		expectedNmeaStatusCheck: true,
 		expectedNmeaStatus:      1,
 		expectedEvent:           []ptp.EventType{},
@@ -295,7 +295,7 @@ var testCases = []TestCase{
 		log:                    "ts2phc[1000000300]: [ts2phc.0.config] ens2f0 master offset  0 s2 freq -0",
 		from:                   "master",
 		process:                "ts2phc",
-		iface:                  "ens2fx",
+		iface:                  "ens2f0",
 		expectedPtpOffsetCheck: true,
 		expectedPtpOffset:      0,
 		expectedEvent:          []ptp.EventType{ptp.PtpStateChange, ptp.SyncStateChange},
@@ -305,7 +305,7 @@ var testCases = []TestCase{
 		log:                    "ts2phc[1000000310]: [ts2phc.0.config] ens7f0 master offset 999 s0 freq      -0",
 		from:                   "master",
 		process:                "ts2phc",
-		iface:                  "ens7fx",
+		iface:                  "ens7f0",
 		expectedPtpOffsetCheck: true,
 		expectedPtpOffset:      999,
 		expectedSyncStateCheck: true,
@@ -317,7 +317,7 @@ var testCases = []TestCase{
 		log:                    "GM[1000000400]:[ts2phc.0.config] ens2f0 T-GM-STATUS s0",
 		from:                   "master",
 		process:                "GM",
-		iface:                  "ens2fx",
+		iface:                  "ens2f0",
 		expectedSyncStateCheck: true,
 		expectedSyncState:      float64(types.FREERUN),
 		expectedEvent:          []ptp.EventType{ptp.PtpStateChange, ptp.SyncStateChange},
@@ -327,7 +327,7 @@ var testCases = []TestCase{
 		log:                    "gnss[1000000500]:[ts2phc.0.config] ens2f1 gnss_status 3 offset 5 s2",
 		from:                   "gnss",
 		process:                "gnss",
-		iface:                  "ens2fx",
+		iface:                  "ens2f1",
 		lastSyncState:          ptp.FREERUN,
 		expectedPtpOffsetCheck: true,
 		expectedPtpOffset:      5,
@@ -400,7 +400,7 @@ func setup() {
 	statsMaster := stats.NewStats(logPtp4lConfig.Name)
 	statsMaster.SetOffsetSource("master")
 	statsMaster.SetProcessName("ts2phc")
-	statsMaster.SetAlias("ens2fx")
+	statsMaster.SetAlias("ens2f0")
 
 	statsSlave := stats.NewStats(logPtp4lConfig.Name)
 	statsSlave.SetOffsetSource("phc")
@@ -414,7 +414,7 @@ func setup() {
 	statsPHCDualFollower.SetOffsetSource("master")
 	statsPHCDualFollower.SetProcessName("ptp4l")
 	statsPHCDualFollower.SetLastSyncState("LOCKED")
-	statsPHCDualFollower.SetAlias("ens3fx")
+	statsPHCDualFollower.SetAlias("ens3f1")
 
 	statsRTDualFollower := stats.NewStats(logPtp4lConfigDualFollower.Name)
 	statsRTDualFollower.SetOffsetSource("phc")

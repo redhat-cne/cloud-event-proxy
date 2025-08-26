@@ -19,6 +19,8 @@ var (
 	// NodeName from the env
 	ptpNodeName        = ""
 	masterOffsetSource = ""
+
+	aliasRegex = regexp.MustCompile(`ALIAS:\s*(?P<interface>[\w|-|_]+)\s+->\s(?P<alias>[\w|-|_]+)`)
 )
 
 const (
@@ -90,6 +92,12 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			log.Errorf("failed to extract %s", msg)
 		}
 	}()
+
+	if match := aliasRegex.FindStringSubmatch(msg); len(match) >= 3 {
+		utils.Aliases.SetAlias(match[1], match[2])
+		return
+	}
+
 	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
 	output := replacer.Replace(msg)
 	fields := strings.Fields(output)

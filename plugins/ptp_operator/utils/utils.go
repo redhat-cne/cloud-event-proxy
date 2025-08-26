@@ -1,19 +1,49 @@
 package utils
 
-import "strings"
+import (
+	"sync"
+)
 
-func GetAlias(ifname string) string {
-	alias := ""
+// Aliases instance of the alias manager
+var Aliases = &AliasManager{}
+
+// AliasManager ...
+type AliasManager struct {
+	lock   sync.RWMutex
+	values map[string]string
+}
+
+// Clear will remove all aliases
+func (a *AliasManager) Clear() {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	a.values = make(map[string]string)
+}
+
+// SetAlias ...
+func (a *AliasManager) SetAlias(name, alias string) {
+	a.lock.Lock()
+	defer a.lock.Unlock()
+	if a.values == nil {
+		a.values = make(map[string]string)
+	}
+	a.values[name] = alias
+}
+
+// GetAlias returns a interface name and returns the alias
+func (a *AliasManager) GetAlias(ifname string) string {
+	a.lock.RLock()
+	defer a.lock.RUnlock()
+
 	if ifname != "" {
-		// Aliases the interface name or <interface_name>.<vlan>
-		dotIndex := strings.Index(ifname, ".")
-		if dotIndex == -1 {
-			// e.g. ens1f0 -> ens1fx
-			alias = ifname[:len(ifname)-1] + "x"
-		} else {
-			// e.g ens1f0.100 -> ens1fx.100
-			alias = ifname[:dotIndex-1] + "x" + ifname[dotIndex:]
+		if alias, ok := a.values[ifname]; ok {
+			return alias
 		}
 	}
-	return alias
+	return ifname
+}
+
+// GetAlias masks interface names for metric reporting
+func GetAlias(ifname string) string {
+	return Aliases.GetAlias(ifname)
 }
