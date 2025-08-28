@@ -5,9 +5,10 @@ package main
 
 import (
 	"fmt"
+	"os"
+
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"k8s.io/utils/pointer"
-	"os"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ceEvent "github.com/redhat-cne/sdk-go/pkg/event"
@@ -62,8 +63,13 @@ func TestSidecar_Main(t *testing.T) {
 	log.Infof("Configuration set to %#v", scConfig)
 
 	//start rest service
-	err := common.StartPubSubService(scConfig)
+	err := common.StartPubSubService(scConfig, nil)
 	assert.Nil(t, err)
+
+	// Clean up any existing subscriptions and publishers from previous test runs
+	_ = scConfig.PubSubAPI.DeleteAllSubscriptions()
+	_ = scConfig.PubSubAPI.DeleteAllPublishers()
+	_, _ = scConfig.SubscriberAPI.DeleteAllSubscriptions()
 
 	// imitate main process
 	wg.Add(1)
