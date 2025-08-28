@@ -34,6 +34,7 @@ var (
 	ptpSyncE4lConfigFileRegEx = regexp.MustCompile(`synce4l.[0-9]*.config`)
 	sectionHead               = regexp.MustCompile(`\[([^\[\]]*)\]`)
 	profileRegEx              = regexp.MustCompile(`profile: \s*([\w-_]+)`)
+	aliasRegEx                = regexp.MustCompile(`#\s*alias:\s*(.*)\s*`)
 	fileNameRegEx             = regexp.MustCompile("([^/]+$)")
 )
 
@@ -101,7 +102,14 @@ func (p *PtpConfigUpdate) GetAllSections() map[string]map[string]string {
 		line := strings.TrimSpace(scanner.Text())
 
 		// Skip empty lines and comments
-		if line == "" || strings.HasPrefix(line, "#") {
+		if line == "" || (strings.HasPrefix(line, "#") && !aliasRegEx.MatchString(line)) {
+			continue
+		}
+
+		if match := aliasRegEx.FindStringSubmatch(line); len(match) >= 2 {
+			if match[1] != "" {
+				utils.Aliases.SetAlias(currentSection, match[1])
+			}
 			continue
 		}
 
