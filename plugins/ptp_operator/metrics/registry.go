@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/stats"
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/utils"
 
 	log "github.com/sirupsen/logrus"
 
@@ -85,7 +86,7 @@ var (
 			Subsystem: ptpSubsystem,
 			Name:      "interface_role",
 			Help:      "0 = PASSIVE, 1 = SLAVE, 2 = MASTER, 3 = FAULTY, 4 = UNKNOWN, 5 = LISTENING",
-		}, []string{"process", "node", "iface"})
+		}, []string{"process", "node", "iface", "alias"})
 
 	// ClockClassMetrics metrics to show current clock class for the node
 	ClockClassMetrics = prometheus.NewGaugeVec(
@@ -249,7 +250,7 @@ func UpdatePTPHaMetrics(profile string, status int64) {
 // UpdateInterfaceRoleMetrics ... update interface role metrics
 func UpdateInterfaceRoleMetrics(process, ptpInterface string, role types.PtpPortRole) {
 	InterfaceRole.With(prometheus.Labels{
-		"process": process, "node": ptpNodeName, "iface": ptpInterface}).Set(float64(role))
+		"process": process, "node": ptpNodeName, "iface": ptpInterface, "alias": utils.GetAlias(ptpInterface)}).Set(float64(role))
 }
 
 // DeleteInterfaceRoleMetrics ... delete interface role metrics

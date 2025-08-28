@@ -172,6 +172,8 @@ func (tc *TestCase) cleanupMetrics() {
 	metrics.NmeaStatus.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
 	metrics.ClockClassMetrics.With(map[string]string{"process": tc.process, "config": "ptp4l.0.config", "node": tc.node}).Set(CLEANUP)
 	metrics.InterfaceRole.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
+	metrics.ClockClassMetrics.With(map[string]string{"process": tc.process, "node": tc.node}).Set(CLEANUP)
+	metrics.InterfaceRole.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface, "alias": tc.iface}).Set(CLEANUP)
 	ptpEventManager.ResetMockEvent()
 }
 
@@ -466,7 +468,7 @@ func Test_ExtractMetrics(t *testing.T) {
 		ptpEventManager.ExtractMetrics(tc.log)
 
 		if tc.expectedRoleCheck {
-			role := metrics.InterfaceRole.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface})
+			role := metrics.InterfaceRole.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface, "alias": tc.iface})
 			statsAddValue(tc.iface, int64(testutil.ToFloat64(role)), tc.logPtp4lConfigName)
 			value := types.PtpPortRole(testutil.ToFloat64(role))
 			assert.Equal(tc.expectedRole, value, "ptp role does not match\n%s", tc.String())
