@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: consumer-auth-config
+  namespace: cloud-events
+data:
+  config.json: |
+    {
+      "enableMTLS": true,
+      "caCertPath": "/etc/cloud-event-consumer/service-ca/ca.crt",
+      "enableOAuth": true,
+      "oauthIssuer": "https://kubernetes.default.svc",
+      "oauthJWKSURL": "https://kubernetes.default.svc/.well-known/openid-configuration",
+      "requiredScopes": ["cloud-event-proxy"],
+      "requiredAudience": "cloud-event-proxy"
+    }
