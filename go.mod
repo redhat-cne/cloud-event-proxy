@@ -36,6 +36,7 @@ require (
 	github.com/go-openapi/jsonreference v0.20.0 // indirect
 	github.com/go-openapi/swag v0.19.14 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/gnostic v0.5.7-v3refs // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
@@ -78,3 +79,4 @@ require (
 replace k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20220328201542-3ee0da9b0b42 // indirect
 
 replace golang.org/x/net => github.com/openshift-sustaining/net v0.43.0-sec.4
+replace github.com/redhat-cne/rest-api => /Users/jacding/workspace/redhat-cne/rest-api

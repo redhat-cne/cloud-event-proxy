@@ -20,9 +20,15 @@ test/cne/junit.xml
 *.so
 pub.json
 sub.json
+cmd/[0-9a-fA-F]*-*.json
 
 .idea
 
 build/
 bin/
 pkg/storage/kubernetes/*.json
+
+# Executable binaries
+consumer
+examples/consumer/consumer
+examples/auth-examples/auth-examples
