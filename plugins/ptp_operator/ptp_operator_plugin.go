@@ -578,7 +578,7 @@ func processPtp4lConfigFileUpdates() {
 							}
 							if ptpMetrics.ClockClassMetrics != nil {
 								ptpMetrics.ClockClassMetrics.Delete(prometheus.Labels{
-									"process": ptp4lProcessName, "node": eventManager.NodeName()})
+									"process": ptp4lProcessName, "config": string(ptpConfigFileName), "node": eventManager.NodeName()})
 							}
 							ptpMetrics.DeletedPTPMetrics(MasterClockType, ts2PhcProcessName, p.Alias())
 							p.DeleteAllMetrics([]*prometheus.GaugeVec{ptpMetrics.PtpOffset, ptpMetrics.SyncState})
