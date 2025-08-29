@@ -170,7 +170,7 @@ func (tc *TestCase) cleanupMetrics() {
 	metrics.PtpDelay.With(map[string]string{"from": tc.from, "process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
 	metrics.SyncState.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
 	metrics.NmeaStatus.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
-	metrics.ClockClassMetrics.With(map[string]string{"process": tc.process, "node": tc.node}).Set(CLEANUP)
+	metrics.ClockClassMetrics.With(map[string]string{"process": tc.process, "config": "ptp4l.0.config", "node": tc.node}).Set(CLEANUP)
 	metrics.InterfaceRole.With(map[string]string{"process": tc.process, "node": tc.node, "iface": tc.iface}).Set(CLEANUP)
 	ptpEventManager.ResetMockEvent()
 }
@@ -500,7 +500,7 @@ func Test_ExtractMetrics(t *testing.T) {
 			assert.Equal(tc.expectedNmeaStatus, testutil.ToFloat64(nmeaStatus), "NmeaStatus does not match\n%s", tc.String())
 		}
 		if tc.expectedClockClassMetricsCheck {
-			clockClassMetrics := metrics.ClockClassMetrics.With(map[string]string{"process": tc.process, "node": tc.node})
+			clockClassMetrics := metrics.ClockClassMetrics.With(map[string]string{"process": tc.process, "config": "ptp4l.0.config", "node": tc.node})
 			assert.Equal(tc.expectedClockClassMetrics, testutil.ToFloat64(clockClassMetrics), "ClockClassMetrics does not match\n%s", tc.String())
 		}
 		assert.Equal(tc.expectedEvent, ptpEventManager.GetMockEvent(), "Expected Event does not match\n%s", tc.String())

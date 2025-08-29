@@ -45,15 +45,15 @@ func init() {
 	}
 
 	scConfig = &common.SCConfiguration{
-		EventInCh:  make(chan *channel.DataChan, channelBufferSize),
-		EventOutCh: make(chan *channel.DataChan, channelBufferSize),
-		CloseCh:    make(chan struct{}),
-		APIPort:    8989,
-		APIPath:    "/api/cne/",
-		PubSubAPI:  v1pubsub.GetAPIInstance("../.."),
+		EventInCh:     make(chan *channel.DataChan, channelBufferSize),
+		EventOutCh:    make(chan *channel.DataChan, channelBufferSize),
+		CloseCh:       make(chan struct{}),
+		APIPort:       8989,
+		APIPath:       "/api/cne/",
+		PubSubAPI:     v1pubsub.GetAPIInstance("../.."),
 		SubscriberAPI: subscriberApi.GetAPIInstance(storePath),
-		StorePath:  storePath,
-		BaseURL:    nil,
+		StorePath:     storePath,
+		BaseURL:       nil,
 		TransportHost: &common.TransportHost{
 			Type: 0,
 			URL:  "",
