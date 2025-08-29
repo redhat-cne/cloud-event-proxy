@@ -1,10 +1,15 @@
 package metrics
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 
@@ -17,6 +22,8 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	log "github.com/sirupsen/logrus"
 )
+
+const logsEndpoint = "http://localhost:8081/emit-logs"
 
 // PTPEventManager ... for PTP
 type PTPEventManager struct {
@@ -33,6 +40,7 @@ type PTPEventManager struct {
 	// Ptp4lConfigInterfaces holds interfaces and its roles, after reading from ptp4l config files
 	Ptp4lConfigInterfaces map[types.ConfigName]*ptp4lconf.PTP4lConfig
 	lastOverallSyncState  ptp.SyncState
+	processStates         map[types.ConfigName]map[string]bool
 }
 
 // NewPTPEventManager to manage events and metrics
@@ -47,6 +55,7 @@ func NewPTPEventManager(resourcePrefix string, publisherTypes map[ptp.EventType]
 		Stats:                 map[types.ConfigName]stats.PTPStats{},
 		Ptp4lConfigInterfaces: make(map[types.ConfigName]*ptp4lconf.PTP4lConfig),
 		mock:                  false,
+		processStates:         make(map[types.ConfigName]map[string]bool),
 	}
 	// attach ptp config updates
 	ptpEventManager.PtpConfigMapUpdates = ptpConfig.NewLinuxPTPConfUpdate()
@@ -108,6 +117,19 @@ func (p *PTPEventManager) AddPTPConfig(fileName types.ConfigName, ptpCfg *ptp4lc
 	p.lock.Lock()
 	p.Ptp4lConfigInterfaces[fileName] = ptpCfg
 	p.lock.Unlock()
+}
+
+func (p *PTPEventManager) updateProcessStatus(configName types.ConfigName, process string, status bool) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	if p.processStates == nil {
+		p.processStates = make(map[types.ConfigName]map[string]bool)
+	}
+
+	if _, ok := p.processStates[configName]; !ok {
+		p.processStates[configName] = make(map[string]bool)
+	}
+	p.processStates[configName][process] = status
 }
 
 // GetPTPConfig ... Add PtpConfigUpdate obj
@@ -197,6 +219,10 @@ func (p *PTPEventManager) SetStats(configName types.ConfigName, s stats.PTPStats
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	p.Stats[configName] = s
+	err := p.saveToStore()
+	if err != nil {
+		log.Errorf("failed to save metrics to store: %s", err)
+	}
 }
 
 // DeletePTPConfig ... delete ptp obj
@@ -336,6 +362,16 @@ func (p *PTPEventManager) GetPTPCloudEvents(data ceevent.Data, eventType ptp.Eve
 	return nil, fmt.Errorf("EventPublisherType not found for event type %s", string(eventType))
 }
 
+func (p *PTPEventManager) UpdateSyncState(syncState ptp.SyncState) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.lastOverallSyncState = syncState
+	err := p.saveToStore()
+	if err != nil {
+		log.Errorf("failed to save metrics to store: %s", err)
+	}
+}
+
 // PublishEvent ...publish events
 func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, source string, eventType ptp.EventType) {
 	// create an event
@@ -365,7 +401,7 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, sou
 			data = p.GetPTPEventsData(state, ptpOffset, source, eventType)
 			resourceAddress = path.Join(p.resourcePrefix, p.nodeName, source)
 			p.publish(*data, resourceAddress, eventType)
-			p.lastOverallSyncState = nodeState
+			p.UpdateSyncState(nodeState)
 		}
 	}
 }
@@ -643,4 +679,106 @@ func OverallState(current, updated ptp.SyncState) ptp.SyncState {
 		log.Warnf("last sync state is unknown: %s", updated)
 	}
 	return ""
+}
+
+type SavedMetrics struct {
+	Timestamp      int64                                             `json:"timestamp"`
+	LastClockState ptp.SyncState                                     `json:"last_clock_state"`
+	PortRoles      map[types.ConfigName]map[string]types.PtpPortRole `json:"portRoles"`
+	ProcessStates  map[types.ConfigName]map[string]bool              `json:"process_states"`
+}
+
+const metricFilename = "metrics.json"
+
+func (p *PTPEventManager) LoadFromStore(config *common.SCConfiguration) (int64, error) {
+	contents, err := os.ReadFile(filepath.Join(config.StorePath, metricFilename))
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	var savedMetrics SavedMetrics
+	err = json.Unmarshal(contents, &savedMetrics)
+	if err != nil {
+		return 0, fmt.Errorf("failed to unmarshal saved metric data: %w", err)
+	}
+	p.lastOverallSyncState = savedMetrics.LastClockState
+	p.processStates = savedMetrics.ProcessStates
+
+	for configName, portAndRole := range savedMetrics.PortRoles {
+		for port, role := range portAndRole {
+			ptpConf := p.GetPTPConfig(configName)
+			if ptpConf == nil {
+				continue
+			}
+			ptpInterface, ifErr := ptpConf.ByInterface(port)
+			if ifErr != nil {
+				continue
+			}
+			ptpInterface.UpdateRole(role)
+		}
+	}
+	return savedMetrics.Timestamp, nil
+}
+
+func (p *PTPEventManager) saveToStore() error {
+	PortRoles := make(map[types.ConfigName]map[string]types.PtpPortRole)
+
+	for configName, ptp4lConf := range p.Ptp4lConfigInterfaces {
+		for _, ptpInterface := range ptp4lConf.Interfaces {
+			if _, ok := PortRoles[configName]; !ok {
+				PortRoles[configName] = make(map[string]types.PtpPortRole)
+			}
+			PortRoles[configName][ptpInterface.Name] = ptpInterface.Role
+		}
+	}
+
+	data := SavedMetrics{
+		Timestamp:      time.Now().Unix(), // TODO track last change to values.
+		LastClockState: p.lastOverallSyncState,
+		PortRoles:      PortRoles,
+	}
+
+	content, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshall save data fron current data: %w", err)
+	}
+	err = Filesystem.WriteFile(filepath.Join(p.scConfig.StorePath, metricFilename), content, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to write save metrics file: %w", err)
+	}
+	return nil
+}
+
+func (p *PTPEventManager) SetInitalMetrics() {
+	for cfgName, ptp4lConf := range p.Ptp4lConfigInterfaces {
+		for _, ptpInterface := range ptp4lConf.Interfaces {
+			updateRoleMetricFromData(string(cfgName), ptpInterface.Name, ptpInterface.Role)
+		}
+	}
+	for cfgName, procs := range p.processStates {
+		for processName, status := range procs {
+			var val int64 = 0
+			if status {
+				val = 1
+			}
+			UpdateProcessStatusMetrics(processName, string(cfgName), val)
+		}
+	}
+}
+
+func (p *PTPEventManager) TriggerLogs() error {
+	resp, err := http.Get(logsEndpoint)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
+func updateRoleMetricFromData(configName, portName string, portRole types.PtpPortRole) {
+	configNameParts := strings.Split(configName, ".")
+	process := ptp4lProcessName
+	if len(configNameParts) > 0 {
+		process = configNameParts[0]
+	}
+	UpdateInterfaceRoleMetrics(process, portName, portRole)
 }
