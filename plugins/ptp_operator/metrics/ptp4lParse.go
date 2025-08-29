@@ -35,7 +35,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 		clockClass, err = strconv.ParseFloat(fields[4], 64)
 		if err != nil {
 			log.Error("error parsing clock class change")
-		} else {
+		} else if ptpStats[master].ClockClass() != int64(clockClass) { // only if there is a change
 			var alias string
 			if m, ok := ptpStats[master]; ok {
 				alias = m.Alias()
@@ -45,12 +45,10 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			}
 			masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
 
+			ptpStats[master].SetClockClass(int64(clockClass))
 			ClockClassMetrics.With(prometheus.Labels{
-				"process": processName, "node": ptpNodeName}).Set(clockClass)
-			if ptpStats[master].ClockClass() != int64(clockClass) {
-				ptpStats[master].SetClockClass(int64(clockClass))
-				p.PublishClockClassEvent(clockClass, masterResource, ptp.PtpClockClassChange)
-			}
+				"process": processName, "config": configName, "node": ptpNodeName}).Set(clockClass)
+			p.PublishClockClassEvent(clockClass, masterResource, ptp.PtpClockClassChange)
 		}
 	} else if strings.Contains(output, " port ") && processName == ptp4lProcessName { // ignore anything reported by other process
 		portID, role, syncState := extractPTP4lEventState(output)
