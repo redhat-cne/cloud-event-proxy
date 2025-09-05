@@ -5,14 +5,14 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"k8s.io/utils/pointer"
 	v2 "github.com/cloudevents/sdk-go/v2"
+	"k8s.io/utils/pointer"
+	"os"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
+	ceEvent "github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	"github.com/redhat-cne/sdk-go/pkg/types"
-	ceEvent "github.com/redhat-cne/sdk-go/pkg/event"
 
 	"sync"
 	"testing"
@@ -43,14 +43,14 @@ func TestSidecar_Main(t *testing.T) {
 		storePath = sPath
 	}
 	scConfig = &common.SCConfiguration{
-		EventInCh:  make(chan *channel.DataChan, channelBufferSize),
-		EventOutCh: make(chan *channel.DataChan, channelBufferSize),
-		CloseCh:    make(chan struct{}),
-		APIPort:    apiPort,
-		APIPath:    "/api/ocloudNotifications/v2/",
-		PubSubAPI:  v1pubsub.GetAPIInstance(storePath),
+		EventInCh:     make(chan *channel.DataChan, channelBufferSize),
+		EventOutCh:    make(chan *channel.DataChan, channelBufferSize),
+		CloseCh:       make(chan struct{}),
+		APIPort:       apiPort,
+		APIPath:       "/api/ocloudNotifications/v2/",
+		PubSubAPI:     v1pubsub.GetAPIInstance(storePath),
 		SubscriberAPI: subscriberApi.GetAPIInstance(storePath),
-		StorePath:  storePath,
+		StorePath:     storePath,
 		TransportHost: &common.TransportHost{
 			Type: common.HTTP,
 			URL:  "localhost:8089",
