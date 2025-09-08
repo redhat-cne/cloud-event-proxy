@@ -6,6 +6,7 @@ resources:
 - auth/service-account.yaml
 - auth/configmap.yaml
 - consumer.yaml
+- consumer-cert-manager.yaml
 replicas:
 - count: 1
   name: cloud-consumer-deployment
