@@ -2,6 +2,8 @@ package utils
 
 import (
 	"regexp"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func GetAlias(ifname string) string {
@@ -21,6 +23,10 @@ func GetAlias(ifname string) string {
 			if len(matches) > 3 && matches[3] != "" {
 				alias += matches[3] // append VLAN part if present
 			}
+		} else {
+			// Interface doesn't match Intel or Mellanox format, return original interface name
+			log.Errorf("Interface %s does not match Intel or Mellanox naming format, using original interface name", ifname)
+			alias = ifname
 		}
 	}
 	return alias
