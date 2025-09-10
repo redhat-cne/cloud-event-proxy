@@ -7,10 +7,12 @@ data:
   config.json: |
     {
       "enableMTLS": true,
-      "caCertPath": "/etc/cloud-event-consumer/service-ca/ca.crt",
+      "clientCertPath": "/etc/cloud-event-consumer/client-certs/tls.crt",
+      "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
+      "caCertPath": "/etc/cloud-event-consumer/ca-bundle/ca.crt",
       "enableOAuth": true,
-      "oauthIssuer": "https://kubernetes.default.svc",
-      "oauthJWKSURL": "https://kubernetes.default.svc/.well-known/openid-configuration",
-      "requiredScopes": ["cloud-event-proxy"],
+      "oauthIssuer": "https://your-oauth-provider.com",
+      "oauthJWKSURL": "https://your-oauth-provider.com/.well-known/jwks.json",
+      "requiredScopes": ["subscription:create", "events:read"],
       "requiredAudience": "cloud-event-proxy"
     }

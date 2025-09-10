@@ -6,7 +6,11 @@ resources:
 - auth/service-account.yaml
 - auth/configmap.yaml
 - consumer.yaml
-- consumer-cert-manager.yaml
+
+# Note: You need to create the certificate secrets manually
+# See auth/certificate-example.md for instructions
+# - consumer-client-certs (TLS secret with client certificate)
+# - server-ca-bundle (generic secret with CA certificate)
 replicas:
 - count: 1
   name: cloud-consumer-deployment

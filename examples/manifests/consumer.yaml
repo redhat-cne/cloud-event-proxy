@@ -12,13 +12,9 @@ spec:
       app: consumer
   template:
     metadata:
-      annotations:
-        target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
         app: consumer
     spec:
-      nodeSelector:
-        node-role.kubernetes.io/worker: ""
       serviceAccountName: consumer-sa
       containers:
         - name: cloud-event-consumer
@@ -38,16 +34,14 @@ spec:
               value: "PTP"
             - name: ENABLE_STATUS_CHECK
               value: "true"
-            - name: SERVICE_ACCOUNT_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: $(SERVICE_ACCOUNT_NAME)-token
-                  key: token
           volumeMounts:
             - name: pubsubstore
               mountPath: /store
-            - name: service-ca
-              mountPath: /etc/cloud-event-consumer/service-ca
+            - name: client-certs
+              mountPath: /etc/cloud-event-consumer/client-certs
+              readOnly: true
+            - name: ca-bundle
+              mountPath: /etc/cloud-event-consumer/ca-bundle
               readOnly: true
             - name: auth-config
               mountPath: /etc/cloud-event-consumer/auth
@@ -55,12 +49,12 @@ spec:
       volumes:
         - name: pubsubstore
           emptyDir: {}
-        - name: service-ca
-          configMap:
-            name: ptp-event-publisher-ca-bundle
-            items:
-            - key: service-ca.crt
-              path: ca.crt
+        - name: client-certs
+          secret:
+            secretName: consumer-client-certs
+        - name: ca-bundle
+          secret:
+            secretName: server-ca-bundle
         - name: auth-config
           configMap:
             name: consumer-auth-config
