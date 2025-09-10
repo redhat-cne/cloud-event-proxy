@@ -1,12 +1,12 @@
 # Authentication Configuration for Cloud Event Consumer
 
-This guide explains how to use mTLS and OAuth authentication in the example cloud event consumer deployment.
+This guide explains how to use mTLS and OAuth authentication in the example cloud event consumer deployment. This example is designed to be generic and work with any Kubernetes cluster, not specific to OpenShift.
 
 ## Overview
 
 The example consumer is configured to authenticate with the cloud-event-proxy server using:
 - mTLS (Mutual TLS) for transport security
-- OAuth with Service Account tokens for client authentication
+- OAuth with JWT tokens for client authentication
 
 ## Components
 
@@ -18,11 +18,13 @@ data:
   config.json: |
     {
       "enableMTLS": true,
-      "caCertPath": "/etc/cloud-event-consumer/service-ca/ca.crt",
+      "clientCertPath": "/etc/cloud-event-consumer/client-certs/tls.crt",
+      "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
+      "caCertPath": "/etc/cloud-event-consumer/ca-bundle/ca.crt",
       "enableOAuth": true,
-      "oauthIssuer": "https://kubernetes.default.svc",
-      "oauthJWKSURL": "https://kubernetes.default.svc/.well-known/openid-configuration",
-      "requiredScopes": ["cloud-event-proxy"],
+      "oauthIssuer": "https://your-oauth-provider.com",
+      "oauthJWKSURL": "https://your-oauth-provider.com/.well-known/jwks.json",
+      "requiredScopes": ["subscription:create", "events:read"],
       "requiredAudience": "cloud-event-proxy"
     }
 ```
@@ -31,14 +33,15 @@ data:
 
 The consumer uses a dedicated service account (`consumer-sa`) with:
 - RBAC permissions to access the cloud-event-proxy service
-- Automatically managed OAuth tokens
-- Token mounted in the pod for authentication
+- Basic Kubernetes service account functionality
+- No OpenShift-specific dependencies
 
 ### Certificate Management
 
 The consumer accesses certificates through:
-- Service CA bundle mounted from the cloud-event-proxy service
-- Automatic certificate rotation handled by OpenShift
+- Client certificates mounted from Kubernetes secrets
+- CA bundle mounted from Kubernetes secrets
+- Manual certificate management (no automatic rotation)
 - Secure volume mounts in the pod
 
 ## Deployment
@@ -47,10 +50,10 @@ The authentication components are automatically deployed when you apply the exam
 
 ```bash
 # Create namespace and resources
-oc apply -k examples/manifests/
+kubectl apply -k examples/manifests/
 
 # Verify the deployment
-oc get deployment cloud-consumer-deployment -n cloud-events
+kubectl get deployment cloud-consumer-deployment -n cloud-events
 ```
 
 ## Configuration Options
@@ -76,11 +79,14 @@ Adjust RBAC permissions in `auth/service-account.yaml`:
 
 Check the mounted certificates:
 ```bash
-# View CA bundle
-oc get configmap ptp-event-publisher-ca-bundle -n openshift-ptp -o yaml
+# View CA bundle secret
+kubectl get secret server-ca-bundle -n cloud-events -o yaml
+
+# Check client certificates
+kubectl get secret consumer-client-certs -n cloud-events -o yaml
 
 # Check certificate mounting in pod
-oc describe pod -l app=consumer -n cloud-events
+kubectl describe pod -l app=consumer -n cloud-events
 ```
 
 ### Authentication Errors
@@ -88,10 +94,10 @@ oc describe pod -l app=consumer -n cloud-events
 Check the consumer logs:
 ```bash
 # View pod logs
-oc logs deployment/cloud-consumer-deployment -n cloud-events
+kubectl logs deployment/cloud-consumer-deployment -n cloud-events
 
-# Check service account token
-oc describe sa consumer-sa -n cloud-events
+# Check service account
+kubectl describe sa consumer-sa -n cloud-events
 ```
 
 ### RBAC Issues
@@ -99,22 +105,23 @@ oc describe sa consumer-sa -n cloud-events
 Verify RBAC configuration:
 ```bash
 # Check role binding
-oc get rolebinding cloud-event-consumer -n openshift-ptp -o yaml
+kubectl get rolebinding cloud-event-consumer -n openshift-ptp -o yaml
 
 # Test permissions
-oc auth can-i get services -n openshift-ptp --as system:serviceaccount:cloud-events:consumer-sa
+kubectl auth can-i get services -n openshift-ptp --as system:serviceaccount:cloud-events:consumer-sa
 ```
 
 ## Security Considerations
 
 1. **Certificate Management**
-   - Certificates are automatically rotated by OpenShift
-   - CA bundle is kept up to date
+   - Certificates must be manually managed and rotated
+   - CA bundle should be kept up to date
    - Private keys never leave the pod
+   - Consider using a certificate management solution in production
 
 2. **Token Security**
-   - Service account tokens are automatically rotated
-   - Tokens are mounted securely in the pod
+   - OAuth tokens should be obtained from your OAuth provider
+   - Tokens should be rotated regularly
    - Access is controlled via RBAC
 
 3. **Network Security**
@@ -159,8 +166,8 @@ func createAuthenticatedClient(authConfig *AuthConfig) (*http.Client, error) {
 }
 
 func makeAuthenticatedRequest(client *http.Client, url string) error {
-    // Get service account token
-    token := os.Getenv("SERVICE_ACCOUNT_TOKEN")
+    // Get OAuth token from your OAuth provider
+    token := getOAuthToken() // Implement this function to get token from your OAuth provider
 
     // Create request
     req, err := http.NewRequest("POST", url, nil)
