@@ -47,6 +47,8 @@ import (
 	pubsubv1 "github.com/redhat-cne/sdk-go/v1/pubsub"
 	subscriberApi "github.com/redhat-cne/sdk-go/v1/subscriber"
 
+	"crypto/tls"
+	"crypto/x509"
 	"io"
 	"net/http"
 	"strings"
@@ -75,6 +77,27 @@ const (
 	CURRENTSTATE = "CurrentState"
 )
 
+// AuthConfig contains authentication configuration
+type AuthConfig struct {
+	// mTLS configuration using cert-manager
+	EnableMTLS           bool   `json:"enableMTLS"`
+	CACertPath           string `json:"caCertPath"`
+	ServerCertPath       string `json:"serverCertPath"`
+	ServerKeyPath        string `json:"serverKeyPath"`
+	CertManagerIssuer    string `json:"certManagerIssuer"`    // cert-manager ClusterIssuer name
+	CertManagerNamespace string `json:"certManagerNamespace"` // namespace for cert-manager resources
+
+	// OAuth configuration using OpenShift Authentication Operator
+	EnableOAuth            bool     `json:"enableOAuth"`
+	OAuthIssuer            string   `json:"oauthIssuer"`            // OpenShift OAuth server URL
+	OAuthJWKSURL           string   `json:"oauthJWKSURL"`           // OpenShift JWKS endpoint
+	RequiredScopes         []string `json:"requiredScopes"`         // Required OAuth scopes
+	RequiredAudience       string   `json:"requiredAudience"`       // Required OAuth audience
+	ServiceAccountName     string   `json:"serviceAccountName"`     // ServiceAccount for client authentication
+	ServiceAccountToken    string   `json:"serviceAccountToken"`    // ServiceAccount token path
+	AuthenticationOperator bool     `json:"authenticationOperator"` // Use OpenShift Authentication Operator
+}
+
 // Server defines rest routes server object
 type Server struct {
 	port    int
@@ -90,6 +113,8 @@ type Server struct {
 	status                  ServerStatus
 	statusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error
 	statusLock              sync.RWMutex
+	authConfig              *AuthConfig
+	caCertPool              *x509.CertPool
 }
 
 // SubscriptionInfo
@@ -215,7 +240,8 @@ type swaggEventData struct { //nolint:deadcode,unused
 // InitServer is used to supply configurations for rest routes server
 func InitServer(port int, apiHost, apiPath, storePath string,
 	dataOut chan<- *channel.DataChan, closeCh <-chan struct{},
-	onStatusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error) *Server {
+	onStatusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error,
+	authConfig *AuthConfig) *Server {
 	once.Do(func() {
 		ServerInstance = &Server{
 			port:    port,
@@ -233,6 +259,14 @@ func InitServer(port int, apiHost, apiPath, storePath string,
 			pubSubAPI:               pubsubv1.GetAPIInstance(storePath),
 			subscriberAPI:           subscriberApi.GetAPIInstance(storePath),
 			statusReceiveOverrideFn: onStatusReceiveOverrideFn,
+			authConfig:              authConfig,
+		}
+
+		// Initialize mTLS CA certificate pool if mTLS is enabled
+		if authConfig != nil && authConfig.EnableMTLS && authConfig.CACertPath != "" {
+			if err := ServerInstance.initMTLSCACertPool(); err != nil {
+				log.Errorf("failed to initialize mTLS CA certificate pool: %v", err)
+			}
 		}
 	})
 	// singleton
@@ -314,6 +348,14 @@ func (s *Server) Start() {
 
 	api := r.PathPrefix(s.apiPath).Subrouter()
 
+	// Helper function to apply authentication to handlers
+	applyAuth := func(handler http.HandlerFunc, needsAuth bool) http.Handler {
+		if needsAuth {
+			return s.combinedAuthMiddleware(handler)
+		}
+		return handler
+	}
+
 	// createSubscription create subscription and send it to a channel that is shared by middleware to process
 	// swagger:operation POST /subscriptions Subscriptions createSubscription
 	// ---
@@ -330,11 +372,13 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/pubSubResp"
 	//   "400":
 	//     description: Bad request. For example, the endpoint URI is not correctly formatted.
+	//   "401":
+	//     description: Unauthorized. Authentication required (mTLS and/or OAuth).
 	//   "404":
 	//     description: Not Found. Subscription resource is not available.
 	//   "409":
 	//     description: Conflict. The subscription resource already exists.
-	api.HandleFunc("/subscriptions", s.createSubscription).Methods(http.MethodPost)
+	api.Handle("/subscriptions", applyAuth(s.createSubscription, true)).Methods(http.MethodPost)
 
 	// swagger:operation GET /subscriptions Subscriptions getSubscriptions
 	// ---
@@ -345,7 +389,7 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/subscriptions"
 	//   "400":
 	//     description: Bad request by the client.
-	api.HandleFunc("/subscriptions", s.getSubscriptions).Methods(http.MethodGet)
+	api.Handle("/subscriptions", applyAuth(s.getSubscriptions, false)).Methods(http.MethodGet)
 
 	// swagger:operation GET /subscriptions/{subscriptionId} Subscriptions getSubscriptionByID
 	// ---
@@ -356,7 +400,7 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/subscription"
 	//   "404":
 	//     description: Not Found. Subscription resources are not available (not created).
-	api.HandleFunc("/subscriptions/{subscriptionId}", s.getSubscriptionByID).Methods(http.MethodGet)
+	api.Handle("/subscriptions/{subscriptionId}", applyAuth(s.getSubscriptionByID, false)).Methods(http.MethodGet)
 
 	// swagger:operation DELETE /subscriptions/{subscriptionId} Subscriptions deleteSubscription
 	// ---
@@ -365,9 +409,11 @@ func (s *Server) Start() {
 	// responses:
 	//   "204":
 	//     description: Success.
+	//   "401":
+	//     description: Unauthorized. Authentication required (mTLS and/or OAuth).
 	//   "404":
 	//     description: Not Found. Subscription resources are not available (not created).
-	api.HandleFunc("/subscriptions/{subscriptionId}", s.deleteSubscription).Methods(http.MethodDelete)
+	api.Handle("/subscriptions/{subscriptionId}", applyAuth(s.deleteSubscription, true)).Methods(http.MethodDelete)
 
 	// swagger:operation GET /{ResourceAddress}/CurrentState Events getCurrentState
 	// ---
@@ -378,7 +424,7 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/eventResp"
 	//   "404":
 	//     description: Not Found. Event notification resource is not available on this node.
-	api.HandleFunc("/{resourceAddress:.*}/CurrentState", s.getCurrentState).Methods(http.MethodGet)
+	api.Handle("/{resourceAddress:.*}/CurrentState", applyAuth(s.getCurrentState, false)).Methods(http.MethodGet)
 
 	// *** Extensions to O-RAN API ***
 
@@ -389,6 +435,7 @@ func (s *Server) Start() {
 	// responses:
 	//   "200":
 	//     "$ref": "#/responses/statusOK"
+	// Note: Health endpoint is always accessible without authentication
 	api.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		io.WriteString(w, "OK") //nolint:errcheck
 	}).Methods(http.MethodGet)
@@ -404,7 +451,7 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/publishers"
 	//   "404":
 	//	   description: Publishers not found
-	api.HandleFunc("/publishers", s.getPublishers).Methods(http.MethodGet)
+	api.Handle("/publishers", applyAuth(s.getPublishers, false)).Methods(http.MethodGet)
 
 	// swagger:operation DELETE /subscriptions Subscriptions deleteAllSubscriptions
 	// ---
@@ -413,13 +460,15 @@ func (s *Server) Start() {
 	// responses:
 	//   "204":
 	//     description: Deleted all subscriptions.
-	api.HandleFunc("/subscriptions", s.deleteAllSubscriptions).Methods(http.MethodDelete)
+	//   "401":
+	//     description: Unauthorized. Authentication required (mTLS and/or OAuth).
+	api.Handle("/subscriptions", applyAuth(s.deleteAllSubscriptions, true)).Methods(http.MethodDelete)
 
 	// *** Internal API ***
 
-	api.HandleFunc("/publishers/{publisherid}", s.getPublisherByID).Methods(http.MethodGet)
-	api.HandleFunc("/publishers/{publisherid}", s.deletePublisher).Methods(http.MethodDelete)
-	api.HandleFunc("/publishers", s.deleteAllPublishers).Methods(http.MethodDelete)
+	api.Handle("/publishers/{publisherid}", applyAuth(s.getPublisherByID, false)).Methods(http.MethodGet)
+	api.Handle("/publishers/{publisherid}", applyAuth(s.deletePublisher, true)).Methods(http.MethodDelete)
+	api.Handle("/publishers", applyAuth(s.deleteAllPublishers, true)).Methods(http.MethodDelete)
 
 	//pingForSubscribedEventStatus pings for event status  if the publisher  has capability to push event on demand
 	// this API is internal
@@ -435,11 +484,13 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/pubSubResp"
 	//   "400":
 	//     "$ref": "#/responses/badReq"
-	api.HandleFunc("/subscriptions/status/{subscriptionId}", s.pingForSubscribedEventStatus).Methods(http.MethodPut)
+	//   "401":
+	//     description: Unauthorized. Authentication required (mTLS and/or OAuth).
+	api.Handle("/subscriptions/status/{subscriptionId}", applyAuth(s.pingForSubscribedEventStatus, true)).Methods(http.MethodPut)
 
-	api.HandleFunc("/log", s.logEvent).Methods(http.MethodPost)
+	api.Handle("/log", applyAuth(s.logEvent, true)).Methods(http.MethodPost)
 
-	api.HandleFunc("/publishers", s.createPublisher).Methods(http.MethodPost)
+	api.Handle("/publishers", applyAuth(s.createPublisher, true)).Methods(http.MethodPost)
 
 	//publishEvent create event and send it to a channel that is shared by middleware to process
 	// this API is internal
@@ -457,12 +508,14 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/acceptedReq"
 	//   "400":
 	//     "$ref": "#/responses/badReq"
-	api.HandleFunc("/create/event", s.publishEvent).Methods(http.MethodPost)
+	//   "401":
+	//     description: Unauthorized. Authentication required (mTLS and/or OAuth).
+	api.Handle("/create/event", applyAuth(s.publishEvent, true)).Methods(http.MethodPost)
 
 	// for internal test
-	api.HandleFunc("/dummy", dummy).Methods(http.MethodPost)
+	api.Handle("/dummy", applyAuth(dummy, true)).Methods(http.MethodPost)
 	// for internal test: test multiple clients
-	api.HandleFunc("/dummy2", dummy).Methods(http.MethodPost)
+	api.Handle("/dummy2", applyAuth(dummy, true)).Methods(http.MethodPost)
 
 	err := r.Walk(func(route *mux.Route, _ *mux.Router, _ []*mux.Route) error {
 		pathTemplate, err := route.GetPathTemplate()
@@ -504,10 +557,50 @@ func (s *Server) Start() {
 			Addr:              fmt.Sprintf(":%d", s.port),
 			Handler:           api,
 		}
-		err := s.httpServer.ListenAndServe()
-		if err != nil {
-			log.Errorf("restarting due to error with api server %s\n", err.Error())
-			s.SetStatus(failed)
+
+		// Configure TLS if mTLS is enabled
+		if s.authConfig != nil && s.authConfig.EnableMTLS {
+			if s.authConfig.ServerCertPath == "" || s.authConfig.ServerKeyPath == "" {
+				log.Error("mTLS enabled but server certificate or key path not provided")
+				s.SetStatus(failed)
+				return
+			}
+
+			// Load server certificate and key
+			cert, err := tls.LoadX509KeyPair(s.authConfig.ServerCertPath, s.authConfig.ServerKeyPath)
+			if err != nil {
+				log.Errorf("failed to load server certificate: %v", err)
+				s.SetStatus(failed)
+				return
+			}
+
+			// Configure TLS with client certificate requirement
+			tlsConfig := &tls.Config{
+				Certificates: []tls.Certificate{cert},
+				ClientAuth:   tls.RequireAndVerifyClientCert,
+				ClientCAs:    s.caCertPool,
+				MinVersion:   tls.VersionTLS12,
+			}
+
+			s.httpServer.TLSConfig = tlsConfig
+
+			// Note: When mTLS is enabled, the health endpoint is still accessible
+			// but requires a valid client certificate. For internal health checks,
+			// the PTP daemon should use the service CA certificate.
+
+			log.Info("starting HTTPS server with mTLS")
+			err = s.httpServer.ListenAndServeTLS("", "")
+			if err != nil {
+				log.Errorf("restarting due to error with TLS api server %s\n", err.Error())
+				s.SetStatus(failed)
+			}
+		} else {
+			log.Info("starting HTTP server")
+			err := s.httpServer.ListenAndServe()
+			if err != nil {
+				log.Errorf("restarting due to error with api server %s\n", err.Error())
+				s.SetStatus(failed)
+			}
 		}
 	}, 1*time.Second, s.closeCh)
 }
