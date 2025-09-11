@@ -521,10 +521,8 @@ func (p *PTPEventManager) PrintStats() string {
 
 // IsHAProfile ... if profile for ha found pass
 func (p *PTPEventManager) IsHAProfile(name string) bool {
-	// Check if this profile is the HA profile (the one containing haProfiles setting)
-	isHA := p.PtpConfigMapUpdates.HAProfile == name
-	log.Debugf("IsHAProfile: profile=%s, HAProfile=%s, isHA=%t", name, p.PtpConfigMapUpdates.HAProfile, isHA)
-	return isHA
+	// Check if PtpSettings exist, if so proceed with confidence
+	return p.PtpConfigMapUpdates.HAProfile == name
 }
 
 // HAProfiles ... if profile for ha found pass the settings
