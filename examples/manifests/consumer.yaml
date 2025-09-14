@@ -14,8 +14,12 @@ spec:
     metadata:
       labels:
         app: consumer
+      annotations:
+        target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
     spec:
       serviceAccountName: consumer-sa
+      nodeSelector:
+        node-role.kubernetes.io/worker: ""
       containers:
         - name: cloud-event-consumer
           image: cloud-event-consumer
