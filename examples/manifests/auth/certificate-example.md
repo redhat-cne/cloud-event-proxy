@@ -28,7 +28,7 @@ openssl genrsa -out server.key 4096
 # Generate server certificate signing request
 openssl req -new -key server.key -out server.csr -subj "/C=US/ST=CA/O=MyOrg/CN=cloud-event-proxy"
 
-# Generate server certificate signed by CA
+# Generate server certificate signed by CA. This creates server.crt and ca.srl
 openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 365 -sha256
 ```
 
@@ -41,7 +41,7 @@ openssl genrsa -out client.key 4096
 # Generate client certificate signing request
 openssl req -new -key client.key -out client.csr -subj "/C=US/ST=CA/O=MyOrg/CN=cloud-event-consumer"
 
-# Generate client certificate signed by CA
+# Generate client certificate signed by CA.  This creates client.crt and ca.srl
 openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt -days 365 -sha256
 ```
 
