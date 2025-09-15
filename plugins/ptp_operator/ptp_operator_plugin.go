@@ -544,6 +544,12 @@ func processPtp4lConfigFileUpdates() {
 					ptpMetrics.DeletePTPHAMetrics(ptpConfig.Profile)
 					for _, ptpInterface := range ptpConfig.Interfaces {
 						ptpMetrics.DeleteInterfaceRoleMetrics(ptp4lProcessName, ptpInterface.Name)
+						// Clean up ts2phc sync state metrics for T-BC profiles
+						// These metrics are created by T-BC state synchronization logic
+						if eventManager.GetProfileType(ptpConfig.Profile) == ptp4lconf.TBC {
+							ptpMetrics.SyncState.Delete(prometheus.Labels{
+								"process": ts2PhcProcessName, "node": eventManager.NodeName(), "iface": ptpInterface.Name})
+						}
 					}
 					if t, ok2 := eventManager.PtpConfigMapUpdates.EventThreshold[ptpConfig.Profile]; ok2 {
 						// Make sure that the function does close the channel
