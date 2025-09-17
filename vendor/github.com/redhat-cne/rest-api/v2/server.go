@@ -77,17 +77,18 @@ const (
 	CURRENTSTATE = "CurrentState"
 )
 
-// AuthConfig contains authentication configuration
+// AuthConfig contains authentication configuration for both single and multi-node OpenShift clusters
 type AuthConfig struct {
-	// mTLS configuration using cert-manager
+	// mTLS configuration - works for both single and multi-node clusters
 	EnableMTLS           bool   `json:"enableMTLS"`
 	CACertPath           string `json:"caCertPath"`
 	ServerCertPath       string `json:"serverCertPath"`
 	ServerKeyPath        string `json:"serverKeyPath"`
-	CertManagerIssuer    string `json:"certManagerIssuer"`    // cert-manager ClusterIssuer name
-	CertManagerNamespace string `json:"certManagerNamespace"` // namespace for cert-manager resources
+	UseServiceCA         bool   `json:"useServiceCA"`         // Use OpenShift Service CA (recommended for all cluster sizes)
+	CertManagerIssuer    string `json:"certManagerIssuer"`    // cert-manager ClusterIssuer name (optional alternative)
+	CertManagerNamespace string `json:"certManagerNamespace"` // namespace for cert-manager resources (optional alternative)
 
-	// OAuth configuration using OpenShift Authentication Operator
+	// OAuth configuration using OpenShift OAuth Server - works for both single and multi-node clusters
 	EnableOAuth            bool     `json:"enableOAuth"`
 	OAuthIssuer            string   `json:"oauthIssuer"`            // OpenShift OAuth server URL
 	OAuthJWKSURL           string   `json:"oauthJWKSURL"`           // OpenShift JWKS endpoint
@@ -95,7 +96,8 @@ type AuthConfig struct {
 	RequiredAudience       string   `json:"requiredAudience"`       // Required OAuth audience
 	ServiceAccountName     string   `json:"serviceAccountName"`     // ServiceAccount for client authentication
 	ServiceAccountToken    string   `json:"serviceAccountToken"`    // ServiceAccount token path
-	AuthenticationOperator bool     `json:"authenticationOperator"` // Use OpenShift Authentication Operator
+	UseOpenShiftOAuth      bool     `json:"useOpenShiftOAuth"`      // Use OpenShift's built-in OAuth server (recommended for all cluster sizes)
+	AuthenticationOperator bool     `json:"authenticationOperator"` // Use OpenShift Authentication Operator (optional alternative)
 }
 
 // Server defines rest routes server object
