@@ -130,7 +130,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	}
 	// if process is down fire an event
 	if strings.Contains(output, ptpProcessStatusIdentifier) {
-		if status, e := parsePTPStatus(output, fields); e == nil {
+		if status, e := p.parsePTPStatus(output, fields); e == nil {
 			if status == PtpProcessDown {
 				p.processDownEvent(profileName, processName, ptpStats)
 			}

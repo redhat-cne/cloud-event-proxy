@@ -10,6 +10,7 @@ import (
 
 	"sync"
 
+	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptpConfig "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/config"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/stats"
@@ -127,13 +128,13 @@ func TestPTPEventManager_GenPTPEvent(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.oStats.SetLastSyncState(tt.lastClockState)
-			p := &metrics.PTPEventManager{
-				PtpConfigMapUpdates: &ptpConfig.LinuxPTPConfigMapUpdate{
-					EventThreshold: map[string]*ptpConfig.PtpClockThreshold{
-						tt.ptpProfileName: {
-							MaxOffsetThreshold: 500,
-							MinOffsetThreshold: 10,
-						},
+			metrics.Filesystem = &metrics.MockFileSystem{}
+			p := metrics.NewPTPEventManager("", nil, "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+			p.PtpConfigMapUpdates = &ptpConfig.LinuxPTPConfigMapUpdate{
+				EventThreshold: map[string]*ptpConfig.PtpClockThreshold{
+					tt.ptpProfileName: {
+						MaxOffsetThreshold: 500,
+						MinOffsetThreshold: 10,
 					},
 				},
 			}
@@ -153,14 +154,13 @@ func TestPTPEventManager_GenPTPEvent(t *testing.T) {
 
 func TestConcurrentMapAccess(t *testing.T) {
 	// Initialize the PTPEventManager with a map and a mutex
-	manager := &metrics.PTPEventManager{
-		Stats: map[types.ConfigName]stats.PTPStats{},
-		PtpConfigMapUpdates: &ptpConfig.LinuxPTPConfigMapUpdate{
-			EventThreshold: map[string]*ptpConfig.PtpClockThreshold{
-				"ptofile": {
-					MaxOffsetThreshold: 500,
-					MinOffsetThreshold: 10,
-				},
+	metrics.Filesystem = &metrics.MockFileSystem{}
+	manager := metrics.NewPTPEventManager("", nil, "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	manager.PtpConfigMapUpdates = &ptpConfig.LinuxPTPConfigMapUpdate{
+		EventThreshold: map[string]*ptpConfig.PtpClockThreshold{
+			"ptofile": {
+				MaxOffsetThreshold: 500,
+				MinOffsetThreshold: 10,
 			},
 		},
 	}
