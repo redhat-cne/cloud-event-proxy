@@ -7,12 +7,16 @@ data:
   config.json: |
     {
       "enableMTLS": true,
+      "useServiceCA": true,
       "clientCertPath": "/etc/cloud-event-consumer/client-certs/tls.crt",
       "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
-      "caCertPath": "/etc/cloud-event-consumer/ca-bundle/ca.crt",
+      "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
       "enableOAuth": true,
-      "oauthIssuer": "https://your-oauth-provider.com",
-      "oauthJWKSURL": "https://your-oauth-provider.com/.well-known/jwks.json",
-      "requiredScopes": ["subscription:create", "events:read"],
-      "requiredAudience": "cloud-event-proxy"
+      "useOpenShiftOAuth": true,
+      "oauthIssuer": "https://oauth-openshift.apps.cnfdg4.sno.ptp.eng.rdu2.dc.redhat.com",
+      "oauthJWKSURL": "https://oauth-openshift.apps.cnfdg4.sno.ptp.eng.rdu2.dc.redhat.com/oauth/jwks",
+      "requiredScopes": ["user:info"],
+      "requiredAudience": "openshift",
+      "serviceAccountName": "consumer-sa",
+      "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
     }
