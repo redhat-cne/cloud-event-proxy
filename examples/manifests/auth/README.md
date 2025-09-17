@@ -1,16 +1,18 @@
 # Authentication Configuration for Cloud Event Consumer
 
-This guide explains how to use mTLS and OAuth authentication in the example cloud event consumer deployment. This example is designed to be generic and work with any Kubernetes cluster, not specific to OpenShift.
+This guide explains how to use mTLS and OAuth authentication in the example cloud event consumer deployment using OpenShift's built-in components. This unified approach works seamlessly for both single node and multi-node OpenShift clusters.
 
 ## Overview
 
 The example consumer is configured to authenticate with the cloud-event-proxy server using:
-- mTLS (Mutual TLS) for transport security
-- OAuth with JWT tokens for client authentication
+- mTLS (Mutual TLS) using OpenShift Service CA for transport security
+- OAuth with JWT tokens using OpenShift's built-in OAuth server for client authentication
 
 ## Components
 
 ### Authentication Configuration
+
+The authentication configuration uses OpenShift's built-in components:
 
 The authentication settings are stored in a ConfigMap (`consumer-auth-config`):
 ```yaml
@@ -18,14 +20,18 @@ data:
   config.json: |
     {
       "enableMTLS": true,
+      "useServiceCA": true,
       "clientCertPath": "/etc/cloud-event-consumer/client-certs/tls.crt",
       "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
-      "caCertPath": "/etc/cloud-event-consumer/ca-bundle/ca.crt",
+      "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
       "enableOAuth": true,
-      "oauthIssuer": "https://your-oauth-provider.com",
-      "oauthJWKSURL": "https://your-oauth-provider.com/.well-known/jwks.json",
-      "requiredScopes": ["subscription:create", "events:read"],
-      "requiredAudience": "cloud-event-proxy"
+      "useOpenShiftOAuth": true,
+      "oauthIssuer": "https://oauth-openshift.apps.your-cluster.com",
+      "oauthJWKSURL": "https://oauth-openshift.apps.your-cluster.com/.well-known/jwks.json",
+      "requiredScopes": ["user:info"],
+      "requiredAudience": "openshift",
+      "serviceAccountName": "consumer-sa",
+      "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
     }
 ```
 

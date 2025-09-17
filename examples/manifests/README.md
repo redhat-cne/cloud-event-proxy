@@ -1,36 +1,32 @@
 # Cloud Event Consumer Example
 
-This directory contains example Kubernetes manifests for deploying a cloud event consumer with mTLS and OAuth authentication.
+This directory contains example Kubernetes manifests for deploying a cloud event consumer with mTLS and OAuth authentication using OpenShift's built-in components.
 
 ## Overview
 
-The example consumer is designed to be **generic and work with any Kubernetes cluster**, not specific to OpenShift. It demonstrates how to:
+The example consumer is designed to work with **OpenShift clusters of any size** (single node or multi-node). It demonstrates how to:
 
 - Deploy a cloud event consumer
-- Configure mTLS authentication
-- Set up OAuth authentication
-- Use standard Kubernetes resources
+- Configure mTLS authentication using OpenShift Service CA
+- Set up OAuth authentication using OpenShift's built-in OAuth server
+- Use OpenShift's native authentication components
 
 ## Prerequisites
 
-- Kubernetes cluster (any distribution)
-- kubectl configured to access your cluster
-- Certificates for mTLS authentication (see [Certificate Generation](auth/certificate-example.md))
+- OpenShift cluster (single node or multi-node)
+- oc or kubectl configured to access your cluster
+- No additional operators required (uses OpenShift's built-in components)
+- OpenShift Service CA will automatically generate certificates
 
 ## Quick Start
 
-1. **Generate Certificates** (if not already done):
+1. **Deploy the Consumer**:
    ```bash
-   # Follow the instructions in auth/certificate-example.md
-   # to generate and create the required certificate secrets
+   # Apply the manifests
+   oc apply -k .
    ```
 
-2. **Deploy the Consumer**:
-   ```bash
-   kubectl apply -k .
-   ```
-
-3. **Verify Deployment**:
+2. **Verify Deployment**:
    ```bash
    kubectl get deployment cloud-consumer-deployment -n cloud-events
    kubectl get pods -n cloud-events
