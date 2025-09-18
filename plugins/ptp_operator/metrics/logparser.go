@@ -376,12 +376,14 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 		Metric:      nil,
 		NodeName:    ptpNodeName,
 	}
-	alias := utils.GetAlias(iface)
-
+	alias := ptpStats[masterType].Alias()
+	if alias == "" {
+		alias = utils.GetAlias(iface)
+		ptpStats[masterType].SetAlias(alias)
+	}
 	SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": alias}).Set(GetSyncStateID(syncState))
 	// status metrics
 	ptpStats[masterType].SetPtpDependentEventState(clockState, ptpStats.HasMetrics(processName), ptpStats.HasMetricHelp(processName))
-	ptpStats[masterType].SetAlias(alias)
 
 	// If GM is locked/Freerun/Holdover then ptp state change event
 	masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
@@ -443,8 +445,14 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 		log.Errorf("unable to parse T-BC offset %q: %v", fields[5], err)
 		return
 	}
-	alias := utils.GetAlias(iface)
+
 	masterType := types.IFace(MasterClockType)
+
+	alias := ptpStats[masterType].Alias()
+	if alias == "" {
+		alias = utils.GetAlias(iface)
+		ptpStats[masterType].SetAlias(alias)
+	}
 
 	clockState := event.ClockState{
 		State:       GetSyncState(syncState),
@@ -459,7 +467,6 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 	SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": alias}).Set(GetSyncStateID(syncState))
 	// status metrics
 	ptpStats[masterType].SetPtpDependentEventState(clockState, ptpStats.HasMetrics(processName), ptpStats.HasMetricHelp(processName))
-	ptpStats[masterType].SetAlias(alias)
 
 	// If GM is locked/Freerun/Holdover then ptp state change event
 	masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
@@ -547,7 +554,11 @@ logStatusLoop:
 	}
 
 	if err == nil {
-		alias := utils.GetAlias(*iface)
+		alias := ptpStats[ifaceType].Alias()
+		if alias == "" {
+			alias = utils.GetAlias(*iface)
+			ptpStats[ifaceType].SetAlias(alias)
+		}
 		ptpStats[ifaceType].SetPtpDependentEventState(event.ClockState{
 			State:   GetSyncState(syncState),
 			Offset:  pointer.Float64(dpllOffset),
@@ -604,7 +615,11 @@ func (p *PTPEventManager) ParseGNSSLogs(processName, configName, output string, 
 
 	//openshift_ptp_offset_ns{from="gnss",iface="ens2f1",node="cnfde21.ptp.lab.eng.bos.redhat.com",process="gnss"} 0
 	if err == nil {
-		alias := utils.GetAlias(*iface)
+		alias := ptpStats[ifaceType].Alias()
+		if alias == "" {
+			alias = utils.GetAlias(*iface)
+			ptpStats[ifaceType].SetAlias(alias)
+		}
 		// last state of GNSS
 		lastState, errState := ptpStats[ifaceType].GetStateState(processName, iface)
 		pLabels := map[string]string{"from": processName, "node": ptpNodeName,
