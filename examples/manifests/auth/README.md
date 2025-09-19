@@ -143,13 +143,13 @@ When developing a custom consumer, implement authentication using the provided c
 import (
     "crypto/tls"
     "crypto/x509"
-    "io/ioutil"
     "net/http"
+    "os"
 )
 
 func createAuthenticatedClient(authConfig *AuthConfig) (*http.Client, error) {
     // Load CA certificate
-    caCert, err := ioutil.ReadFile(authConfig.CACertPath)
+    caCert, err := os.ReadFile(authConfig.CACertPath)
     if err != nil {
         return nil, err
     }

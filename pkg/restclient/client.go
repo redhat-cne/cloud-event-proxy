@@ -23,6 +23,7 @@ import (
 	"time"
 
 	ce "github.com/cloudevents/sdk-go/v2/event"
+	"github.com/redhat-cne/cloud-event-proxy/pkg/auth"
 	"github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/types"
 	log "github.com/sirupsen/logrus"
@@ -36,7 +37,8 @@ var (
 
 // Rest client to make http request
 type Rest struct {
-	client http.Client
+	client     http.Client
+	authClient *auth.AuthenticatedClient
 }
 
 // New get new rest client
@@ -46,6 +48,19 @@ func New() *Rest {
 			Timeout: httpTimeout,
 		},
 	}
+}
+
+// NewAuthenticated creates a new authenticated rest client
+func NewAuthenticated(authConfig *auth.AuthConfig) (*Rest, error) {
+	authClient, err := auth.NewAuthenticatedClient(authConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create authenticated client: %v", err)
+	}
+
+	return &Rest{
+		client:     *authClient.GetClient(),
+		authClient: authClient,
+	}, nil
 }
 
 // PostEvent post an event to the give url and check for error
@@ -79,7 +94,14 @@ func (r *Rest) Post(url *types.URI, data []byte) (int, error) {
 		return http.StatusBadRequest, fmt.Errorf("error creating post request %v", err)
 	}
 	request.Header.Set("content-type", "application/json")
-	response, err := r.client.Do(request)
+
+	var response *http.Response
+	if r.authClient != nil {
+		response, err = r.authClient.Do(request)
+	} else {
+		response, err = r.client.Do(request)
+	}
+
 	if err != nil {
 		log.Error("error in post response")
 		return http.StatusBadRequest, err
@@ -109,7 +131,14 @@ func (r *Rest) PostWithReturn(url *types.URI, data []byte) (int, []byte) {
 		return http.StatusBadRequest, nil
 	}
 	request.Header.Set("content-type", "application/json")
-	res, err := r.client.Do(request)
+
+	var res *http.Response
+	if r.authClient != nil {
+		res, err = r.authClient.Do(request)
+	} else {
+		res, err = r.client.Do(request)
+	}
+
 	if err != nil {
 		log.Errorf("error in post response to %s: %v", url, err)
 		return http.StatusBadRequest, nil
@@ -135,7 +164,14 @@ func (r *Rest) Put(url *types.URI) int {
 		return http.StatusBadRequest
 	}
 	request.Header.Set("content-type", "application/json")
-	res, err := r.client.Do(request)
+
+	var res *http.Response
+	if r.authClient != nil {
+		res, err = r.authClient.Do(request)
+	} else {
+		res, err = r.client.Do(request)
+	}
+
 	if err != nil {
 		log.Errorf("error in put response to %s: %v", url, err)
 		return http.StatusBadRequest
@@ -154,7 +190,14 @@ func (r *Rest) Delete(url *types.URI) int {
 		return http.StatusBadRequest
 	}
 	request.Header.Set("content-type", "application/json")
-	res, err := r.client.Do(request)
+
+	var res *http.Response
+	if r.authClient != nil {
+		res, err = r.authClient.Do(request)
+	} else {
+		res, err = r.client.Do(request)
+	}
+
 	if err != nil {
 		log.Errorf("error in delete response to %s: %v", url, err)
 		return http.StatusBadRequest
@@ -172,7 +215,14 @@ func (r *Rest) Get(url *types.URI) (int, []byte, error) {
 		return http.StatusBadRequest, nil, fmt.Errorf("error creating get request: %v", err)
 	}
 	request.Header.Set("content-type", "application/json")
-	res, err := r.client.Do(request)
+
+	var res *http.Response
+	if r.authClient != nil {
+		res, err = r.authClient.Do(request)
+	} else {
+		res, err = r.client.Do(request)
+	}
+
 	if err != nil {
 		return http.StatusBadRequest, nil, fmt.Errorf("error in get response to %s: %v", url, err)
 	}
