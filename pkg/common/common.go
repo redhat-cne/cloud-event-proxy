@@ -222,7 +222,7 @@ func StartPubSubService(scConfig *SCConfiguration) (err error) {
 	scConfig.SubscriberAPI.ReloadStore()
 	// use EventOutCh instead since this is only used in producer side
 	server := restapi.InitServer(scConfig.APIPort, scConfig.TransportHost.Host, scConfig.APIPath,
-		scConfig.StorePath, scConfig.EventOutCh, scConfig.CloseCh, nil)
+		scConfig.StorePath, scConfig.EventOutCh, scConfig.CloseCh, nil, nil)
 	scConfig.RestAPI = server
 	server.Start()
 	err = server.EndPointHealthChk()

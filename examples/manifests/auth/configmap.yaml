@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: consumer-auth-config
+  namespace: cloud-events
+data:
+  config.json: |
+    {
+      "enableMTLS": true,
+      "useServiceCA": true,
+      "clientCertPath": "/etc/cloud-event-consumer/client-certs/tls.crt",
+      "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
+      "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
+      "enableOAuth": true,
+      "useOpenShiftOAuth": true,
+      "oauthIssuer": "https://oauth-openshift.apps.cnfdg4.sno.ptp.eng.rdu2.dc.redhat.com",
+      "oauthJWKSURL": "https://oauth-openshift.apps.cnfdg4.sno.ptp.eng.rdu2.dc.redhat.com/oauth/jwks",
+      "requiredScopes": ["user:info"],
+      "requiredAudience": "openshift",
+      "serviceAccountName": "consumer-sa",
+      "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
+    }
