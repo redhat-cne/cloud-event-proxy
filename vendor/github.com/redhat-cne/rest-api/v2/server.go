@@ -33,7 +33,9 @@
 package restapi
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/redhat-cne/sdk-go/pkg/util/wait"
 
@@ -98,6 +100,48 @@ type AuthConfig struct {
 	ServiceAccountToken    string   `json:"serviceAccountToken"`    // ServiceAccount token path
 	UseOpenShiftOAuth      bool     `json:"useOpenShiftOAuth"`      // Use OpenShift's built-in OAuth server (recommended for all cluster sizes)
 	AuthenticationOperator bool     `json:"authenticationOperator"` // Use OpenShift Authentication Operator (optional alternative)
+}
+
+// LoadAuthConfig loads authentication configuration from a JSON file
+func LoadAuthConfig(configPath string) (*AuthConfig, error) {
+	// Check if file exists
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("authentication config file not found: %s", configPath)
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read authentication config file %s: %v", configPath, err)
+	}
+
+	var config AuthConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal authentication config: %v", err)
+	}
+	return &config, nil
+}
+
+// GetConfigSummary returns a summary of the authentication configuration
+func (c *AuthConfig) GetConfigSummary() string {
+	summary := "Authentication Configuration Summary:\n"
+	summary += fmt.Sprintf("  Enable mTLS: %t\n", c.EnableMTLS)
+	if c.EnableMTLS {
+		summary += fmt.Sprintf("    CA Cert Path: %s\n", c.CACertPath)
+		summary += fmt.Sprintf("    Server Cert Path: %s\n", c.ServerCertPath)
+		summary += fmt.Sprintf("    Server Key Path: %s\n", c.ServerKeyPath)
+		summary += fmt.Sprintf("    Use Service CA: %t\n", c.UseServiceCA)
+	}
+	summary += fmt.Sprintf("  Enable OAuth: %t\n", c.EnableOAuth)
+	if c.EnableOAuth {
+		summary += fmt.Sprintf("    OAuth Issuer: %s\n", c.OAuthIssuer)
+		summary += fmt.Sprintf("    OAuth JWKS URL: %s\n", c.OAuthJWKSURL)
+		summary += fmt.Sprintf("    Required Scopes: %v\n", c.RequiredScopes)
+		summary += fmt.Sprintf("    Required Audience: %s\n", c.RequiredAudience)
+		summary += fmt.Sprintf("    Service Account Name: %s\n", c.ServiceAccountName)
+		summary += fmt.Sprintf("    Service Account Token Path: %s\n", c.ServiceAccountToken)
+		summary += fmt.Sprintf("    Use OpenShift OAuth: %t\n", c.UseOpenShiftOAuth)
+	}
+	return summary
 }
 
 // Server defines rest routes server object

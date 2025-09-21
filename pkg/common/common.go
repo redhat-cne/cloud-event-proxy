@@ -33,6 +33,7 @@ import (
 
 	"github.com/redhat-cne/rest-api/pkg/localmetrics"
 
+	"github.com/redhat-cne/cloud-event-proxy/pkg/auth"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	restapi "github.com/redhat-cne/rest-api/v2"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
@@ -166,6 +167,7 @@ type SCConfiguration struct {
 	StorageType       storageClient.StorageTypeType
 	K8sClient         *storageClient.Client
 	RestAPI           *restapi.Server
+	AuthConfig        interface{}
 }
 
 // ClientID ... read clientID from the configurations
@@ -213,7 +215,7 @@ func GetBoolEnv(key string) bool {
 }
 
 // StartPubSubService starts rest api service to manage events publishers and subscriptions
-func StartPubSubService(scConfig *SCConfiguration) (err error) {
+func StartPubSubService(scConfig *SCConfiguration, authConfig interface{}) (err error) {
 	// init
 	if scConfig.TransportHost == nil {
 		scConfig.TransportHost.Type = UNKNOWN
@@ -221,9 +223,16 @@ func StartPubSubService(scConfig *SCConfiguration) (err error) {
 	// reload sub store from configMap
 	scConfig.SubscriberAPI.ReloadStore()
 	// use EventOutCh instead since this is only used in producer side
+	var authConfigTyped *restapi.AuthConfig
+	if authConfig != nil {
+		if config, ok := authConfig.(*restapi.AuthConfig); ok {
+			authConfigTyped = config
+		}
+	}
 	server := restapi.InitServer(scConfig.APIPort, scConfig.TransportHost.Host, scConfig.APIPath,
-		scConfig.StorePath, scConfig.EventOutCh, scConfig.CloseCh, nil, nil)
+		scConfig.StorePath, scConfig.EventOutCh, scConfig.CloseCh, nil, authConfigTyped)
 	scConfig.RestAPI = server
+	scConfig.AuthConfig = authConfig
 	server.Start()
 	err = server.EndPointHealthChk()
 	if err == nil {
@@ -239,7 +248,39 @@ func CreatePublisher(config *SCConfiguration, publisher pubsub.PubSub) (pub pubs
 	var pubB []byte
 	var status int
 	if pubB, err = json.Marshal(&publisher); err == nil {
-		rc := restclient.New()
+		var rc *restclient.Rest
+		if config.AuthConfig != nil {
+			// Use authenticated client
+			if restApiAuthConfig, ok := config.AuthConfig.(*restapi.AuthConfig); ok {
+				// Convert restapi.AuthConfig to auth.AuthConfig
+				authConfig := &auth.AuthConfig{
+					EnableMTLS:          restApiAuthConfig.EnableMTLS,
+					ClientCertPath:      restApiAuthConfig.ServerCertPath, // Use server cert as client cert
+					ClientKeyPath:       restApiAuthConfig.ServerKeyPath,  // Use server key as client key
+					CACertPath:          restApiAuthConfig.CACertPath,
+					UseServiceCA:        restApiAuthConfig.UseServiceCA,
+					EnableOAuth:         restApiAuthConfig.EnableOAuth,
+					OAuthIssuer:         restApiAuthConfig.OAuthIssuer,
+					OAuthJWKSURL:        restApiAuthConfig.OAuthJWKSURL,
+					RequiredScopes:      restApiAuthConfig.RequiredScopes,
+					RequiredAudience:    restApiAuthConfig.RequiredAudience,
+					ServiceAccountName:  restApiAuthConfig.ServiceAccountName,
+					ServiceAccountToken: restApiAuthConfig.ServiceAccountToken,
+					UseOpenShiftOAuth:   restApiAuthConfig.UseOpenShiftOAuth,
+				}
+				var err error
+				rc, err = restclient.NewAuthenticated(authConfig)
+				if err != nil {
+					return pub, fmt.Errorf("failed to create authenticated client: %v", err)
+				}
+			} else {
+				// Fallback to regular client if type assertion fails
+				rc = restclient.New()
+			}
+		} else {
+			// Use regular client
+			rc = restclient.New()
+		}
 		if status, pubB = rc.PostWithReturn(types.ParseURI(apiURL), pubB); status != http.StatusCreated {
 			err = fmt.Errorf("publisher creation api at %s, returned status %d", apiURL, status)
 			return
