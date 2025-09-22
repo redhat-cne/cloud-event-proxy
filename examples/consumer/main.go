@@ -78,6 +78,8 @@ var (
 	GitCommit = "Undefined"
 	// Global authenticated REST client
 	authenticatedClient *restclient.Rest
+	// Global authentication configuration
+	authConfig *auth.AuthConfig
 )
 
 func main() {
@@ -177,11 +179,13 @@ func initializeAuthentication() error {
 	if authConfigPath == "" {
 		log.Info("No authentication configuration provided, using basic HTTP client")
 		authenticatedClient = restclient.New()
+		authConfig = nil
 		return nil
 	}
 
 	// Load authentication configuration
-	authConfig, err := auth.LoadAuthConfig(authConfigPath)
+	var err error
+	authConfig, err = auth.LoadAuthConfig(authConfigPath)
 	if err != nil {
 		return fmt.Errorf("failed to load authentication configuration: %v", err)
 	}
@@ -199,8 +203,16 @@ func initializeAuthentication() error {
 	return nil
 }
 
+// getScheme returns the appropriate URL scheme based on authentication configuration
+func getScheme() string {
+	if authConfig != nil && authConfig.EnableMTLS {
+		return "https"
+	}
+	return "http"
+}
+
 func deleteAllSubscriptions() {
-	deleteURL := &types.URI{URL: url.URL{Scheme: "http",
+	deleteURL := &types.URI{URL: url.URL{Scheme: getScheme(),
 		Host: apiAddr,
 		Path: apiPath + "subscriptions"}}
 	authenticatedClient.Delete(deleteURL)
@@ -212,7 +224,7 @@ func deleteAllSubscriptions() {
 // checkSubscriptions gets all subscriptions
 // and returns true if there are any subscriptions
 func checkSubscriptions() bool {
-	url := &types.URI{URL: url.URL{Scheme: "http",
+	url := &types.URI{URL: url.URL{Scheme: getScheme(),
 		Host: apiAddr,
 		Path: apiPath + "subscriptions"}}
 
@@ -285,7 +297,7 @@ RETRY:
 }
 
 func createSubscription(resourceAddress string) (sub pubsub.PubSub, status int, err error) {
-	subURL := &types.URI{URL: url.URL{Scheme: "http",
+	subURL := &types.URI{URL: url.URL{Scheme: getScheme(),
 		Host: apiAddr,
 		Path: apiPath + "subscriptions"}}
 	endpointURL := &types.URI{URL: url.URL{Scheme: "http",
@@ -314,7 +326,7 @@ func createSubscription(resourceAddress string) (sub pubsub.PubSub, status int, 
 // getCurrentState get event state for the resource
 func getCurrentState(resource string) error {
 	//create publisher
-	url := &types.URI{URL: url.URL{Scheme: "http",
+	url := &types.URI{URL: url.URL{Scheme: getScheme(),
 		Host: apiAddr,
 		Path: fmt.Sprintf("%s%s", apiPath, fmt.Sprintf("%s/CurrentState", resource[1:]))}}
 	status, cloudEvent, err := authenticatedClient.Get(url)
@@ -435,11 +447,27 @@ func pullEvents() {
 }
 
 func publisherHealthCheck(apiAddr string) bool {
-	healthURL := &types.URI{URL: url.URL{Scheme: "http",
+	healthURL := &types.URI{URL: url.URL{Scheme: getScheme(),
 		Host: apiAddr,
 		Path: apiPath + "health"}}
-	ok, _ := common.APIHealthCheck(healthURL, HealthCheckRetryInterval*time.Second)
-	return ok
+
+	// Use authenticated client for health checks when authentication is enabled
+	for i := 0; i <= 5; i++ {
+		log.Infof("health check %s", healthURL.String())
+		status, _, err := authenticatedClient.Get(healthURL)
+		if err != nil {
+			log.Warnf("try %d, return health check of the rest service for error %v", i, err)
+			time.Sleep(HealthCheckRetryInterval * time.Second)
+			continue
+		}
+		if status == http.StatusOK {
+			log.Info("rest service returned healthy status")
+			return true
+		}
+		log.Warnf("try %d, health check returned status %d", i, status)
+		time.Sleep(HealthCheckRetryInterval * time.Second)
+	}
+	return false
 }
 
 func updateHTTPPublishers(nodeIP, nodeName string, addr ...string) {
