@@ -16,6 +16,7 @@ package restclient
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -46,6 +47,20 @@ func New() *Rest {
 	return &Rest{
 		client: http.Client{
 			Timeout: httpTimeout,
+		},
+	}
+}
+
+// NewWithInsecureSkipVerify creates a new rest client that skips certificate verification
+func NewWithInsecureSkipVerify() *Rest {
+	return &Rest{
+		client: http.Client{
+			Timeout: httpTimeout,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: true,
+				},
+			},
 		},
 	}
 }

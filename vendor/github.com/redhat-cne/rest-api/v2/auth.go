@@ -247,10 +247,17 @@ func (s *Server) validateOAuthToken(token string) error {
 // combinedAuthMiddleware applies both mTLS and OAuth authentication
 func (s *Server) combinedAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip authentication for health endpoint
-		if r.URL.Path == "/health" || r.URL.Path == "/api/ocloudNotifications/v2/health" {
-			next.ServeHTTP(w, r)
-			return
+		// Skip authentication for localhost connections (same pod)
+		if r.RemoteAddr != "" {
+			host := r.RemoteAddr
+			if idx := strings.LastIndex(host, ":"); idx != -1 {
+				host = host[:idx] // Remove port
+			}
+			if host == "127.0.0.1" || host == "::1" || host == "[::1]" {
+				log.Debugf("Allowing localhost connection from %s for %s", r.RemoteAddr, r.URL.Path)
+				next.ServeHTTP(w, r)
+				return
+			}
 		}
 
 		// Check for client certificate when mTLS is enabled

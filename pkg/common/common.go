@@ -255,7 +255,14 @@ func CreatePublisher(config *SCConfiguration, publisher pubsub.PubSub) (pub pubs
 			strings.Contains(apiURL, "[::1]") ||
 			strings.Contains(apiURL, "::1")
 
-		if config.AuthConfig != nil && !isLocalhost {
+		if isLocalhost && config.AuthConfig != nil {
+			// For localhost connections with mTLS enabled, create a client that skips certificate verification
+			if restApiAuthConfig, ok := config.AuthConfig.(*restapi.AuthConfig); ok && restApiAuthConfig.EnableMTLS {
+				rc = restclient.NewWithInsecureSkipVerify()
+			} else {
+				rc = restclient.New()
+			}
+		} else if config.AuthConfig != nil {
 			// Use authenticated client for non-localhost connections
 			if restApiAuthConfig, ok := config.AuthConfig.(*restapi.AuthConfig); ok {
 				// Convert restapi.AuthConfig to auth.AuthConfig
@@ -284,7 +291,7 @@ func CreatePublisher(config *SCConfiguration, publisher pubsub.PubSub) (pub pubs
 				rc = restclient.New()
 			}
 		} else {
-			// Use regular client for localhost connections or when no auth config
+			// Use regular client when no auth config
 			rc = restclient.New()
 		}
 		if status, pubB = rc.PostWithReturn(types.ParseURI(apiURL), pubB); status != http.StatusCreated {
