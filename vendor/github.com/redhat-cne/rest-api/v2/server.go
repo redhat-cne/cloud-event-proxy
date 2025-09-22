@@ -290,22 +290,39 @@ func InitServer(port int, apiHost, apiPath, storePath string,
 	authConfig *AuthConfig) *Server {
 	once.Do(func() {
 		ServerInstance = &Server{
-			port:    port,
-			apiHost: apiHost,
-			apiPath: apiPath,
-			dataOut: dataOut,
-			closeCh: closeCh,
-			status:  notReady,
-			HTTPClient: &http.Client{
-				Transport: &http.Transport{
-					MaxIdleConnsPerHost: 20,
-				},
-				Timeout: 10 * time.Second,
-			},
+			port:                    port,
+			apiHost:                 apiHost,
+			apiPath:                 apiPath,
+			dataOut:                 dataOut,
+			closeCh:                 closeCh,
+			status:                  notReady,
 			pubSubAPI:               pubsubv1.GetAPIInstance(storePath),
 			subscriberAPI:           subscriberApi.GetAPIInstance(storePath),
 			statusReceiveOverrideFn: onStatusReceiveOverrideFn,
 			authConfig:              authConfig,
+		}
+
+		// Configure HTTPClient with proper TLS settings for publisher endpoint validation
+		if authConfig != nil && authConfig.EnableMTLS {
+			// Create HTTPClient with TLS configuration that allows localhost connections
+			ServerInstance.HTTPClient = &http.Client{
+				Transport: &http.Transport{
+					MaxIdleConnsPerHost: 20,
+					TLSClientConfig: &tls.Config{
+						InsecureSkipVerify: true, // Skip certificate verification for localhost connections
+					},
+				},
+				Timeout: 10 * time.Second,
+			}
+			log.Infof("InitServer: Configured HTTPClient with InsecureSkipVerify for mTLS localhost connections")
+		} else {
+			// Use default HTTP client for non-mTLS configurations
+			ServerInstance.HTTPClient = &http.Client{
+				Transport: &http.Transport{
+					MaxIdleConnsPerHost: 20,
+				},
+				Timeout: 10 * time.Second,
+			}
 		}
 
 		// Initialize mTLS CA certificate pool if mTLS is enabled

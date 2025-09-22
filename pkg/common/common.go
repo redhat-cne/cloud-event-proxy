@@ -258,8 +258,10 @@ func CreatePublisher(config *SCConfiguration, publisher pubsub.PubSub) (pub pubs
 		if isLocalhost && config.AuthConfig != nil {
 			// For localhost connections with mTLS enabled, create a client that skips certificate verification
 			if restApiAuthConfig, ok := config.AuthConfig.(*restapi.AuthConfig); ok && restApiAuthConfig.EnableMTLS {
+				log.Infof("CreatePublisher: Using insecure client for localhost connection to %s", apiURL)
 				rc = restclient.NewWithInsecureSkipVerify()
 			} else {
+				log.Infof("CreatePublisher: Using regular client for localhost connection to %s (mTLS not enabled)", apiURL)
 				rc = restclient.New()
 			}
 		} else if config.AuthConfig != nil {
