@@ -332,25 +332,27 @@ func (s *Server) EndPointHealthChk() (err error) {
 			continue
 		}
 
-		log.Debugf("health check %s%s ", s.GetHostPath(), "health")
+		healthURL := s.GetHealthPath()
+		log.Debugf("health check %s", healthURL)
+
 		var response *http.Response
 		var errResp error
 
 		if s.authConfig != nil && s.authConfig.EnableMTLS {
-			// For internal health check, use HTTPS without client certificate
-			// since the server certificate is for server auth only, not client auth
+			// Use HTTPS client without client certificate for health checks
 			client := &http.Client{
 				Transport: &http.Transport{
 					TLSClientConfig: &tls.Config{
 						RootCAs:            s.caCertPool,
 						InsecureSkipVerify: true, // Skip hostname verification for localhost
+						// No client certificate provided - this is allowed for /health
 					},
 				},
 			}
-			response, errResp = client.Get(fmt.Sprintf("%s%s", s.GetHostPath(), "health"))
+			response, errResp = client.Get(healthURL)
 		} else {
 			// Use regular HTTP client
-			response, errResp = http.Get(fmt.Sprintf("%s%s", s.GetHostPath(), "health"))
+			response, errResp = http.Get(healthURL)
 		}
 
 		if errResp != nil {
@@ -402,15 +404,27 @@ func (s *Server) GetStatus() ServerStatus {
 // GetHostPath  returns hostpath
 func (s *Server) GetHostPath() *types.URI {
 	protocol := "http"
+	port := s.port
+	path := s.apiPath
+
 	if s.authConfig != nil && s.authConfig.EnableMTLS {
 		protocol = "https"
 		fmt.Printf("GetHostPath: Using HTTPS protocol (authConfig.EnableMTLS=%t)\n", s.authConfig.EnableMTLS)
 	} else {
 		fmt.Printf("GetHostPath: Using HTTP protocol (authConfig=%v, EnableMTLS=%t)\n", s.authConfig != nil, s.authConfig != nil && s.authConfig.EnableMTLS)
 	}
-	uri := types.ParseURI(fmt.Sprintf("%s://localhost:%d%s", protocol, s.port, s.apiPath))
+	uri := types.ParseURI(fmt.Sprintf("%s://localhost:%d%s", protocol, port, path))
 	fmt.Printf("GetHostPath: Returning URI=%s\n", uri.String())
 	return uri
+}
+
+// GetHealthPath returns the health check URL
+func (s *Server) GetHealthPath() string {
+	protocol := "http"
+	if s.authConfig != nil && s.authConfig.EnableMTLS {
+		protocol = "https"
+	}
+	return fmt.Sprintf("%s://localhost:%d%shealth", protocol, s.port, s.apiPath)
 }
 
 // Start will start res routes service
@@ -428,7 +442,7 @@ func (s *Server) Start() {
 	// Helper function to apply authentication to handlers
 	applyAuth := func(handler http.HandlerFunc, needsAuth bool) http.Handler {
 		if needsAuth {
-			return s.combinedAuthMiddleware(handler)
+			return s.combinedAuthMiddleware(http.Handler(handler))
 		}
 		return handler
 	}
@@ -651,21 +665,21 @@ func (s *Server) Start() {
 				return
 			}
 
-			// Configure TLS with client certificate requirement
+			// Configure TLS to request client certificates but not require them
+			// We'll handle certificate validation at the application level
 			tlsConfig := &tls.Config{
 				Certificates: []tls.Certificate{cert},
-				ClientAuth:   tls.RequireAndVerifyClientCert,
+				ClientAuth:   tls.RequestClientCert, // Request but don't require
 				ClientCAs:    s.caCertPool,
 				MinVersion:   tls.VersionTLS12,
 			}
 
 			s.httpServer.TLSConfig = tlsConfig
 
-			// Note: When mTLS is enabled, the health endpoint is still accessible
-			// but requires a valid client certificate. For internal health checks,
-			// the PTP daemon should use the service CA certificate.
+			// Note: When mTLS is enabled, client certificates are requested but validated at middleware level.
+			// The /health endpoint allows connections without certificates, while other endpoints require them.
 
-			log.Info("starting HTTPS server with mTLS")
+			log.Info("starting HTTPS server with application-level mTLS")
 			err = s.httpServer.ListenAndServeTLS("", "")
 			if err != nil {
 				log.Errorf("restarting due to error with TLS api server %s\n", err.Error())

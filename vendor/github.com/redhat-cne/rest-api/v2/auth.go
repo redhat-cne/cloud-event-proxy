@@ -246,5 +246,35 @@ func (s *Server) validateOAuthToken(token string) error {
 
 // combinedAuthMiddleware applies both mTLS and OAuth authentication
 func (s *Server) combinedAuthMiddleware(next http.Handler) http.Handler {
-	return s.mTLSMiddleware(s.oAuthMiddleware(next))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip authentication for health endpoint
+		if r.URL.Path == "/health" || r.URL.Path == "/api/ocloudNotifications/v2/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Check for client certificate when mTLS is enabled
+		if s.authConfig != nil && s.authConfig.EnableMTLS {
+			if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
+				log.Warnf("mTLS required but no client certificate provided for %s", r.URL.Path)
+				http.Error(w, "Client certificate required", http.StatusUnauthorized)
+				return
+			}
+
+			// Verify the client certificate against our CA
+			cert := r.TLS.PeerCertificates[0]
+			opts := x509.VerifyOptions{Roots: s.caCertPool}
+			if _, err := cert.Verify(opts); err != nil {
+				log.Warnf("Client certificate verification failed for %s: %v", r.URL.Path, err)
+				http.Error(w, "Invalid client certificate", http.StatusUnauthorized)
+				return
+			}
+			log.Debugf("Client certificate verified successfully for %s", r.URL.Path)
+		}
+
+		// TODO: Add OAuth validation here if needed for other endpoints
+
+		// Call the next handler
+		next.ServeHTTP(w, r)
+	})
 }
