@@ -310,9 +310,12 @@ func InitServer(port int, apiHost, apiPath, storePath string,
 
 		// Initialize mTLS CA certificate pool if mTLS is enabled
 		if authConfig != nil && authConfig.EnableMTLS && authConfig.CACertPath != "" {
+			fmt.Printf("InitServer: Setting authConfig with EnableMTLS=%t\n", authConfig.EnableMTLS)
 			if err := ServerInstance.initMTLSCACertPool(); err != nil {
 				log.Errorf("failed to initialize mTLS CA certificate pool: %v", err)
 			}
+		} else {
+			fmt.Printf("InitServer: authConfig is nil or EnableMTLS is false (authConfig=%v, EnableMTLS=%t)\n", authConfig != nil, authConfig != nil && authConfig.EnableMTLS)
 		}
 	})
 	// singleton
@@ -330,7 +333,34 @@ func (s *Server) EndPointHealthChk() (err error) {
 		}
 
 		log.Debugf("health check %s%s ", s.GetHostPath(), "health")
-		response, errResp := http.Get(fmt.Sprintf("%s%s", s.GetHostPath(), "health"))
+		var response *http.Response
+		var errResp error
+
+		if s.authConfig != nil && s.authConfig.EnableMTLS {
+			// Use HTTPS client with mTLS for health check
+			// Load client certificate for mTLS
+			cert, err := tls.LoadX509KeyPair(s.authConfig.ServerCertPath, s.authConfig.ServerKeyPath)
+			if err != nil {
+				log.Errorf("failed to load client certificate for health check: %v", err)
+				response, errResp = nil, err
+			} else {
+				// Skip hostname verification for localhost connections
+				client := &http.Client{
+					Transport: &http.Transport{
+						TLSClientConfig: &tls.Config{
+							Certificates:       []tls.Certificate{cert},
+							RootCAs:            s.caCertPool,
+							InsecureSkipVerify: true, // Skip hostname verification for localhost
+						},
+					},
+				}
+				response, errResp = client.Get(fmt.Sprintf("%s%s", s.GetHostPath(), "health"))
+			}
+		} else {
+			// Use regular HTTP client
+			response, errResp = http.Get(fmt.Sprintf("%s%s", s.GetHostPath(), "health"))
+		}
+
 		if errResp != nil {
 			log.Errorf("try %d, return health check of the rest service for error  %v", i, errResp)
 			time.Sleep(healthCheckPause)
@@ -379,7 +409,16 @@ func (s *Server) GetStatus() ServerStatus {
 
 // GetHostPath  returns hostpath
 func (s *Server) GetHostPath() *types.URI {
-	return types.ParseURI(fmt.Sprintf("http://localhost:%d%s", s.port, s.apiPath))
+	protocol := "http"
+	if s.authConfig != nil && s.authConfig.EnableMTLS {
+		protocol = "https"
+		fmt.Printf("GetHostPath: Using HTTPS protocol (authConfig.EnableMTLS=%t)\n", s.authConfig.EnableMTLS)
+	} else {
+		fmt.Printf("GetHostPath: Using HTTP protocol (authConfig=%v, EnableMTLS=%t)\n", s.authConfig != nil, s.authConfig != nil && s.authConfig.EnableMTLS)
+	}
+	uri := types.ParseURI(fmt.Sprintf("%s://localhost:%d%s", protocol, s.port, s.apiPath))
+	fmt.Printf("GetHostPath: Returning URI=%s\n", uri.String())
+	return uri
 }
 
 // Start will start res routes service

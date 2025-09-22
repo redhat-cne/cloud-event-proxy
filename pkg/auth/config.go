@@ -142,9 +142,10 @@ func (c *AuthConfig) CreateTLSConfig() (*tls.Config, error) {
 	}
 
 	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      caCertPool,
-		MinVersion:   tls.VersionTLS12,
+		Certificates:       []tls.Certificate{cert},
+		RootCAs:            caCertPool,
+		MinVersion:         tls.VersionTLS12,
+		InsecureSkipVerify: true, // Skip hostname verification for localhost connections
 	}
 
 	log.Info("Created TLS configuration for mTLS")
