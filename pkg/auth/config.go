@@ -146,6 +146,8 @@ func (c *AuthConfig) CreateTLSConfig() (*tls.Config, error) {
 		RootCAs:            caCertPool,
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: true, // Skip hostname verification for localhost connections
+		// Note: Server certificates from Service CA may not support client authentication
+		// This is acceptable for internal localhost connections
 	}
 
 	log.Info("Created TLS configuration for mTLS")

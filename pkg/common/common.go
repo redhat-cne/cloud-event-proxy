@@ -249,8 +249,14 @@ func CreatePublisher(config *SCConfiguration, publisher pubsub.PubSub) (pub pubs
 	var status int
 	if pubB, err = json.Marshal(&publisher); err == nil {
 		var rc *restclient.Rest
-		if config.AuthConfig != nil {
-			// Use authenticated client
+		// Check if this is a localhost connection (IPv4 and IPv6)
+		isLocalhost := strings.Contains(apiURL, "localhost") ||
+			strings.Contains(apiURL, "127.0.0.1") ||
+			strings.Contains(apiURL, "[::1]") ||
+			strings.Contains(apiURL, "::1")
+
+		if config.AuthConfig != nil && !isLocalhost {
+			// Use authenticated client for non-localhost connections
 			if restApiAuthConfig, ok := config.AuthConfig.(*restapi.AuthConfig); ok {
 				// Convert restapi.AuthConfig to auth.AuthConfig
 				authConfig := &auth.AuthConfig{
@@ -278,7 +284,7 @@ func CreatePublisher(config *SCConfiguration, publisher pubsub.PubSub) (pub pubs
 				rc = restclient.New()
 			}
 		} else {
-			// Use regular client
+			// Use regular client for localhost connections or when no auth config
 			rc = restclient.New()
 		}
 		if status, pubB = rc.PostWithReturn(types.ParseURI(apiURL), pubB); status != http.StatusCreated {

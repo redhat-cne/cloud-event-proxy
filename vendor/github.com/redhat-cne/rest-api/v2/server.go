@@ -337,25 +337,17 @@ func (s *Server) EndPointHealthChk() (err error) {
 		var errResp error
 
 		if s.authConfig != nil && s.authConfig.EnableMTLS {
-			// Use HTTPS client with mTLS for health check
-			// Load client certificate for mTLS
-			cert, err := tls.LoadX509KeyPair(s.authConfig.ServerCertPath, s.authConfig.ServerKeyPath)
-			if err != nil {
-				log.Errorf("failed to load client certificate for health check: %v", err)
-				response, errResp = nil, err
-			} else {
-				// Skip hostname verification for localhost connections
-				client := &http.Client{
-					Transport: &http.Transport{
-						TLSClientConfig: &tls.Config{
-							Certificates:       []tls.Certificate{cert},
-							RootCAs:            s.caCertPool,
-							InsecureSkipVerify: true, // Skip hostname verification for localhost
-						},
+			// For internal health check, use HTTPS without client certificate
+			// since the server certificate is for server auth only, not client auth
+			client := &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{
+						RootCAs:            s.caCertPool,
+						InsecureSkipVerify: true, // Skip hostname verification for localhost
 					},
-				}
-				response, errResp = client.Get(fmt.Sprintf("%s%s", s.GetHostPath(), "health"))
+				},
 			}
+			response, errResp = client.Get(fmt.Sprintf("%s%s", s.GetHostPath(), "health"))
 		} else {
 			// Use regular HTTP client
 			response, errResp = http.Get(fmt.Sprintf("%s%s", s.GetHostPath(), "health"))
