@@ -94,11 +94,15 @@ functests:
 	SUITE=./test/cne hack/run-functests.sh
 
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
-deploy-consumer:kustomize
+deploy-consumer: kustomize ## Deploy consumer with authentication
+	@echo "Deploying cloud-event-consumer with authentication..."
 	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl apply -f -
+	@echo "Setting up authentication secrets..."
+	@./examples/manifests/auth/setup-secrets.sh
+	@echo "Consumer deployment completed!"
 
-undeploy-consumer:kustomize
+undeploy-consumer: kustomize ## Undeploy consumer
 	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl delete -f -
 

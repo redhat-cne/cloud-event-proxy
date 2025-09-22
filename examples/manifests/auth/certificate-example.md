@@ -1,6 +1,25 @@
-# Certificate Generation Example
+# Certificate Setup for Cloud Event Consumer
 
-This document provides examples of how to generate certificates manually for the generic cloud event consumer.
+This document provides information about certificate setup for the cloud event consumer.
+
+## Automated Setup (OpenShift with Service CA)
+
+If you're running on OpenShift with Service CA operator (recommended), the certificates are automatically set up when you run:
+
+```bash
+make deploy-consumer
+```
+
+The deployment will:
+1. Create a ConfigMap that Service CA will populate with the CA certificate
+2. Create a Service that triggers Service CA to generate client certificates
+3. Run a setup script that creates the required secrets from the Service CA resources
+
+No manual certificate generation is needed!
+
+## Manual Setup (Generic Kubernetes)
+
+For generic Kubernetes clusters without OpenShift Service CA, you can generate certificates manually:
 
 ## Prerequisites
 
@@ -126,4 +145,3 @@ For production environments, consider:
    - Monitor certificate expiration dates
    - Set up alerts for certificate renewal
    - Log certificate usage and validation failures
-

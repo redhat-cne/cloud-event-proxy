@@ -20,17 +20,40 @@ The example consumer is designed to work with **OpenShift clusters of any size**
 
 ## Quick Start
 
-1. **Deploy the Consumer**:
-   ```bash
-   # Apply the manifests
-   oc apply -k .
-   ```
+### Automated Deployment (Recommended)
 
-2. **Verify Deployment**:
-   ```bash
-   kubectl get deployment cloud-consumer-deployment -n cloud-events
-   kubectl get pods -n cloud-events
-   ```
+From the `cloud-event-proxy` repository root:
+
+```bash
+# Deploy consumer with authentication automatically configured
+make deploy-consumer
+```
+
+This will:
+1. Deploy all Kubernetes resources
+2. Set up mTLS certificates using OpenShift Service CA
+3. Configure authentication secrets
+4. Wait for the consumer pod to be ready
+
+### Manual Deployment
+
+If you prefer to deploy manually:
+
+```bash
+# Apply the manifests
+oc apply -k .
+
+# Set up authentication secrets (OpenShift only)
+./auth/setup-secrets.sh
+```
+
+### Verify Deployment
+
+```bash
+kubectl get deployment cloud-consumer-deployment -n cloud-events
+kubectl get pods -n cloud-events
+kubectl logs -f deployment/cloud-consumer-deployment -n cloud-events
+```
 
 ## Components
 
