@@ -59,8 +59,10 @@ type PtpProfile struct {
 	Ptp4lOpts         *string            `json:"ptp4lOpts,omitempty"`
 	Phc2sysOpts       *string            `json:"phc2sysOpts,omitempty"`
 	TS2PhcOpts        *string            `json:"ts2PhcOpts,omitempty"`
+	ChronydOpts       *string            `json:"chronydOpts,omitempty"`
 	Ptp4lConf         *string            `json:"ptp4lConf,omitempty"`
 	TS2PhcConf        *string            `json:"ts2PhcConf,omitempty"`
+	ChronydConf       *string            `json:"chronydConf,omitempty"`
 	PtpSettings       map[string]string  `json:"ptpSettings,omitempty"`
 	Interfaces        []*string
 }
@@ -85,6 +87,8 @@ type PtpProcessOpts struct {
 	Phc2Opts *string `json:"Phc2Opts,omitempty"`
 	// TS2PhcOpts
 	TS2PhcOpts *string `json:"TS2PhcOpts,omitempty"`
+	// ChronydOpts
+	ChronydOpts *string `json:"ChronydOpts,omitempty"`
 	// SyncE4lOpts
 	SyncE4lOpts *string `json:"SyncE4lOpts,omitempty"`
 }
@@ -107,6 +111,11 @@ func (ptpOpts *PtpProcessOpts) Phc2SysEnabled() bool {
 // TS2PhcEnabled check if ts2phc is enabled
 func (ptpOpts *PtpProcessOpts) TS2PhcEnabled() bool {
 	return ptpOpts.TS2PhcOpts != nil && *ptpOpts.TS2PhcOpts != ""
+}
+
+// ChronydEnabled check if chronyd is enabled
+func (ptpOpts *PtpProcessOpts) ChronydEnabled() bool {
+	return ptpOpts.ChronydOpts != nil && *ptpOpts.ChronydOpts != ""
 }
 
 // GetPTPProfileName  ... get profile name from ptpconfig
