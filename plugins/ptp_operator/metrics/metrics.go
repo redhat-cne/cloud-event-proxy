@@ -15,10 +15,12 @@ import (
 )
 
 var (
-	configFileRegEx = regexp.MustCompile(`(ptp4l|ts2phc|phc2sys|synce4l)\.[0-9]*\.config`)
+	configFileRegEx = regexp.MustCompile(`(ptp4l|ts2phc|phc2sys|synce4l|chronyd)\.[0-9]*\.config`)
 	// NodeName from the env
-	ptpNodeName        = ""
-	masterOffsetSource = ""
+	ptpNodeName          = ""
+	masterOffsetSource   = ""
+	chronydValidSource   = regexp.MustCompile(`Selected source`)
+	chronydNoValidSource = regexp.MustCompile(`no selectable sources`)
 )
 
 const (
@@ -33,6 +35,7 @@ const (
 	gmProcessName      = "GM"
 	bcProcessName      = "T-BC"
 	syncE4lProcessName = "synce4l"
+	chronydProcessName = "chronyd"
 
 	unLocked     = "s0"
 	clockStep    = "s1"
@@ -150,6 +153,16 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		p.ParseTBCLogs(processName, configName, output, fields, ptpStats)
 	case syncE4lProcessName:
 		p.ParseSyncELogs(processName, configName, output, fields, ptpStats)
+	case chronydProcessName:
+		ptpStats.CheckSource(ClockRealTime, configName, processName)
+		ptpStats[ClockRealTime].SetProcessName(processName)
+		if chronydValidSource.MatchString(output) {
+			UpdateSyncStateMetrics(chronydProcessName, ClockRealTime, ptp.LOCKED)
+			p.GenPTPEvent(profileName, ptpStats[ClockRealTime], ClockRealTime, int64(0), ptp.LOCKED, ptp.OsClockSyncStateChange)
+		} else if chronydNoValidSource.MatchString(output) {
+			UpdateSyncStateMetrics(chronydProcessName, ClockRealTime, ptp.FREERUN)
+			p.GenPTPEvent(profileName, ptpStats[ClockRealTime], ClockRealTime, int64(0), ptp.FREERUN, ptp.OsClockSyncStateChange)
+		}
 	default:
 		if strings.Contains(output, " max ") { // this get generated in case -u is passed as an option to phy2sys opts
 			//TODO: ts2phc rms is validated
@@ -372,7 +385,7 @@ func (p *PTPEventManager) validLogToProcess(profileName, processName string, iFa
 		return false
 	}
 	// phc2sys config for HA will not have any interface defined
-	if iFaceSize == 0 && !p.IsHAProfile(profileName) { //TODO: Use PMC to update port and roles
+	if iFaceSize == 0 && !p.IsHAProfile(profileName) && processName != chronydProcessName { //TODO: Use PMC to update port and roles
 		log.Errorf("file watcher have not picked the files yet or ptp4l doesn't have config for %s by process %s", profileName, processName)
 		return false
 	}
