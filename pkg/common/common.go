@@ -33,6 +33,7 @@ import (
 
 	"github.com/redhat-cne/rest-api/pkg/localmetrics"
 
+	"github.com/redhat-cne/cloud-event-proxy/pkg/auth"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	restapi "github.com/redhat-cne/rest-api/v2"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
@@ -166,6 +167,7 @@ type SCConfiguration struct {
 	StorageType       storageClient.StorageTypeType
 	K8sClient         *storageClient.Client
 	RestAPI           *restapi.Server
+	AuthConfig        *restapi.AuthConfig
 }
 
 // ClientID ... read clientID from the configurations
@@ -213,7 +215,7 @@ func GetBoolEnv(key string) bool {
 }
 
 // StartPubSubService starts rest api service to manage events publishers and subscriptions
-func StartPubSubService(scConfig *SCConfiguration) (err error) {
+func StartPubSubService(scConfig *SCConfiguration, authConfig *restapi.AuthConfig) (err error) {
 	// init
 	if scConfig.TransportHost == nil {
 		scConfig.TransportHost.Type = UNKNOWN
@@ -222,8 +224,9 @@ func StartPubSubService(scConfig *SCConfiguration) (err error) {
 	scConfig.SubscriberAPI.ReloadStore()
 	// use EventOutCh instead since this is only used in producer side
 	server := restapi.InitServer(scConfig.APIPort, scConfig.TransportHost.Host, scConfig.APIPath,
-		scConfig.StorePath, scConfig.EventOutCh, scConfig.CloseCh, nil)
+		scConfig.StorePath, scConfig.EventOutCh, scConfig.CloseCh, nil, authConfig)
 	scConfig.RestAPI = server
+	scConfig.AuthConfig = authConfig
 	server.Start()
 	err = server.EndPointHealthChk()
 	if err == nil {
@@ -239,7 +242,47 @@ func CreatePublisher(config *SCConfiguration, publisher pubsub.PubSub) (pub pubs
 	var pubB []byte
 	var status int
 	if pubB, err = json.Marshal(&publisher); err == nil {
-		rc := restclient.New()
+		var rc *restclient.Rest
+		// Check if this is a localhost connection (IPv4 and IPv6)
+		isLocalhost := strings.Contains(apiURL, "localhost") ||
+			strings.Contains(apiURL, "127.0.0.1") ||
+			strings.Contains(apiURL, "[::1]") ||
+			strings.Contains(apiURL, "::1")
+
+		if isLocalhost && config.AuthConfig != nil && config.AuthConfig.EnableMTLS {
+			// For localhost connections with mTLS enabled, create a client that skips certificate verification
+			log.Infof("CreatePublisher: Using insecure client for localhost connection to %s", apiURL)
+			rc = restclient.NewWithInsecureSkipVerify()
+		} else if isLocalhost {
+			// For localhost connections without mTLS, use regular client
+			log.Infof("CreatePublisher: Using regular client for localhost connection to %s (mTLS not enabled)", apiURL)
+			rc = restclient.New()
+		} else if config.AuthConfig != nil {
+			// Use authenticated client for non-localhost connections
+			// Convert restapi.AuthConfig to auth.AuthConfig
+			authConfig := &auth.AuthConfig{
+				EnableMTLS:          config.AuthConfig.EnableMTLS,
+				ClientCertPath:      config.AuthConfig.ServerCertPath, // Use server cert as client cert
+				ClientKeyPath:       config.AuthConfig.ServerKeyPath,  // Use server key as client key
+				CACertPath:          config.AuthConfig.CACertPath,
+				UseServiceCA:        config.AuthConfig.UseServiceCA,
+				EnableOAuth:         config.AuthConfig.EnableOAuth,
+				OAuthIssuer:         config.AuthConfig.OAuthIssuer,
+				OAuthJWKSURL:        config.AuthConfig.OAuthJWKSURL,
+				RequiredScopes:      config.AuthConfig.RequiredScopes,
+				RequiredAudience:    config.AuthConfig.RequiredAudience,
+				ServiceAccountName:  config.AuthConfig.ServiceAccountName,
+				ServiceAccountToken: config.AuthConfig.ServiceAccountToken,
+				UseOpenShiftOAuth:   config.AuthConfig.UseOpenShiftOAuth,
+			}
+			rc, err = restclient.NewAuthenticated(authConfig)
+			if err != nil {
+				return pub, fmt.Errorf("failed to create authenticated client: %v", err)
+			}
+		} else {
+			// Use regular client when no auth config
+			rc = restclient.New()
+		}
 		if status, pubB = rc.PostWithReturn(types.ParseURI(apiURL), pubB); status != http.StatusCreated {
 			err = fmt.Errorf("publisher creation api at %s, returned status %d", apiURL, status)
 			return

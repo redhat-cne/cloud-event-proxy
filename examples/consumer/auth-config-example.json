@@ -1,0 +1,15 @@
+{
+  "enableMTLS": true,
+  "useServiceCA": true,
+  "clientCertPath": "/etc/cloud-event-consumer/client-certs/tls.crt",
+  "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
+  "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
+  "enableOAuth": true,
+  "useOpenShiftOAuth": true,
+  "oauthIssuer": "https://oauth-openshift.apps.your-cluster.com",
+  "oauthJWKSURL": "https://oauth-openshift.apps.your-cluster.com/oauth/jwks",
+  "requiredScopes": ["user:info"],
+  "requiredAudience": "openshift",
+  "serviceAccountName": "consumer-sa",
+  "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
+}
