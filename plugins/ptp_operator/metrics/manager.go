@@ -1,11 +1,15 @@
 package metrics
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 
@@ -34,6 +38,7 @@ type PTPEventManager struct {
 	// Ptp4lConfigInterfaces holds interfaces and its roles, after reading from ptp4l config files
 	Ptp4lConfigInterfaces map[types.ConfigName]*ptp4lconf.PTP4lConfig
 	lastOverallSyncState  ptp.SyncState
+	processStates         map[types.ConfigName]map[string]bool
 }
 
 // NewPTPEventManager to manage events and metrics
@@ -48,6 +53,7 @@ func NewPTPEventManager(resourcePrefix string, publisherTypes map[ptp.EventType]
 		Stats:                 map[types.ConfigName]stats.PTPStats{},
 		Ptp4lConfigInterfaces: make(map[types.ConfigName]*ptp4lconf.PTP4lConfig),
 		mock:                  false,
+		processStates:         make(map[types.ConfigName]map[string]bool),
 	}
 	// attach ptp config updates
 	ptpEventManager.PtpConfigMapUpdates = ptpConfig.NewLinuxPTPConfUpdate()
@@ -109,6 +115,16 @@ func (p *PTPEventManager) AddPTPConfig(fileName types.ConfigName, ptpCfg *ptp4lc
 	p.lock.Lock()
 	p.Ptp4lConfigInterfaces[fileName] = ptpCfg
 	p.lock.Unlock()
+}
+
+func (p *PTPEventManager) UpdateSyncState(syncState ptp.SyncState) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.lastOverallSyncState = syncState
+	err := p.saveToStore()
+	if err != nil {
+		log.Errorf("failed to save metrics to store: %s", err)
+	}
 }
 
 // GetPTPConfig ... Add PtpConfigUpdate obj
@@ -343,30 +359,34 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, sou
 	if state == "" {
 		return
 	}
+	// Handle mock mode
 	if p.mock {
 		p.mockEvent = []ptp.EventType{eventType}
 		if eventType == ptp.PtpStateChange || eventType == ptp.OsClockSyncStateChange {
 			p.mockEvent = append(p.mockEvent, ptp.SyncStateChange)
 		}
 		log.Infof("PublishEvent state=%s, ptpOffset=%d, source=%s, eventType=%s", state, ptpOffset, source, eventType)
-		return
+	} else {
+		// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
+		data := p.GetPTPEventsData(state, ptpOffset, source, eventType)
+		resourceAddress := path.Join(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
+		p.publish(*data, resourceAddress, eventType)
 	}
 
-	// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
-	data := p.GetPTPEventsData(state, ptpOffset, source, eventType)
-	resourceAddress := path.Join(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
-	p.publish(*data, resourceAddress, eventType)
-	// publish the event again as overall sync state
+	// Common logic for both mock and non-mock modes: handle node state aggregation
 	// SyncStateChange is the overall sync state including PtpStateChange and OsClockSyncStateChange
 	if eventType == ptp.PtpStateChange || eventType == ptp.OsClockSyncStateChange {
 		nodeState := p.GetNodeSyncState(state)
-		if state != p.lastOverallSyncState {
-			eventType = ptp.SyncStateChange
-			source = string(p.publisherTypes[eventType].Resource)
-			data = p.GetPTPEventsData(state, ptpOffset, source, eventType)
-			resourceAddress = path.Join(p.resourcePrefix, p.nodeName, source)
-			p.publish(*data, resourceAddress, eventType)
-			p.lastOverallSyncState = nodeState
+		if nodeState != p.lastOverallSyncState {
+			if !p.mock {
+				// In non-mock mode, also publish the SyncStateChange event
+				eventType = ptp.SyncStateChange
+				source = string(p.publisherTypes[eventType].Resource)
+				data := p.GetPTPEventsData(nodeState, ptpOffset, source, eventType)
+				resourceAddress := path.Join(p.resourcePrefix, p.nodeName, source)
+				p.publish(*data, resourceAddress, eventType)
+			}
+			p.UpdateSyncState(nodeState)
 		}
 	}
 }
@@ -611,7 +631,7 @@ func (p *PTPEventManager) GetNodeSyncState(currentState ptp.SyncState) ptp.SyncS
 			if s != ptp.FREERUN && s != ptp.HOLDOVER && s != ptp.LOCKED {
 				continue
 			}
-			finalState = OverallState(s, finalState)
+			finalState = OverallState(finalState, s)
 			found = true
 		}
 	}
@@ -649,8 +669,95 @@ func OverallState(current, updated ptp.SyncState) ptp.SyncState {
 
 const logsEndpoint = "http://localhost:8081/emit-logs"
 
-// TriggerLogs makes an HTTP request to the linuxptp-daemon to re-emit
-// all metrics logs so that cloud-event-proxy can repopulate its state.
+type SavedMetrics struct {
+	Timestamp      int64                                             `json:"timestamp"`
+	LastClockState ptp.SyncState                                     `json:"last_clock_state"`
+	PortRoles      map[types.ConfigName]map[string]types.PtpPortRole `json:"portRoles"`
+	ProcessStates  map[types.ConfigName]map[string]bool              `json:"process_states"`
+}
+
+const metricFilename = "metrics.json"
+
+func (p *PTPEventManager) LoadFromStore(config *common.SCConfiguration) (int64, error) {
+	contents, err := os.ReadFile(filepath.Join(config.StorePath, metricFilename))
+	if os.IsNotExist(err) {
+		return 0, nil
+	}
+	var savedMetrics SavedMetrics
+	err = json.Unmarshal(contents, &savedMetrics)
+	if err != nil {
+		return 0, fmt.Errorf("failed to unmarshal saved metric data: %w", err)
+	}
+	p.lastOverallSyncState = savedMetrics.LastClockState
+	p.processStates = savedMetrics.ProcessStates
+
+	for configName, portAndRole := range savedMetrics.PortRoles {
+		for port, role := range portAndRole {
+			ptpConf := p.GetPTPConfig(configName)
+			if ptpConf == nil {
+				continue
+			}
+			ptpInterface, ifErr := ptpConf.ByInterface(port)
+			if ifErr != nil {
+				continue
+			}
+			ptpInterface.UpdateRole(role)
+		}
+	}
+	return savedMetrics.Timestamp, nil
+}
+
+func (p *PTPEventManager) saveToStore() error {
+	// Skip saving if scConfig is not available (e.g., in test scenarios)
+	if p.scConfig == nil {
+		return nil
+	}
+
+	PortRoles := make(map[types.ConfigName]map[string]types.PtpPortRole)
+
+	for configName, ptp4lConf := range p.Ptp4lConfigInterfaces {
+		for _, ptpInterface := range ptp4lConf.Interfaces {
+			if _, ok := PortRoles[configName]; !ok {
+				PortRoles[configName] = make(map[string]types.PtpPortRole)
+			}
+			PortRoles[configName][ptpInterface.Name] = ptpInterface.Role
+		}
+	}
+
+	data := SavedMetrics{
+		Timestamp:      time.Now().Unix(), // TODO track last change to values.
+		LastClockState: p.lastOverallSyncState,
+		PortRoles:      PortRoles,
+	}
+
+	content, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshall save data fron current data: %w", err)
+	}
+	err = Filesystem.WriteFile(filepath.Join(p.scConfig.StorePath, metricFilename), content, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to write save metrics file: %w", err)
+	}
+	return nil
+}
+
+func (p *PTPEventManager) SetInitalMetrics() {
+	for cfgName, ptp4lConf := range p.Ptp4lConfigInterfaces {
+		for _, ptpInterface := range ptp4lConf.Interfaces {
+			updateRoleMetricFromData(string(cfgName), ptpInterface.Name, ptpInterface.Role)
+		}
+	}
+	for cfgName, procs := range p.processStates {
+		for processName, status := range procs {
+			var val int64 = 0
+			if status {
+				val = 1
+			}
+			UpdateProcessStatusMetrics(processName, string(cfgName), val)
+		}
+	}
+}
+
 func (p *PTPEventManager) TriggerLogs() error {
 	resp, err := http.Get(logsEndpoint) //nolint:gosec
 	if err != nil {
@@ -658,4 +765,13 @@ func (p *PTPEventManager) TriggerLogs() error {
 	}
 	defer resp.Body.Close()
 	return nil
+}
+
+func updateRoleMetricFromData(configName, portName string, portRole types.PtpPortRole) {
+	configNameParts := strings.Split(configName, ".")
+	process := ptp4lProcessName
+	if len(configNameParts) > 0 {
+		process = configNameParts[0]
+	}
+	UpdateInterfaceRoleMetrics(process, portName, portRole)
 }
