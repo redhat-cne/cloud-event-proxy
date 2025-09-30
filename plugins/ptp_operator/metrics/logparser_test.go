@@ -716,3 +716,37 @@ func deepCopyPTP4lCfg(src *ptp4lconf.PTP4lConfig) *ptp4lconf.PTP4lConfig {
 	_ = json.Unmarshal(raw, &copied)
 	return &copied
 }
+
+func TestExtractMetrics_SkipsUTCTAIOffsetWarning(t *testing.T) {
+	// Test that UTC-TAI offset warning messages are properly skipped
+	// This log line should be filtered out because it doesn't contain a config name pattern
+	utcTaiLogLine := "ts2phc[4331812.338] [ptp4l.0.config]: UTC-TAI offset not set in system! Trying to revert to leapfile"
+
+	// Create event manager for testing
+	ptpEventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", nil)
+	ptpEventManager.MockTest(true)
+
+	// Set up a config so we can verify no stats are created for it
+	ptpEventManager.AddPTPConfig(types.ConfigName(ptp4lConfig.Name), ptp4lConfig)
+	ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)] = make(stats.PTPStats)
+
+	// Get initial stats count
+	if len(ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)]) != 0 {
+		t.Fatalf("Should be empty for %s, but got length of %d", ptp4lConfig.Name, len(ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)]))
+	}
+
+	// Reset mock events before test
+	ptpEventManager.ResetMockEvent()
+
+	// Extract metrics from the UTC-TAI log line
+	ptpEventManager.ExtractMetrics(utcTaiLogLine)
+
+	// Verify no events were generated (log line should be skipped)
+	events := ptpEventManager.GetMockEvent()
+	assert.Empty(t, events, "No events should be generated for UTC-TAI offset warning log lines")
+
+	// Verify no new stats were added (no metrics created)
+	if len(ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)]) != 0 {
+		t.Fatalf("Expected no stats to be created for %s, but got %d", ptp4lConfig.Name, len(ptpEventManager.Stats[types.ConfigName(ptp4lConfig.Name)]))
+	}
+}
