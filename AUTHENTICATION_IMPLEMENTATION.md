@@ -23,7 +23,7 @@ The authentication implementation provides a comprehensive solution for securing
 ### New Authentication Package (`pkg/auth/`)
 
 #### `pkg/auth/config.go`
-- **AuthConfig struct**: Comprehensive configuration for both mTLS and OAuth
+- **ClientAuthConfig struct**: Client-specific authentication configuration that extends the base `AuthConfig` from rest-api
 - **LoadAuthConfig()**: Load configuration from JSON files
 - **Validate()**: Validate authentication configuration
 - **CreateTLSConfig()**: Create TLS configuration for mTLS
