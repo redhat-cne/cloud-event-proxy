@@ -156,16 +156,22 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 	ptpOffset, err := strconv.ParseFloat(fields[3], 64)
 	if err != nil {
 		log.Errorf("%s failed to parse offset from master output %s error %v", processName, fields[3], err)
+		interfaceName = "" // skip line
+		return
 	}
 
 	maxPtpOffset, err = strconv.ParseFloat(fields[3], 64)
 	if err != nil {
 		log.Errorf("%s failed to parse max offset from master output %s error %v", processName, fields[3], err)
+		interfaceName = "" // skip line
+		return
 	}
 
 	frequencyAdjustment, err = strconv.ParseFloat(fields[6], 64)
 	if err != nil {
 		log.Errorf("%s failed to parse frequency adjustment output %s error %v", processName, fields[6], err)
+		interfaceName = "" // skip line
+		return
 	}
 
 	state := fields[4]
@@ -179,13 +185,15 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 		clockState = ptp.LOCKED
 	default:
 		log.Errorf("%s -  failed to parse clock state output `%s` ", processName, fields[4])
+		interfaceName = "" // skip line
+		return
 	}
 
 	//   0                1     2           3    4       5        6    7
 	// ts2phc.0.config  ens7f0 offset       1    s3    freq      +1 holdover
 	if len(fields) >= 8 && processName == ts2phcProcessName && fields[7] == "holdover" {
 		clockState = ptp.HOLDOVER
-	} else if len(fields) >= 8 { // anything new we ignor
+	} else if len(fields) >= 8 { // anything new we ignore
 		delay, err = strconv.ParseFloat(fields[8], 64)
 		if err != nil {
 			log.Errorf("%s failed to parse delay from master output %s error %v", processName, fields[8], err)
