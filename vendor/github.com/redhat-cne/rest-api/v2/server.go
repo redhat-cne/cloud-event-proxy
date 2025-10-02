@@ -82,24 +82,21 @@ const (
 // AuthConfig contains authentication configuration for both single and multi-node OpenShift clusters
 type AuthConfig struct {
 	// mTLS configuration - works for both single and multi-node clusters
-	EnableMTLS           bool   `json:"enableMTLS"`
-	CACertPath           string `json:"caCertPath"`
-	ServerCertPath       string `json:"serverCertPath"`
-	ServerKeyPath        string `json:"serverKeyPath"`
-	UseServiceCA         bool   `json:"useServiceCA"`         // Use OpenShift Service CA (recommended for all cluster sizes)
-	CertManagerIssuer    string `json:"certManagerIssuer"`    // cert-manager ClusterIssuer name (optional alternative)
-	CertManagerNamespace string `json:"certManagerNamespace"` // namespace for cert-manager resources (optional alternative)
+	EnableMTLS     bool   `json:"enableMTLS"`
+	CACertPath     string `json:"caCertPath"`
+	ServerCertPath string `json:"serverCertPath"`
+	ServerKeyPath  string `json:"serverKeyPath"`
+	UseServiceCA   bool   `json:"useServiceCA"` // Use OpenShift Service CA (recommended for all cluster sizes)
 
 	// OAuth configuration using OpenShift OAuth Server - works for both single and multi-node clusters
-	EnableOAuth            bool     `json:"enableOAuth"`
-	OAuthIssuer            string   `json:"oauthIssuer"`            // OpenShift OAuth server URL
-	OAuthJWKSURL           string   `json:"oauthJWKSURL"`           // OpenShift JWKS endpoint
-	RequiredScopes         []string `json:"requiredScopes"`         // Required OAuth scopes
-	RequiredAudience       string   `json:"requiredAudience"`       // Required OAuth audience
-	ServiceAccountName     string   `json:"serviceAccountName"`     // ServiceAccount for client authentication
-	ServiceAccountToken    string   `json:"serviceAccountToken"`    // ServiceAccount token path
-	UseOpenShiftOAuth      bool     `json:"useOpenShiftOAuth"`      // Use OpenShift's built-in OAuth server (recommended for all cluster sizes)
-	AuthenticationOperator bool     `json:"authenticationOperator"` // Use OpenShift Authentication Operator (optional alternative)
+	EnableOAuth         bool     `json:"enableOAuth"`
+	OAuthIssuer         string   `json:"oauthIssuer"`         // OpenShift OAuth server URL
+	OAuthJWKSURL        string   `json:"oauthJWKSURL"`        // OpenShift JWKS endpoint
+	RequiredScopes      []string `json:"requiredScopes"`      // Required OAuth scopes
+	RequiredAudience    string   `json:"requiredAudience"`    // Required OAuth audience
+	ServiceAccountName  string   `json:"serviceAccountName"`  // ServiceAccount for client authentication
+	ServiceAccountToken string   `json:"serviceAccountToken"` // ServiceAccount token path
+	UseOpenShiftOAuth   bool     `json:"useOpenShiftOAuth"`   // Use OpenShift's built-in OAuth server (recommended for all cluster sizes)
 }
 
 // LoadAuthConfig loads authentication configuration from a JSON file

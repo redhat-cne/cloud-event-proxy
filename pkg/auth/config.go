@@ -21,37 +21,28 @@ import (
 	"fmt"
 	"os"
 
+	restapi "github.com/redhat-cne/rest-api/v2"
 	log "github.com/sirupsen/logrus"
 )
 
-// AuthConfig contains authentication configuration for both single and multi-node OpenShift clusters
-type AuthConfig struct {
-	// mTLS configuration - works for both single and multi-node clusters
-	EnableMTLS           bool   `json:"enableMTLS"`
-	ClientCertPath       string `json:"clientCertPath"`
-	ClientKeyPath        string `json:"clientKeyPath"`
-	CACertPath           string `json:"caCertPath"`
-	UseServiceCA         bool   `json:"useServiceCA"`         // Use OpenShift Service CA (recommended for all cluster sizes)
-	CertManagerIssuer    string `json:"certManagerIssuer"`    // cert-manager ClusterIssuer name (optional alternative)
-	CertManagerNamespace string `json:"certManagerNamespace"` // namespace for cert-manager resources (optional alternative)
-
-	// OAuth configuration using OpenShift OAuth Server - works for both single and multi-node clusters
-	EnableOAuth            bool     `json:"enableOAuth"`
-	OAuthIssuer            string   `json:"oauthIssuer"`            // OpenShift OAuth server URL
-	OAuthJWKSURL           string   `json:"oauthJWKSURL"`           // OpenShift JWKS endpoint
-	RequiredScopes         []string `json:"requiredScopes"`         // Required OAuth scopes
-	RequiredAudience       string   `json:"requiredAudience"`       // Required OAuth audience
-	ServiceAccountName     string   `json:"serviceAccountName"`     // ServiceAccount for client authentication
-	ServiceAccountToken    string   `json:"serviceAccountToken"`    // ServiceAccount token path
-	UseOpenShiftOAuth      bool     `json:"useOpenShiftOAuth"`      // Use OpenShift's built-in OAuth server (recommended for all cluster sizes)
-	AuthenticationOperator bool     `json:"authenticationOperator"` // Use OpenShift Authentication Operator (optional alternative)
+// ClientAuthConfig extends the base AuthConfig with client-specific certificate paths
+type ClientAuthConfig struct {
+	*restapi.AuthConfig
+	// Client-specific certificate paths (different from server paths in base AuthConfig)
+	ClientCertPath string `json:"clientCertPath"`
+	ClientKeyPath  string `json:"clientKeyPath"`
 }
 
+// AuthConfig is an alias for ClientAuthConfig for backward compatibility
+type AuthConfig = ClientAuthConfig
+
 // LoadAuthConfig loads authentication configuration from a JSON file
-func LoadAuthConfig(configPath string) (*AuthConfig, error) {
+func LoadAuthConfig(configPath string) (*ClientAuthConfig, error) {
 	if configPath == "" {
 		log.Info("No authentication config path provided, using default (no auth)")
-		return &AuthConfig{}, nil
+		return &ClientAuthConfig{
+			AuthConfig: &restapi.AuthConfig{},
+		}, nil
 	}
 
 	// Check if file exists
@@ -64,9 +55,14 @@ func LoadAuthConfig(configPath string) (*AuthConfig, error) {
 		return nil, fmt.Errorf("failed to read authentication config file %s: %v", configPath, err)
 	}
 
-	var config AuthConfig
+	var config ClientAuthConfig
 	if err = json.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal authentication config: %v", err)
+	}
+
+	// Initialize embedded AuthConfig if it's nil
+	if config.AuthConfig == nil {
+		config.AuthConfig = &restapi.AuthConfig{}
 	}
 
 	log.Infof("Loaded authentication config from %s", configPath)
@@ -74,7 +70,7 @@ func LoadAuthConfig(configPath string) (*AuthConfig, error) {
 }
 
 // Validate validates the authentication configuration
-func (c *AuthConfig) Validate() error {
+func (c *ClientAuthConfig) Validate() error {
 	if c.EnableMTLS {
 		if c.ClientCertPath == "" {
 			return fmt.Errorf("client certificate path is required when mTLS is enabled")
@@ -119,7 +115,7 @@ func (c *AuthConfig) Validate() error {
 }
 
 // CreateTLSConfig creates a TLS configuration for mTLS
-func (c *AuthConfig) CreateTLSConfig() (*tls.Config, error) {
+func (c *ClientAuthConfig) CreateTLSConfig() (*tls.Config, error) {
 	if !c.EnableMTLS {
 		return nil, nil
 	}
@@ -155,7 +151,7 @@ func (c *AuthConfig) CreateTLSConfig() (*tls.Config, error) {
 }
 
 // GetOAuthToken reads the OAuth token from the service account token file
-func (c *AuthConfig) GetOAuthToken() (string, error) {
+func (c *ClientAuthConfig) GetOAuthToken() (string, error) {
 	if !c.EnableOAuth {
 		return "", nil
 	}
@@ -169,12 +165,12 @@ func (c *AuthConfig) GetOAuthToken() (string, error) {
 }
 
 // IsAuthenticationEnabled returns true if either mTLS or OAuth is enabled
-func (c *AuthConfig) IsAuthenticationEnabled() bool {
+func (c *ClientAuthConfig) IsAuthenticationEnabled() bool {
 	return c.EnableMTLS || c.EnableOAuth
 }
 
 // GetConfigSummary returns a summary of the authentication configuration
-func (c *AuthConfig) GetConfigSummary() string {
+func (c *ClientAuthConfig) GetConfigSummary() string {
 	summary := "Authentication Configuration:\n"
 	summary += fmt.Sprintf("  mTLS: %t\n", c.EnableMTLS)
 	if c.EnableMTLS {

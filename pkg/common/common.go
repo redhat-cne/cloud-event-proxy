@@ -259,23 +259,14 @@ func CreatePublisher(config *SCConfiguration, publisher pubsub.PubSub) (pub pubs
 			rc = restclient.New()
 		} else if config.AuthConfig != nil {
 			// Use authenticated client for non-localhost connections
-			// Convert restapi.AuthConfig to auth.AuthConfig
-			authConfig := &auth.AuthConfig{
-				EnableMTLS:          config.AuthConfig.EnableMTLS,
-				ClientCertPath:      config.AuthConfig.ServerCertPath, // Use server cert as client cert
-				ClientKeyPath:       config.AuthConfig.ServerKeyPath,  // Use server key as client key
-				CACertPath:          config.AuthConfig.CACertPath,
-				UseServiceCA:        config.AuthConfig.UseServiceCA,
-				EnableOAuth:         config.AuthConfig.EnableOAuth,
-				OAuthIssuer:         config.AuthConfig.OAuthIssuer,
-				OAuthJWKSURL:        config.AuthConfig.OAuthJWKSURL,
-				RequiredScopes:      config.AuthConfig.RequiredScopes,
-				RequiredAudience:    config.AuthConfig.RequiredAudience,
-				ServiceAccountName:  config.AuthConfig.ServiceAccountName,
-				ServiceAccountToken: config.AuthConfig.ServiceAccountToken,
-				UseOpenShiftOAuth:   config.AuthConfig.UseOpenShiftOAuth,
+			// Create ClientAuthConfig that embeds the restapi.AuthConfig
+			// For client connections, use server certificates as client certificates
+			clientAuthConfig := &auth.ClientAuthConfig{
+				AuthConfig:     config.AuthConfig,
+				ClientCertPath: config.AuthConfig.ServerCertPath, // Use server cert as client cert
+				ClientKeyPath:  config.AuthConfig.ServerKeyPath,  // Use server key as client key
 			}
-			rc, err = restclient.NewAuthenticated(authConfig)
+			rc, err = restclient.NewAuthenticated(clientAuthConfig)
 			if err != nil {
 				return pub, fmt.Errorf("failed to create authenticated client: %v", err)
 			}
