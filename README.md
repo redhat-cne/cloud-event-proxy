@@ -1,6 +1,6 @@
 # cloud-event-proxy
-  The cloud-event-proxy project provides a mechanism for events from the K8s infrastructure to be delivered to CNFs with low-latency.  
-  The initial event functionality focuses on the operation of the PTP synchronization protocol, but the mechanism can be extended for any infrastructure event that requires low-latency.  
+  The cloud-event-proxy project provides a mechanism for events from the K8s infrastructure to be delivered to CNFs with low-latency.
+  The initial event functionality focuses on the operation of the PTP synchronization protocol, but the mechanism can be extended for any infrastructure event that requires low-latency.
   The mechanism is an integral part of k8s/OCP RAN deployments where the PTP protocol is used to provide timing synchronization for the RAN software elements
 
 
@@ -10,6 +10,9 @@
 ## Contents
 * [Transport Protocol](#event-transporter)
     * [HTTP Protocol](#http-protocol)
+* [Authentication](#authentication)
+    * [mTLS and OAuth Support](#mtls-and-oauth-support)
+    * [Consumer Examples](#consumer-examples)
 * [Publishers](#creating-publisher)
     * [JSON Example](#publisher-json-example)
     * [Go Example](#creating-publisher-golang-example)
@@ -22,7 +25,7 @@
   * [Event via rest api](#publisher-event-create-via-rest-api)
 * [Metrics](#metrics)
 * [Plugin](#plugin)
-  
+
 ## Event Transporter
 Cloud event proxy currently support one type of transport protocol
 1. HTTP Protocol
@@ -33,7 +36,7 @@ CloudEvents HTTP Protocol will be enabled based on url in `transport-host`.
 If HTTP is identified then the publisher will start a publisher rest service, which is accessible outside the container via k8s service name.
 The Publisher service will have the ability to register consumer endpoints to publish events.
 
-The transport URL is defined in the format of 
+The transport URL is defined in the format of
 ```yaml
 - "--transport-host=$(TRANSPORT_PROTOCAL)://$(TRANSPORT_SERVICE).$(TRANSPORT_NAMESPACE).svc.cluster.local:$(TRANSPORT_PORT)"
 ```
@@ -102,8 +105,55 @@ HTTP consumer example
             - "--api-port=8089"
 ```
 
+## Authentication
+
+Cloud Event Proxy supports enterprise-grade authentication with mTLS and OAuth for secure event communication.
+
+**Quick Setup:**
+```bash
+# Deploy consumer with authentication
+export CLUSTER_NAME="your-cluster.example.com"
+make deploy-consumer
+```
+
+For detailed setup and configuration, see:
+- **[Authentication Setup Guide](examples/manifests/auth/README.md)** - Complete setup using OpenShift components
+- **[Implementation Details](AUTHENTICATION_IMPLEMENTATION.md)** - Technical implementation guide
+- **[Consumer Examples](examples/consumer/README.md)** - Working examples with authentication
+
+### Consumer Examples
+
+The repository includes fully functional consumer examples demonstrating:
+
+- **Basic Consumer**: Simple event consumer without authentication
+- **Authenticated Consumer**: Consumer with mTLS and OAuth authentication
+- **OpenShift Integration**: Automated deployment with Service CA and OAuth server
+
+Quick start:
+```bash
+# Deploy authenticated consumer with default cluster name (openshift.local)
+make deploy-consumer
+
+# Deploy with custom cluster name
+export CLUSTER_NAME=your-cluster-name.com
+make deploy-consumer
+
+# Run authentication examples
+cd examples/auth-examples && go run auth-examples.go
+```
+
+
+
+## Development and Testing
+
+Additional development and testing utilities are available in the `hack/` directory:
+
+- `test-go.sh` - Comprehensive test script with static analysis
+- `deploy_test.sh` - Testing deployment automation
+- Various build and development scripts (see `docs/development.md` for details)
+
 ## Creating Publisher
-### Publisher JSON Example 
+### Publisher JSON Example
 Create Publisher Resource: JSON request
 ```json
 {
@@ -132,11 +182,11 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/types"
 )
 func main(){
-  //channel for the transport handler subscribed to get and set events  
+  //channel for the transport handler subscribed to get and set events
     eventInCh := make(chan *channel.DataChan, 10)
     pubSubInstance = v1pubsub.GetAPIInstance(".")
     endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:9085", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
-    // create publisher 
+    // create publisher
     pub, err := pubSubInstance.CreatePublisher(v1pubsub.NewPubSub(endpointURL, "test/test"))
 
 }
@@ -171,14 +221,14 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/types"
 )
 func main(){
-    //channel for the transport handler subscribed to get and set events  
+    //channel for the transport handler subscribed to get and set events
     eventInCh := make(chan *channel.DataChan, 10)
-    
+
     pubSubInstance = v1pubsub.GetAPIInstance(".")
     endpointURL := &types.URI{URL: url.URL{Scheme: "http", Host: "localhost:8089", Path: fmt.Sprintf("%s%s", apiPath, "dummy")}}
-    // create subscription 
+    // create subscription
     pub, err := pubSubInstance.CreateSubscription(v1pubsub.NewPubSub(endpointURL, "test/test"))
-    
+
 }
 
 ```
@@ -215,7 +265,7 @@ The following example shows a Cloud Native Events serialized as JSON:
     "data": {
     "version": "v1.0",
     "values": [{
-        "resource": "/cluster/node/ptp", 
+        "resource": "/cluster/node/ptp",
         "dataType": "notification",
         "valueType": "enumeration",
         "value": "ACQUIRING-SYNC"
@@ -257,7 +307,7 @@ Values: []cneevent.DataValue{
         },
     },
 }
-data.SetVersion("v1") 
+data.SetVersion("v1")
 event.SetData(data)
 
 ```
@@ -306,4 +356,3 @@ Cloud native events rest API comes with following metrics collectors .
 
 ## Supported PTP configurations
 [Supported configurations](docs/configurations.md)
-

@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: server-ca-bundle-configmap
+  namespace: cloud-events
+  annotations:
+    # This annotation tells OpenShift Service CA to inject the CA bundle
+    service.beta.openshift.io/inject-cabundle: "true"
+data: {}

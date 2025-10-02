@@ -53,6 +53,7 @@ import (
 	"github.com/redhat-cne/cloud-event-proxy/pkg/plugins"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	apiMetrics "github.com/redhat-cne/rest-api/pkg/localmetrics"
+	restapi "github.com/redhat-cne/rest-api/v2"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	sdkMetrics "github.com/redhat-cne/sdk-go/pkg/localmetrics"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
@@ -78,6 +79,7 @@ var (
 	pluginHandler           plugins.Handler
 	nodeName                string
 	namespace               string
+	authConfigPath          string
 
 	// Git commit of current build set at build time
 	GitCommit = "Undefined"
@@ -117,8 +119,22 @@ func main() {
 	flag.StringVar(&transportHost, "transport-host", "http://ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043", "The transport bus hostname or service name.")
 	flag.IntVar(&apiPort, "api-port", 9043, "The address the rest api endpoint binds to.")
 	flag.StringVar(&apiVersion, "api-version", "2.0", "The address the rest api endpoint binds to.")
+	flag.StringVar(&authConfigPath, "auth-config", "", "Path to authentication configuration file for mTLS and OAuth.")
 
 	flag.Parse()
+
+	// Load authentication configuration if provided
+	var authConfig *restapi.AuthConfig
+	if authConfigPath != "" {
+		var err error
+		authConfig, err = restapi.LoadAuthConfig(authConfigPath)
+		if err != nil {
+			log.Fatalf("Failed to load authentication configuration from %s: %v", authConfigPath, err)
+		}
+		log.Infof("Authentication configuration loaded: %s", authConfig.GetConfigSummary())
+	} else {
+		log.Info("No authentication configuration provided, running without authentication")
+	}
 
 	// Register metrics
 	localmetrics.RegisterMetrics()
@@ -194,7 +210,7 @@ func main() {
 		scConfig.APIPath)
 
 	// Enable pub/sub services
-	err = common.StartPubSubService(scConfig)
+	err = common.StartPubSubService(scConfig, authConfig)
 	if err != nil {
 		log.Fatal("pub/sub service API failed to start.")
 	}
