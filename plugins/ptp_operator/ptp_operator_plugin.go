@@ -53,6 +53,7 @@ const (
 	phc2sysProcessName = "phc2sys"
 	ptp4lProcessName   = "ptp4l"
 	ts2PhcProcessName  = "ts2phc"
+	chronydProcessName = "chronyd"
 	gnssProcessName    = "gnss"
 	syncE4lProcessName = "synce4l"
 	// ClockRealTime is the slave
@@ -512,6 +513,11 @@ func processPtp4lConfigFileUpdates() {
 						ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(),
 							strings.Replace(cName, ptp4lProcessName, ts2PhcProcessName, 1), ts2PhcProcessName)
 					}
+					// special chronyd due to different configName replace ptp4l.0.conf to chronyd.0.cnf
+					if !opts.ChronydEnabled() {
+						ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(),
+							strings.Replace(cName, ptp4lProcessName, chronydProcessName, 1), chronydProcessName)
+					}
 				}
 				for key, np := range eventManager.PtpConfigMapUpdates.EventThreshold {
 					ptpMetrics.Threshold.With(prometheus.Labels{
@@ -607,6 +613,7 @@ func processPtp4lConfigFileUpdates() {
 				// clean up process metrics
 				ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), string(ptpConfigFileName), ptp4lProcessName, phc2sysProcessName, syncE4lProcessName)
 				ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), strings.Replace(string(ptpConfigFileName), ptp4lProcessName, ts2PhcProcessName, 1), ts2PhcProcessName)
+				ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), strings.Replace(string(ptpConfigFileName), ptp4lProcessName, chronydProcessName, 1), chronydProcessName)
 				fileModified <- true
 			}
 		case <-config.CloseCh:

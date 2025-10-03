@@ -389,6 +389,51 @@ var testCases = []TestCase{
 		expectedEvent:                       []ptp.EventType{ptp.OsClockSyncStateChange, ptp.SyncStateChange},
 		logPtp4lConfigName:                  logPtp4lConfig.Name,
 	},
+	// chronyd tests - similar to phc2sys but focused on sync state changes
+	{
+		log:                    "chronyd[1000000800]: [chronyd.0.config] Selected source 192.168.1.1",
+		from:                   "chronyd",
+		process:                "chronyd",
+		iface:                  metrics.ClockRealTime,
+		lastSyncState:          ptp.FREERUN,
+		expectedSyncStateCheck: true,
+		expectedSyncState:      float64(types.LOCKED),
+		expectedEvent:          []ptp.EventType{ptp.OsClockSyncStateChange, ptp.SyncStateChange},
+		logPtp4lConfigName:     "chronyd.0.config",
+	},
+	{
+		log:                    "chronyd[1000000810]: [chronyd.0.config] Selected source 192.168.1.1",
+		from:                   "chronyd",
+		process:                "chronyd",
+		iface:                  metrics.ClockRealTime,
+		lastSyncState:          ptp.LOCKED,
+		expectedSyncStateCheck: true,
+		expectedSyncState:      float64(types.LOCKED),
+		expectedEvent:          []ptp.EventType{},
+		logPtp4lConfigName:     "chronyd.0.config",
+	},
+	{
+		log:                    "chronyd[1000000820]: [chronyd.0.config] no selectable sources",
+		from:                   "chronyd",
+		process:                "chronyd",
+		iface:                  metrics.ClockRealTime,
+		lastSyncState:          ptp.LOCKED,
+		expectedSyncStateCheck: true,
+		expectedSyncState:      float64(types.FREERUN),
+		expectedEvent:          []ptp.EventType{ptp.OsClockSyncStateChange, ptp.SyncStateChange},
+		logPtp4lConfigName:     "chronyd.0.config",
+	},
+	{
+		log:                    "chronyd[1000000830]: [chronyd.0.config] no selectable sources",
+		from:                   "chronyd",
+		process:                "chronyd",
+		iface:                  metrics.ClockRealTime,
+		lastSyncState:          ptp.FREERUN,
+		expectedSyncStateCheck: true,
+		expectedSyncState:      float64(types.FREERUN),
+		expectedEvent:          []ptp.EventType{},
+		logPtp4lConfigName:     "chronyd.0.config",
+	},
 }
 
 func setup() {
@@ -437,6 +482,19 @@ func setup() {
 	ptpEventManager.Stats[types.ConfigName(logPtp4lConfigDualFollower.Name)][types.IFace("CLOCK_REALTIME")] = statsRTDualFollower
 	ptpEventManager.Stats[types.ConfigName(logPtp4lConfigDualFollower.Name)][types.IFace("ens3f0")] = statsPHCDualFollower
 	ptpEventManager.Stats[types.ConfigName(logPtp4lConfigDualFollower.Name)][types.IFace("ens3f1")] = statsPHCDualFollower
+
+	// chronyd configuration
+	chronydConfig := &ptp4lconf.PTP4lConfig{
+		Name:    "chronyd.0.config",
+		Profile: "chronyd",
+	}
+	ptpEventManager.AddPTPConfig(types.ConfigName(chronydConfig.Name), chronydConfig)
+	statsChronyd := stats.NewStats(chronydConfig.Name)
+	statsChronyd.SetOffsetSource("chronyd")
+	statsChronyd.SetProcessName("chronyd")
+	statsChronyd.SetLastSyncState("LOCKED")
+	ptpEventManager.Stats[types.ConfigName(chronydConfig.Name)] = make(stats.PTPStats)
+	ptpEventManager.Stats[types.ConfigName(chronydConfig.Name)][types.IFace("CLOCK_REALTIME")] = statsChronyd
 
 	ptpEventManager.PtpConfigMapUpdates = config.NewLinuxPTPConfUpdate()
 
