@@ -378,29 +378,33 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, sou
 	if state == "" {
 		return
 	}
+	// Handle mock mode
 	if p.mock {
 		p.mockEvent = []ptp.EventType{eventType}
 		if eventType == ptp.PtpStateChange || eventType == ptp.OsClockSyncStateChange {
 			p.mockEvent = append(p.mockEvent, ptp.SyncStateChange)
 		}
 		log.Infof("PublishEvent state=%s, ptpOffset=%d, source=%s, eventType=%s", state, ptpOffset, source, eventType)
-		return
+	} else {
+		// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
+		data := p.GetPTPEventsData(state, ptpOffset, source, eventType)
+		resourceAddress := path.Join(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
+		p.publish(*data, resourceAddress, eventType)
 	}
 
-	// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
-	data := p.GetPTPEventsData(state, ptpOffset, source, eventType)
-	resourceAddress := path.Join(p.resourcePrefix, p.nodeName, string(p.publisherTypes[eventType].Resource))
-	p.publish(*data, resourceAddress, eventType)
-	// publish the event again as overall sync state
+	// Common logic for both mock and non-mock modes: handle node state aggregation
 	// SyncStateChange is the overall sync state including PtpStateChange and OsClockSyncStateChange
 	if eventType == ptp.PtpStateChange || eventType == ptp.OsClockSyncStateChange {
 		nodeState := p.GetNodeSyncState(state)
-		if state != p.lastOverallSyncState {
-			eventType = ptp.SyncStateChange
-			source = string(p.publisherTypes[eventType].Resource)
-			data = p.GetPTPEventsData(state, ptpOffset, source, eventType)
-			resourceAddress = path.Join(p.resourcePrefix, p.nodeName, source)
-			p.publish(*data, resourceAddress, eventType)
+		if nodeState != p.lastOverallSyncState {
+			if !p.mock {
+				// In non-mock mode, also publish the SyncStateChange event
+				eventType = ptp.SyncStateChange
+				source = string(p.publisherTypes[eventType].Resource)
+				data := p.GetPTPEventsData(nodeState, ptpOffset, source, eventType)
+				resourceAddress := path.Join(p.resourcePrefix, p.nodeName, source)
+				p.publish(*data, resourceAddress, eventType)
+			}
 			p.UpdateSyncState(nodeState)
 		}
 	}
@@ -645,7 +649,7 @@ func (p *PTPEventManager) GetNodeSyncState(currentState ptp.SyncState) ptp.SyncS
 			if s != ptp.FREERUN && s != ptp.HOLDOVER && s != ptp.LOCKED {
 				continue
 			}
-			finalState = OverallState(s, finalState)
+			finalState = OverallState(finalState, s)
 			found = true
 		}
 	}
@@ -720,6 +724,11 @@ func (p *PTPEventManager) LoadFromStore(config *common.SCConfiguration) (int64, 
 }
 
 func (p *PTPEventManager) saveToStore() error {
+	// Skip saving if scConfig is not available (e.g., in test scenarios)
+	if p.scConfig == nil {
+		return nil
+	}
+
 	PortRoles := make(map[types.ConfigName]map[string]types.PtpPortRole)
 
 	for configName, ptp4lConf := range p.Ptp4lConfigInterfaces {

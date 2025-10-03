@@ -16,6 +16,8 @@ import (
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/stats"
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	"github.com/stretchr/testify/assert"
+	"github.com/redhat-cne/sdk-go/pkg/channel"
+	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 )
 
 func TestPTPEventManager_GenPTPEvent(t *testing.T) {
@@ -406,4 +408,64 @@ func TestOverallState(t *testing.T) {
 			assert.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestPublishEvent_UsesAggregatedNodeStateAndDedupes(t *testing.T) {
+    // Arrange
+    metrics.Filesystem = &metrics.MockFileSystem{}
+    pubTypes := map[ptp.EventType]*types.EventPublisherType{
+        ptp.PtpStateChange: {
+            EventType: ptp.PtpStateChange,
+            Resource:  ptp.PtpLockState,
+            PubID:     "pub1",
+        },
+        ptp.OsClockSyncStateChange: {
+            EventType: ptp.OsClockSyncStateChange,
+            Resource:  ptp.OsClockSyncState,
+            PubID:     "pub2",
+        },
+        ptp.SyncStateChange: {
+            EventType: ptp.SyncStateChange,
+            Resource:  ptp.SyncStatusState,
+            PubID:     "pub3",
+        },
+    }
+    sc := &common.SCConfiguration{
+        EventOutCh:    make(chan *channel.DataChan, 10),
+        PubSubAPI:     v1pubsub.GetAPIInstance("/tmp/store"),
+        SubscriberAPI: nil,
+        StorePath:     "/tmp/store",
+    }
+    mgr := metrics.NewPTPEventManager("/cluster/node", pubTypes, "testnode", sc)
+
+    // Build stats across configs to force aggregated state decisions
+    cfg1 := types.ConfigName("ptp4l.0.config")
+    cfg2 := types.ConfigName("phc2sys.0.config")
+    s1 := stats.NewStats(string(cfg1))
+    s2 := stats.NewStats(string(cfg2))
+
+    // Scenario A: Master LOCKED, OS FREERUN -> aggregated should be FREERUN
+    s1.SetLastSyncState(ptp.LOCKED)
+    s2.SetLastSyncState(ptp.FREERUN)
+    mgr.SetStats(cfg1, stats.PTPStats{metrics.MasterClockType: s1})
+    mgr.SetStats(cfg2, stats.PTPStats{metrics.ClockRealTime: s2})
+
+    mockFS := metrics.Filesystem.(*metrics.MockFileSystem)
+    mockFS.Clear()
+
+    // Act: Publish master state change; should compute node FREERUN and persist once
+    mgr.MockTest(true)
+    mgr.PublishEvent(ptp.LOCKED, 0, "ens1f0/master", ptp.PtpStateChange)
+    assert.Equal(t, 1, mockFS.WriteCount, "expected a single persist when node state changes to FREERUN")
+
+    // Act again with same overall state; should not persist again (dedup)
+    mgr.PublishEvent(ptp.LOCKED, 0, "ens1f0/master", ptp.PtpStateChange)
+    assert.Equal(t, 1, mockFS.WriteCount, "no additional persist expected when node state unchanged")
+
+    // Scenario B: Now both LOCKED -> aggregated should move to LOCKED; expect another persist
+    s2.SetLastSyncState(ptp.LOCKED)
+    mgr.SetStats(cfg2, stats.PTPStats{metrics.ClockRealTime: s2})
+    mockFS.WriteCount = 1 // Reset to account for the SetStats write, keeping the previous PublishEvent write
+    mgr.PublishEvent(ptp.LOCKED, 0, metrics.ClockRealTime, ptp.OsClockSyncStateChange)
+    assert.Equal(t, 2, mockFS.WriteCount, "expected persist when node state changes to LOCKED")
 }
