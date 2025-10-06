@@ -15,9 +15,9 @@ check_ginkgo_v1() {
     return 1
 }
 
-# Install Ginkgo v1.16.5 if needed
+# Force install Ginkgo v1.16.5 since test code uses v1 imports
 if ! check_ginkgo_v1; then
-    echo "Installing Ginkgo v1.16.5"
+    echo "Installing Ginkgo v1.16.5 (required for test compatibility)"
     go install -mod=mod github.com/onsi/ginkgo/ginkgo@v1.16.5
 fi
 
@@ -31,5 +31,5 @@ fi
 export ACK_GINKGO_DEPRECATIONS=1.16.5
 export ACK_GINKGO_RC=true
 
-# Run tests with Ginkgo v1
+# Run tests with Ginkgo v1 (no timeout flag in v1)
 GOFLAGS=-mod=vendor ginkgo -v "$SUITE" -- -junit "$JUNIT_OUTPUT"

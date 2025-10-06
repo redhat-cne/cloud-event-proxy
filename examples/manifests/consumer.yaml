@@ -12,14 +12,14 @@ spec:
       app: consumer
   template:
     metadata:
-      annotations:
-        target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
       labels:
         app: consumer
+      annotations:
+        target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
     spec:
+      serviceAccountName: consumer-sa
       nodeSelector:
         node-role.kubernetes.io/worker: ""
-      serviceAccountName: consumer-sa
       containers:
         - name: cloud-event-consumer
           image: cloud-event-consumer
@@ -28,15 +28,39 @@ spec:
             - "--local-api-addr=consumer-events-subscription-service.cloud-events.svc.cluster.local:9043"
             - "--api-path=/api/ocloudNotifications/v2/"
             - "--http-event-publishers=ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043"
+            - "--auth-config=/etc/cloud-event-consumer/auth/config.json"
           env:
             - name: NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
+            - name: CLUSTER_NAME
+              value: "openshift.local"
             - name: CONSUMER_TYPE
               value: "PTP"
             - name: ENABLE_STATUS_CHECK
               value: "true"
+          volumeMounts:
+            - name: pubsubstore
+              mountPath: /store
+            - name: client-certs
+              mountPath: /etc/cloud-event-consumer/client-certs
+              readOnly: true
+            - name: ca-bundle
+              mountPath: /etc/cloud-event-consumer/ca-bundle
+              readOnly: true
+            - name: auth-config
+              mountPath: /etc/cloud-event-consumer/auth
+              readOnly: true
       volumes:
         - name: pubsubstore
           emptyDir: {}
+        - name: client-certs
+          secret:
+            secretName: consumer-client-certs
+        - name: ca-bundle
+          secret:
+            secretName: server-ca-bundle
+        - name: auth-config
+          configMap:
+            name: consumer-auth-config
