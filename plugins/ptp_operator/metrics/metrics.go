@@ -116,6 +116,20 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	// master (slave) interface can be configured in ptp4l but  offset provided by ts2phc
 	ptpStats := p.GetStats(types.ConfigName(configName))
 	profileName := ptp4lCfg.Profile
+
+	// Check for process status FIRST, before profile validation
+	// Process status messages should always be processed regardless of profile configuration
+	if strings.Contains(output, ptpProcessStatusIdentifier) {
+		if status, err := p.parsePTPStatus(output, fields); err == nil {
+			if status == PtpProcessDown {
+				p.processDownEvent(profileName, processName, ptpStats)
+			}
+		} else {
+			log.Errorf("error in process status %s: %v", output, err)
+		}
+		return
+	}
+
 	//TODO: need better validation here
 	if processName == syncE4lProcessName && configName == "" { // hack to skip for synce4l
 		log.Infof("%s skipped parsing %s output %s\n", processName, configName, output)
@@ -130,17 +144,6 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	if _, found := ptpStats[master]; found {
 		// initialize master offset
 		masterOffsetSource = ptpStats[master].ProcessName()
-	}
-	// if process is down fire an event
-	if strings.Contains(output, ptpProcessStatusIdentifier) {
-		if status, e := p.parsePTPStatus(output, fields); e == nil {
-			if status == PtpProcessDown {
-				p.processDownEvent(profileName, processName, ptpStats)
-			}
-		} else {
-			log.Errorf("error in process status %s", output)
-		}
-		return
 	}
 	switch processName {
 	case gnssProcessName:
