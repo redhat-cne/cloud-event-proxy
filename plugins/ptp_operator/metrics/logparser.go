@@ -494,6 +494,11 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 		// when ptp4l updates it in the T-BC mode
 		UpdateSyncStateMetrics(ts2phcProcessName, alias, ptpStats[masterType].LastSyncState())
 
+		// Impose T-BC state onto the ptp4l process state for the same interface
+		// This ensures ptp4l port metrics are consistent with the overall T-BC state
+		// since in T-BC mode, individual port states should reflect the overall clock state
+		UpdateSyncStateMetrics(ptp4lProcessName, alias, ptpStats[masterType].LastSyncState())
+
 		UpdatePTPOffsetMetrics(processName, processName, alias, float64(lastOffset))
 		// if there is phc2sys ooptions enabled then when the clock is FREERUN annouce OSCLOCK as FREERUN
 		if clockState.State == ptp.FREERUN {
