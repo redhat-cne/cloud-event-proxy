@@ -125,10 +125,8 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 		log.Errorf("cannot monitor ptp4l configuation folder at %s : %s", ptpConfigDir, err)
 		return err
 	}
-
 	// process ptp4l conf file updates under /var/run/ptp4l.X.conf
 	go processPtp4lConfigFileUpdates()
-
 	// Reading configmap on any updates to configmap
 	// get threshold data on change of ptp config
 	// update node profile when configmap changes

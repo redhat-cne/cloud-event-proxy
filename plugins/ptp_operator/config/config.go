@@ -36,6 +36,7 @@ var (
 	sectionHead        = regexp.MustCompile(`\[([^\[\]]*)\]`)
 	ptpConfigFileRegEx = regexp.MustCompile(`ptp4l.[0-9]*.config`)
 	profileRegEx       = regexp.MustCompile(`profile: \s*([\w-_]+)`)
+	aliasRegEx         = regexp.MustCompile(`\[([^\[\]]*)\]\s+#\s*alias:\s*([\w-_]+)`)
 )
 
 const (
