@@ -23,8 +23,8 @@ import (
 	"strings"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/alias"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
-	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/utils"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -87,6 +87,10 @@ func (p *PtpConfigUpdate) GetAllInterface() []*string {
 			}
 		}
 	}
+	alias.Debug(func(s string, a ...any) {
+		log.Infof("GetAllInterface: "+s, a...)
+	})
+
 	return interfaces
 }
 
@@ -163,14 +167,14 @@ func (ptp4lCfg *PTP4lConfig) ByRole(role types.PtpPortRole) (PTPInterface, error
 // GetUnknownAlias ... when master port details are not know, get first interface alias name
 func (ptp4lCfg *PTP4lConfig) GetUnknownAlias() (string, error) {
 	for _, p := range ptp4lCfg.Interfaces {
-		return utils.GetAlias(p.Name), nil
+		return alias.GetAlias(p.Name), nil
 	}
 	return "unknown", fmt.Errorf("interfaces not found for profilfe %s", ptp4lCfg.Profile)
 }
 
 // GetAliasByInterface ... get alias name by interface name
 func (ptp4lCfg *PTP4lConfig) GetAliasByInterface(p PTPInterface) string {
-	return utils.GetAlias(p.Name)
+	return alias.GetAlias(p.Name)
 }
 
 // UpdateRole ... update role
