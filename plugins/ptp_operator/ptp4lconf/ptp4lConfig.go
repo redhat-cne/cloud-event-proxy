@@ -23,8 +23,8 @@ import (
 	"strings"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/k8snetworkplumbingwg/linuxptp-daemon/pkg/alias"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
-	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/utils"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -35,6 +35,7 @@ var (
 	ptpChronydConfigFileRegEx = regexp.MustCompile(`chronyd.[0-9]*.config`)
 	sectionHead               = regexp.MustCompile(`\[([^\[\]]*)\]`)
 	profileRegEx              = regexp.MustCompile(`profile: \s*([\w-_]+)`)
+	aliasRegEx                = regexp.MustCompile(`\[([^\[\]]*)\]\s+#\s*alias:\s*([\w-_]+)`)
 	fileNameRegEx             = regexp.MustCompile("([^/]+$)")
 )
 
@@ -86,7 +87,16 @@ func (p *PtpConfigUpdate) GetAllInterface() []*string {
 				interfaces = append(interfaces, &v[1])
 			}
 		}
+		for _, v := range aliasRegEx.FindAllStringSubmatch(*p.Ptp4lConf, -1) {
+			if len(v) >= 3 {
+				alias.SetAlias(v[1], v[2])
+			}
+		}
 	}
+	alias.Debug(func(s string, a ...any) {
+		log.Infof("GetAllInterface: "+s, a...)
+	})
+
 	return interfaces
 }
 
@@ -163,14 +173,14 @@ func (ptp4lCfg *PTP4lConfig) ByRole(role types.PtpPortRole) (PTPInterface, error
 // GetUnknownAlias ... when master port details are not know, get first interface alias name
 func (ptp4lCfg *PTP4lConfig) GetUnknownAlias() (string, error) {
 	for _, p := range ptp4lCfg.Interfaces {
-		return utils.GetAlias(p.Name), nil
+		return alias.GetAlias(p.Name), nil
 	}
 	return "unknown", fmt.Errorf("interfaces not found for profilfe %s", ptp4lCfg.Profile)
 }
 
 // GetAliasByInterface ... get alias name by interface name
 func (ptp4lCfg *PTP4lConfig) GetAliasByInterface(p PTPInterface) string {
-	return utils.GetAlias(p.Name)
+	return alias.GetAlias(p.Name)
 }
 
 // UpdateRole ... update role
