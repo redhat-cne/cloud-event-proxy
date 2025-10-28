@@ -483,6 +483,9 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 	ptpStats[masterType].SetLastOffset(offs)
 	lastOffset := ptpStats[masterType].LastOffset()
 
+	// Update the T-BC offset metric on every status report
+	UpdatePTPOffsetMetrics(processName, processName, alias, float64(lastOffset))
+
 	if clockState.State != lastClockState && clockState.State != "" { // publish directly here
 		log.Infof("%s sync state %s, last ptp state is : %s", masterResource, clockState.State, lastClockState)
 		ptpStats[masterType].SetLastSyncState(clockState.State)
@@ -498,8 +501,6 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 		// This ensures ptp4l port metrics are consistent with the overall T-BC state
 		// since in T-BC mode, individual port states should reflect the overall clock state
 		UpdateSyncStateMetrics(ptp4lProcessName, alias, ptpStats[masterType].LastSyncState())
-
-		UpdatePTPOffsetMetrics(processName, processName, alias, float64(lastOffset))
 		// if there is phc2sys ooptions enabled then when the clock is FREERUN annouce OSCLOCK as FREERUN
 		if clockState.State == ptp.FREERUN {
 			// loop thourgh eventManager.PtpConfigMapUpdates.TBCProfiles
