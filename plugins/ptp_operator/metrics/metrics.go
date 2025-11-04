@@ -295,12 +295,17 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 					// forT-BC only update metrics/ but we are missing maxAbs for T-BC, fro now it will use  T-BC offsets
 					UpdatePTPMetrics(offsetSource, processName, alias, ptpOffset, float64(ptpStats[types.IFace(interfaceName)].MaxAbs()),
 						frequencyAdjustment, delay)
-					if ptp4lCfg.ProfileType == ptp4lconf.TBC {
-						return // TBC does not trigger event for  master offset
+					// TBC does not trigger event for master offset
+					// For TBC, ptp4l clock_state comes directly from log (s0/s2), never HOLDOVER
+					if ptp4lCfg.ProfileType != ptp4lconf.TBC {
+						masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
+						p.GenPTPEvent(profileName, ptpStats[types.IFace(interfaceName)], masterResource, int64(ptpOffset), syncState, ptp.PtpStateChange)
+						UpdateSyncStateMetrics(processName, alias, ptpStats[types.IFace(interfaceName)].LastSyncState())
+					} else {
+						// For TBC: store and use current syncState from log (s0/s2 only, no HOLDOVER)
+						ptpStats[types.IFace(interfaceName)].SetLastSyncState(syncState)
+						UpdateSyncStateMetrics(processName, alias, syncState)
 					}
-					masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
-					p.GenPTPEvent(profileName, ptpStats[types.IFace(interfaceName)], masterResource, int64(ptpOffset), syncState, ptp.PtpStateChange)
-					UpdateSyncStateMetrics(processName, alias, ptpStats[types.IFace(interfaceName)].LastSyncState())
 					ptpStats[types.IFace(interfaceName)].AddValue(int64(ptpOffset))
 				}
 			default: // for ts2phc the master stats are not updated at all, so rely on interface

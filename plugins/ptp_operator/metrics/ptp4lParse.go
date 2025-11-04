@@ -103,10 +103,24 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			// update role metrics
 			UpdateInterfaceRoleMetrics(processName, ptpIFace, role)
 		}
-		if ptp4lCfg.ProfileType == ptp4lconf.TBC || lastRole != types.SLAVE { //tsphc doesn't have slave port and doesnt have fault state yet
-			return // no need to go to holdover state if the Fault was not in master(slave) port
-			// t-bc handles role changes differently in linux-ptp-daemon
+		if ptp4lCfg.ProfileType == ptp4lconf.TBC {
+			// For TBC: set ptp4l clock_state to FREERUN when port goes FAULTY
+			if role == types.FAULTY && lastRole == types.SLAVE {
+				if _, ok := ptpStats[master]; ok {
+					alias := ptpStats[master].Alias()
+					if alias != "" {
+						ptpStats[master].SetLastSyncState(ptp.FREERUN)
+						UpdateSyncStateMetrics(processName, alias, ptp.FREERUN)
+						log.Infof("TBC: ptp4l port %s went FAULTY, setting clock_state to FREERUN", ptpIFace)
+					}
+				}
+			}
+			return // no need to go to holdover state for TBC
 		}
+		if lastRole != types.SLAVE { //tsphc doesn't have slave port and doesnt have fault state yet
+			return // no need to go to holdover state if the Fault was not in master(slave) port
+		}
+
 		if _, ok := ptpStats[master]; !ok { //
 			log.Errorf("no offset stats found for master for  portid %d with role %s (the port started in fault state)", portID, role)
 			return

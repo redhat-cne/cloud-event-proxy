@@ -543,8 +543,15 @@ func processPtp4lConfigFileUpdates() {
 				if eventManager.PtpConfigMapUpdates.HAProfile == ptp4lConfig.Profile {
 					eventManager.PtpConfigMapUpdates.HAProfile = "" // clear profile
 				}
-				if eventManager.GetProfileType(ptp4lConfig.Profile) != ptp4lconf.NONE {
-					eventManager.PtpConfigMapUpdates.TBCProfiles = []string{} // clear
+				// Remove only the specific profile being deleted from TBCProfiles, not all profiles
+				if eventManager.GetProfileType(ptp4lConfig.Profile) == ptp4lconf.TBC {
+					var updatedProfiles []string
+					for _, p := range eventManager.PtpConfigMapUpdates.TBCProfiles {
+						if p != ptp4lConfig.Profile {
+							updatedProfiles = append(updatedProfiles, p)
+						}
+					}
+					eventManager.PtpConfigMapUpdates.TBCProfiles = updatedProfiles
 				}
 				// clean up synce metrics
 				for d, s := range ptpStats {
@@ -564,8 +571,6 @@ func processPtp4lConfigFileUpdates() {
 						if eventManager.GetProfileType(ptpConfig.Profile) == ptp4lconf.TBC {
 							ptpMetrics.SyncState.Delete(prometheus.Labels{
 								"process": ts2PhcProcessName, "node": eventManager.NodeName(), "iface": ptpInterface.Name})
-							ptpMetrics.SyncState.Delete(prometheus.Labels{
-								"process": ptp4lProcessName, "node": eventManager.NodeName(), "iface": ptpInterface.Name})
 						}
 					}
 					if t, ok2 := eventManager.PtpConfigMapUpdates.EventThreshold[ptpConfig.Profile]; ok2 {

@@ -449,6 +449,7 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 
 	iface := fields[3]
 	syncState := fields[7]
+	ptpSyncState := GetSyncState(syncState)
 	offs, err := strconv.ParseInt(fields[5], 10, 64)
 	if err != nil {
 		log.Errorf("unable to parse T-BC offset %q: %v", fields[5], err)
@@ -464,7 +465,7 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 	}
 
 	clockState := event.ClockState{
-		State:       GetSyncState(syncState),
+		State:       ptpSyncState,
 		IFace:       pointer.String(iface),
 		Process:     processName,
 		ClockSource: TBC,
@@ -490,35 +491,32 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 		log.Infof("%s sync state %s, last ptp state is : %s", masterResource, clockState.State, lastClockState)
 		ptpStats[masterType].SetLastSyncState(clockState.State)
 		p.PublishEvent(clockState.State, lastOffset, masterResource, ptp.PtpStateChange)
-		UpdateSyncStateMetrics(processName, alias, ptpStats[masterType].LastSyncState())
+	}
 
-		// Impose T-BC state onto the ts2phc process state for the upstream interface
-		// This is needed because ts2phc doesn't update the upstream interface
-		// when ptp4l updates it in the T-BC mode
-		UpdateSyncStateMetrics(ts2phcProcessName, alias, ptpStats[masterType].LastSyncState())
+	UpdateSyncStateMetrics(processName, alias, ptpSyncState)
 
-		// Impose T-BC state onto the ptp4l process state for the same interface
-		// This ensures ptp4l port metrics are consistent with the overall T-BC state
-		// since in T-BC mode, individual port states should reflect the overall clock state
-		UpdateSyncStateMetrics(ptp4lProcessName, alias, ptpStats[masterType].LastSyncState())
-		// if there is phc2sys ooptions enabled then when the clock is FREERUN annouce OSCLOCK as FREERUN
-		if clockState.State == ptp.FREERUN {
-			// loop thourgh eventManager.PtpConfigMapUpdates.TBCProfiles
-			// message tage for ptp4l.1.config with T-BC-Profile but t-Bc is reporting from ts2phc.0.conifg
-			// so clock_realtime is not assigned to same config ?
-			cStats, osStatsOK := ptpStats[ClockRealTime]
-			if !osStatsOK || cStats.LastSyncState() == ptp.FREERUN {
-				// ClockRealTime stats not available, nothing to publish or already  in FREERUN
-				return
-			}
-			if p.mock {
-				p.mockEvent = []ptp.EventType{ptp.OsClockSyncStateChange}
-				log.Infof("PublishEvent state=%s, ptpOffset=%d, source=%s, eventType=%s", ptp.FREERUN, FreeRunOffsetValue, ClockRealTime, ptp.OsClockSyncStateChange)
-				return
-			}
-			p.GenPTPEvent(configName, cStats, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
-			UpdateSyncStateMetrics(phc2sysProcessName, ClockRealTime, ptp.FREERUN)
+	// Impose T-BC state onto the ts2phc process state for the upstream interface
+	// This is needed because ts2phc doesn't update the upstream interface
+	// when ptp4l updates it in the T-BC mode
+	UpdateSyncStateMetrics(ts2phcProcessName, alias, ptpSyncState)
+
+	// if there is phc2sys ooptions enabled then when the clock is FREERUN annouce OSCLOCK as FREERUN
+	if clockState.State == ptp.FREERUN {
+		// loop thourgh eventManager.PtpConfigMapUpdates.TBCProfiles
+		// message tag for ptp4l.1.config with T-BC-Profile but T-BC is reporting from ts2phc.0.conifg
+		// so clock_realtime is not assigned to same config ?
+		cStats, osStatsOK := ptpStats[ClockRealTime]
+		if !osStatsOK || cStats.LastSyncState() == ptp.FREERUN {
+			// ClockRealTime stats not available, nothing to publish or already  in FREERUN
+			return
 		}
+		if p.mock {
+			p.mockEvent = []ptp.EventType{ptp.OsClockSyncStateChange}
+			log.Infof("PublishEvent state=%s, ptpOffset=%d, source=%s, eventType=%s", ptp.FREERUN, FreeRunOffsetValue, ClockRealTime, ptp.OsClockSyncStateChange)
+			return
+		}
+		p.GenPTPEvent(configName, cStats, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
+		UpdateSyncStateMetrics(phc2sysProcessName, ClockRealTime, ptp.FREERUN)
 	}
 }
 
