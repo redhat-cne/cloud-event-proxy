@@ -534,8 +534,15 @@ func processPtp4lConfigFileUpdates() {
 				if eventManager.PtpConfigMapUpdates.HAProfile == ptp4lConfig.Profile {
 					eventManager.PtpConfigMapUpdates.HAProfile = "" // clear profile
 				}
-				if eventManager.GetProfileType(ptp4lConfig.Profile) != ptp4lconf.NONE {
-					eventManager.PtpConfigMapUpdates.TBCProfiles = []string{} // clear
+				// Remove only the specific profile being deleted from TBCProfiles, not all profiles
+				if eventManager.GetProfileType(ptp4lConfig.Profile) == ptp4lconf.TBC {
+					var updatedProfiles []string
+					for _, p := range eventManager.PtpConfigMapUpdates.TBCProfiles {
+						if p != ptp4lConfig.Profile {
+							updatedProfiles = append(updatedProfiles, p)
+						}
+					}
+					eventManager.PtpConfigMapUpdates.TBCProfiles = updatedProfiles
 				}
 				// clean up synce metrics
 				for d, s := range ptpStats {
