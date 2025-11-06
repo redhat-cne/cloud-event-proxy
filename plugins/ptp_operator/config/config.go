@@ -337,10 +337,28 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPSetting() {
 		// T-BC / controllingProfile?
 		// ptpSettings:
 		//controllingProfile: 01-tbc-tr
-		if cp, ok := settings[TbcProfileIdentifier]; ok {
-			// Append both the profile name and its controllingProfile value
+		if _, ok := settings[TbcProfileIdentifier]; ok {
+			// Append only the profile name. The controllingProfile value is derived from ts2phc conf
+			// to cover the T-TSC case
 			// e.g., "01-tbc-tr" assuming single value
-			l.TBCProfiles = append(l.TBCProfiles, name, cp)
+			l.TBCProfiles = append(l.TBCProfiles, name)
+		}
+		// Check TS2PhcOpts for external_pps to identify T-BC profiles
+		// This must be done here because UpdatePTPSetting() runs after UpdatePTPProcessOptions()
+		// and clears TBCProfiles, so we need to repopulate it
+		if profile.TS2PhcOpts != nil && strings.Contains(*profile.TS2PhcOpts, "external_pps") {
+			// Check if already added to avoid duplicates
+			alreadyAdded := false
+			for _, existingProfile := range l.TBCProfiles {
+				if existingProfile == name {
+					alreadyAdded = true
+					break
+				}
+			}
+			if !alreadyAdded {
+				l.TBCProfiles = append(l.TBCProfiles, name)
+				log.Infof("profile %s is a TBC profile (external_pps detected)", name)
+			}
 		}
 	}
 }
