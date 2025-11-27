@@ -780,14 +780,14 @@ func (p *PTPEventManager) ParseSyncELogs(processName, configName, output string,
 
 // GetGPSFixState ... returns gps state by computing gpsFix and offset derived state
 func (p *PTPEventManager) GetGPSFixState(gpsFix int64, syncState ptp.SyncState) (state ptp.SyncState) {
-	state = ptp.ANTENNA_DISCONNECTED
+	state = ptp.FAILURE_NOFIX
 	// 0=NOFIX, 1=Dead Reckoning Only, 2=2D-FIX, 3=3D-FIX, 4=GPS+dead reckoning fix, 5=Time only fix
 	if syncState == ptp.LOCKED {
 		state = ptp.SYNCHRONIZED
 	} else if gpsFix >= 3 {
 		state = ptp.ACQUIRING_SYNC // if state was declared as FREERUN due to Offset outside threshold set to ACQUIRING_SYNC
 	} else if gpsFix == 0 {
-		state = ptp.ANTENNA_DISCONNECTED
+		state = ptp.FAILURE_NOFIX
 	} else if gpsFix < 3 {
 		state = ptp.ACQUIRING_SYNC
 	}
