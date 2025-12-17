@@ -244,9 +244,10 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 
 		var overallSyncState ptp.SyncState
 		for config := range eventManager.Stats { // configname->PTPStats
+			mainClockName := eventManager.Stats[config].GetMainClockName()
 			for ptpInterface, s := range eventManager.GetStats(config) { // iface->stats
 				switch ptpInterface {
-				case ptpMetrics.MasterClockType:
+				case mainClockName:
 					if s.Alias() != "" {
 						ptpInterface = ptpTypes.IFace(fmt.Sprintf("%s/%s", s.Alias(), ptpMetrics.MasterClockType))
 					}

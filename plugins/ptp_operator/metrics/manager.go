@@ -641,8 +641,9 @@ func (p *PTPEventManager) GetNodeSyncState(currentState ptp.SyncState) ptp.SyncS
 	defer p.lock.RUnlock()
 
 	for _, ptpStats := range p.Stats {
+		mainClockName := ptpStats.GetMainClockName()
 		for iface, stat := range ptpStats {
-			if iface != MasterClockType && iface != ClockRealTime {
+			if iface != MasterClockType && iface != ClockRealTime && iface != mainClockName {
 				continue
 			}
 			s := stat.LastSyncState()

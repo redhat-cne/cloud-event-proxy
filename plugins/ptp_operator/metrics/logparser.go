@@ -437,12 +437,13 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 	// before passing config-name was replaced by ptp4l , but log will have ts2phc which we ignore
 	// if log is having ts2phc then it will replace it with ptp4l
 
+	tbcStatsName := types.IFace(stats.TBCMainClockName)
 	if strings.Contains(output, bcStatusIdentifier) {
 		if len(fields) < 8 {
 			log.Errorf("T-BC Status is not in right format %s", output)
 			return
 		}
-		ptpStats.CheckSource(master, configName, ts2phcProcessName)
+		ptpStats.CheckSource(tbcStatsName, configName, ts2phcProcessName)
 	} else {
 		return
 	}
@@ -456,12 +457,12 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 		return
 	}
 
-	masterType := types.IFace(MasterClockType)
+	tbcClockNameType := types.IFace(stats.TBCMainClockName)
 
-	alias := ptpStats[masterType].Alias()
+	alias := ptpStats[tbcClockNameType].Alias()
 	if alias == "" {
 		alias = utils.GetAlias(iface)
-		ptpStats[masterType].SetAlias(alias)
+		ptpStats[tbcClockNameType].SetAlias(alias)
 	}
 
 	clockState := event.ClockState{
@@ -476,20 +477,20 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 
 	SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": alias}).Set(GetSyncStateID(syncState))
 	// status metrics
-	ptpStats[masterType].SetPtpDependentEventState(clockState, ptpStats.HasMetrics(processName), ptpStats.HasMetricHelp(processName))
+	ptpStats[tbcClockNameType].SetPtpDependentEventState(clockState, ptpStats.HasMetrics(processName), ptpStats.HasMetricHelp(processName))
 
 	// If GM is locked/Freerun/Holdover then ptp state change event
 	masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
-	lastClockState := ptpStats[masterType].LastSyncState()
-	ptpStats[masterType].SetLastOffset(offs)
-	lastOffset := ptpStats[masterType].LastOffset()
+	lastClockState := ptpStats[tbcClockNameType].LastSyncState()
+	ptpStats[tbcClockNameType].SetLastOffset(offs)
+	lastOffset := ptpStats[tbcClockNameType].LastOffset()
 
 	// Update the T-BC offset metric on every status report
 	UpdatePTPOffsetMetrics(processName, processName, alias, float64(lastOffset))
 
 	if clockState.State != lastClockState && clockState.State != "" { // publish directly here
 		log.Infof("%s sync state %s, last ptp state is : %s", masterResource, clockState.State, lastClockState)
-		ptpStats[masterType].SetLastSyncState(clockState.State)
+		ptpStats[tbcClockNameType].SetLastSyncState(clockState.State)
 		p.PublishEvent(clockState.State, lastOffset, masterResource, ptp.PtpStateChange)
 	}
 
