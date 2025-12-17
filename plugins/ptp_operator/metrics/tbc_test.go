@@ -219,11 +219,11 @@ func TestTBCOffsetMetricUpdatedEveryLog(t *testing.T) {
 			eventManager.ParseTBCLogs("T-BC", configName, output, fields, ptpStats)
 
 			// Verify offset was stored
-			lastOffset := ptpStats[types.IFace(metrics.MasterClockType)].LastOffset()
+			lastOffset := ptpStats[types.IFace(stats.TBCMainClockName)].LastOffset()
 			assert.Equal(t, tt.expectedOffset, lastOffset, "T-BC offset should be updated")
 
 			// Verify state
-			lastState, err := ptpStats[types.IFace(metrics.MasterClockType)].GetStateState("T-BC", pointer.String("ens2f0"))
+			lastState, err := ptpStats[types.IFace(stats.TBCMainClockName)].GetStateState("T-BC", pointer.String("ens2f0"))
 			assert.NoError(t, err)
 			assert.Equal(t, tt.expectedState, lastState, "T-BC state should match log")
 		})
