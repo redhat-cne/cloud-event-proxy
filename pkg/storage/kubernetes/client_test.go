@@ -39,19 +39,19 @@ func Subscriptions() *v1.ConfigMap {
 					"Store": {
 						"32659c8d-5a81-3522-b2e0-256675e341d1": {
 							"SubscriptionId": "32659c8d-5a81-3522-b2e0-256675e341d1",
-							"EndpointUri": null,
+							"EndpointUri": "http://dummyEndpointUri",
 							"UriLocation": null,
 							"ResourceAddress": "/cluster/node/cnfocto2.ptp.lab.eng.bos.redhat.com/sync/ptp-status/lock-state"
 						},
 						"5ddba6d8-be9b-3e74-8ba1-191d478024f8": {
 							"SubscriptionId": "5ddba6d8-be9b-3e74-8ba1-191d478024f8",
-							"EndpointUri": null,
+							"EndpointUri": "http://dummyEndpointUri",
 							"UriLocation": null,
 							"ResourceAddress": "/cluster/node/cnfocto2.ptp.lab.eng.bos.redhat.com/sync/sync-status/os-clock-sync-state"
 						},
 						"746fba50-7ce8-335f-9d8d-e12a4ab6b30b": {
 							"SubscriptionId": "746fba50-7ce8-335f-9d8d-e12a4ab6b30b",
-							"EndpointUri": null,
+							"EndpointUri": "http://dummyEndpointUri",
 							"UriLocation": null,
 							"ResourceAddress": "/cluster/node/cnfocto2.ptp.lab.eng.bos.redhat.com/sync/ptp-status/ptp-clock-class-change"
 						}
@@ -67,19 +67,19 @@ func Subscriptions() *v1.ConfigMap {
 					"Store": {
 						"32659c8d-5a81-3522-b2e0-256675e341d1": {
 							"SubscriptionId": "32659c8d-5a81-3522-b2e0-256675e341d1",
-							"EndpointUri": null,
+							"EndpointUri": "http://dummyEndpointUri",
 							"UriLocation": null,
 							"ResourceAddress": "/cluster/node/cnfocto2.ptp.lab.eng.bos.redhat.com/sync/ptp-status/lock-state"
 						},
 						"5ddba6d8-be9b-3e74-8ba1-191d478024f8": {
 							"SubscriptionId": "5ddba6d8-be9b-3e74-8ba1-191d478024f8",
-							"EndpointUri": null,
+							"EndpointUri": "http://dummyEndpointUri",
 							"UriLocation": null,
 							"ResourceAddress": "/cluster/node/cnfocto2.ptp.lab.eng.bos.redhat.com/sync/sync-status/os-clock-sync-state"
 						},
 						"746fba50-7ce8-335f-9d8d-e12a4ab6b30b": {
 							"SubscriptionId": "746fba50-7ce8-335f-9d8d-e12a4ab6b30b",
-							"EndpointUri": null,
+							"EndpointUri": "http://dummyEndpointUri",
 							"UriLocation": null,
 							"ResourceAddress": "/cluster/node/cnfocto2.ptp.lab.eng.bos.redhat.com/sync/ptp-status/ptp-clock-class-change"
 						}
