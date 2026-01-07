@@ -132,7 +132,7 @@ func Test_ParseTBCLogs(t *testing.T) {
 		output := replacer.Replace(tt.output)
 		fields := strings.Fields(output)
 		ptpEventManager.ParseTBCLogs(tt.processName, configName, output, fields, ptpStats)
-		lastState, errState := ptpStats[types.IFace(metrics.MasterClockType)].GetStateState(tt.processName, pointer.String(tt.interfaceName))
+		lastState, errState := ptpStats[types.IFace(stats.TBCMainClockName)].GetStateState(tt.processName, pointer.String(tt.interfaceName))
 		assert.Equal(t, nil, errState)
 		assert.Equal(t, tt.expectedState, lastState)
 	}
@@ -386,10 +386,10 @@ func Test_ParsTBCLogs(t *testing.T) {
 		output := replacer.Replace(tt.output)
 		fields := strings.Fields(output)
 		ptpStats[types.IFace(tt.interfaceName)] = &stats.Stats{}
-		masterType := types.IFace(metrics.MasterClockType)
-		ptpStats[masterType] = &stats.Stats{}
+		tbcMainClockName := types.IFace(stats.TBCMainClockName)
+		ptpStats[tbcMainClockName] = &stats.Stats{}
 		eventManager.ParseTBCLogs(tt.processName, configName, output, fields, ptpStats)
-		lastState, errState := ptpStats[masterType].GetStateState(tt.processName, pointer.String(tt.interfaceName))
+		lastState, errState := ptpStats[tbcMainClockName].GetStateState(tt.processName, pointer.String(tt.interfaceName))
 		assert.Equal(t, errState, nil)
 		assert.Equal(t, tt.expectedState, lastState)
 	}
