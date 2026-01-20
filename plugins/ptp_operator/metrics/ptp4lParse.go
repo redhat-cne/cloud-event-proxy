@@ -29,15 +29,18 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			log.Errorf("clock class not in right format %s", output)
 			return
 		}
-		ptpStats.CheckSource(master, configName, ptp4lProcessName)
+		// Use ptpStats.GetMainClockName instead of 'master' for this statistic because clock class is a property
+		// of the main clock in the case of multiple configurations.
+		mainClock := ptpStats.GetMainClockName()
+		ptpStats.CheckSource(mainClock, configName, ptp4lProcessName)
 		// ptp4l 1646672953  ptp4l.0.config  CLOCK_CLASS_CHANGE 165.000000
 		var clockClass float64
 		clockClass, err = strconv.ParseFloat(fields[4], 64)
 		if err != nil {
 			log.Error("error parsing clock class change")
-		} else if ptpStats[master].ClockClass() != int64(clockClass) { // only if there is a change
+		} else if ptpStats[mainClock].ClockClass() != int64(clockClass) { // only if there is a change
 			var alias string
-			if m, ok := ptpStats[master]; ok {
+			if m, ok := ptpStats[mainClock]; ok {
 				alias = m.Alias()
 			}
 			if alias == "" {
@@ -45,7 +48,7 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			}
 			masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
 
-			ptpStats[master].SetClockClass(int64(clockClass))
+			ptpStats[mainClock].SetClockClass(int64(clockClass))
 			ClockClassMetrics.With(prometheus.Labels{
 				"process": processName, "config": configName, "node": ptpNodeName}).Set(clockClass)
 			p.PublishClockClassEvent(clockClass, masterResource, ptp.PtpClockClassChange)
