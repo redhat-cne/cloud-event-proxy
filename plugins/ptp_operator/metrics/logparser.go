@@ -661,7 +661,6 @@ func (p *PTPEventManager) ParseGNSSLogs(processName, configName, output string, 
 			log.Infof("%s last state %s and current state %s", processName, lastState, GetSyncState(syncState))
 			masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
 			p.publishGNSSEvent(gnssState, gnssOffset, GetSyncState(syncState), masterResource, ptp.GnssStateChange)
-			p.lastOverallGnssState = GetSyncState(syncState)
 		}
 	}
 }

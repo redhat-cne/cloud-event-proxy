@@ -40,7 +40,6 @@ type PTPEventManager struct {
 	// Ptp4lConfigInterfaces holds interfaces and its roles, after reading from ptp4l config files
 	Ptp4lConfigInterfaces map[types.ConfigName]*ptp4lconf.PTP4lConfig
 	lastOverallSyncState  ptp.SyncState
-	lastOverallGnssState  ptp.SyncState
 	processStates         map[types.ConfigName]map[string]bool
 }
 

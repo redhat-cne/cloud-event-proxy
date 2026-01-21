@@ -42,7 +42,7 @@ func storeCleanUp() {
 
 func TestSidecar_Main(t *testing.T) {
 	apiPort = 8990
-
+	
 	// Create a unique temporary directory for this test run to avoid conflicts
 	tempDir, err := os.MkdirTemp("", "sidecar-test-*")
 	assert.NoError(t, err)
@@ -50,7 +50,7 @@ func TestSidecar_Main(t *testing.T) {
 		storeCleanUp()
 		os.RemoveAll(tempDir) // Clean up temp directory
 	}()
-
+	
 	wg := &sync.WaitGroup{}
 	var storePath = tempDir
 	if sPath, ok := os.LookupEnv("STORE_PATH"); ok && sPath != "" {
@@ -73,10 +73,10 @@ func TestSidecar_Main(t *testing.T) {
 			Err:  nil,
 		},
 	}
-
+	
 	// Clean up any existing state before starting the test
 	storeCleanUp()
-
+	
 	log.Infof("Configuration set to %#v", scConfig)
 
 	//start rest service
