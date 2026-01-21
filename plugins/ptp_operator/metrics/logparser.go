@@ -412,6 +412,7 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 		log.Infof("%s sync state %s, last ptp state is : %s", masterResource, clockState.State, lastClockState)
 		ptpStats[masterType].SetLastSyncState(clockState.State)
 		p.PublishEvent(clockState.State, lastOffset, masterResource, ptp.PtpStateChange)
+		p.lastOverallGMState = GetSyncState(syncState)
 		UpdateSyncStateMetrics(processName, aliasValue, ptpStats[masterType].LastSyncState())
 		UpdatePTPOffsetMetrics(processName, processName, aliasValue, float64(lastOffset))
 	}
