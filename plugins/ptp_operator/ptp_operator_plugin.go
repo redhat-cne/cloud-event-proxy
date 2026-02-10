@@ -52,6 +52,7 @@ const (
 	ptpConfigDir       = "/var/run/"
 	phc2sysProcessName = "phc2sys"
 	ptp4lProcessName   = "ptp4l"
+	pmcProcessName     = "pmc"
 	ts2PhcProcessName  = "ts2phc"
 	chronydProcessName = "chronyd"
 	gnssProcessName    = "gnss"
@@ -585,24 +586,29 @@ func processPtp4lConfigFileUpdates() {
 					} else {
 						ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), ts2PhcProcessName, s.Alias())
 						for _, p := range ptpStats {
-							if p.PtpDependentEventState() != nil {
-								if p.HasProcessEnabled(gnssProcessName) {
-									if ptpMetrics.NmeaStatus != nil {
-										ptpMetrics.NmeaStatus.Delete(prometheus.Labels{
-											"process": ts2PhcProcessName, "node": eventManager.NodeName(), "iface": p.Alias()})
-									}
-									masterResource := fmt.Sprintf("%s/%s", p.Alias(), MasterClockType)
-									eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, masterResource, ptp.GnssStateChange)
-								}
-							}
-							if ptpMetrics.ClockClassMetrics != nil {
-								ptpMetrics.ClockClassMetrics.Delete(prometheus.Labels{
-									"process": ptp4lProcessName, "config": string(ptpConfigFileName), "node": eventManager.NodeName()})
-							}
 							ptpMetrics.DeletedPTPMetrics(MasterClockType, ts2PhcProcessName, p.Alias())
 							p.DeleteAllMetrics([]*prometheus.GaugeVec{ptpMetrics.PtpOffset, ptpMetrics.SyncState})
 						}
 					}
+					for _, p := range ptpStats {
+						if p.PtpDependentEventState() != nil {
+							if p.HasProcessEnabled(gnssProcessName) {
+								if ptpMetrics.NmeaStatus != nil {
+									ptpMetrics.NmeaStatus.Delete(prometheus.Labels{
+										"process": ts2PhcProcessName, "node": eventManager.NodeName(), "iface": p.Alias()})
+								}
+								masterResource := fmt.Sprintf("%s/%s", p.Alias(), MasterClockType)
+								eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, masterResource, ptp.GnssStateChange)
+							}
+						}
+						if ptpMetrics.ClockClassMetrics != nil {
+							ptpMetrics.ClockClassMetrics.Delete(prometheus.Labels{
+								"process": ptp4lProcessName, "config": string(ptpConfigFileName), "node": eventManager.NodeName()})
+							ptpMetrics.ClockClassMetrics.Delete(prometheus.Labels{
+								"process": pmcProcessName, "config": string(ptpConfigFileName), "node": eventManager.NodeName()})
+						}
+					}
+
 					masterResource := fmt.Sprintf("%s/%s", s.Alias(), MasterClockType)
 					eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, masterResource, ptp.PtpStateChange)
 				}
