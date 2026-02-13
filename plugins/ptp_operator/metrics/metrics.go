@@ -228,6 +228,10 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			if processName != ts2phcProcessName && !(interfaceName == master || interfaceName == ClockRealTime) {
 				return // only master and clock_realtime are supported
 			}
+			// Force FREERUN if gnss is FREERUN and ts2phc is the source
+			if processName != ts2phcProcessName && masterOffsetSource == ts2phcProcessName && p.lastOverallGnssState == ptp.FREERUN {
+				syncState = ptp.FREERUN
+			}
 			offsetSource := master
 			if strings.Contains(output, "sys offset") {
 				offsetSource = sys
