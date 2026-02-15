@@ -202,6 +202,9 @@ func extractRegularMetrics(processName, output string) (interfaceName string, pt
 		// If there is no delay from master this mean we are out of sync
 		clockState = ptp.HOLDOVER
 		log.Warningf("no delay from master process %s out of sync", processName)
+		// DEBUG: Log full offset line that triggered HOLDOVER via missing delay
+		log.Infof("DEBUG_HOLDOVER: extractRegularMetrics set HOLDOVER due to missing delay - process=%s, iface=%s, offset=%.0f, fields=%d",
+			processName, interfaceName, ptpOffset, len(fields))
 	}
 	return
 }

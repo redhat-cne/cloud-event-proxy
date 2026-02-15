@@ -455,6 +455,9 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 		}
 	case ptp.HOLDOVER:
 		oStats.SetLastSyncState(clockState)
+		// DEBUG: Log GenPTPEvent HOLDOVER transition
+		log.Infof("DEBUG_HOLDOVER: GenPTPEvent HOLDOVER - profile=%s, resource=%s, lastState=%s, offset=%d, eventType=%s",
+			ptpProfileName, eventResourceName, lastClockState, ptpOffset, eventType)
 		if lastClockState != ptp.HOLDOVER { //send event only once
 			log.Infof(" publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d )",
 				ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset)
@@ -465,6 +468,11 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 		return
 	case ptp.FREERUN:
 		oStats.SetLastSyncState(clockState)
+		// DEBUG: Log GenPTPEvent FREERUN transition, especially when coming from HOLDOVER
+		if lastClockState == ptp.HOLDOVER {
+			log.Infof("DEBUG_HOLDOVER: GenPTPEvent FREERUN from HOLDOVER - profile=%s, resource=%s, offset=%d (event suppressed, waiting for holdover goroutine)",
+				ptpProfileName, eventResourceName, ptpOffset)
+		}
 		if lastClockState != ptp.HOLDOVER {
 			if lastClockState != ptp.FREERUN { // don't send event if last event was freerun
 				log.Infof("publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",

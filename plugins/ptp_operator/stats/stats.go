@@ -13,6 +13,7 @@ import (
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
 
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
+	log "github.com/sirupsen/logrus"
 )
 
 // PTPStats ...
@@ -384,6 +385,8 @@ func (s *Stats) DeleteAllMetrics(m []*prometheus.GaugeVec) {
 // CheckSource ... check key
 func (ps PTPStats) CheckSource(k types.IFace, configName, processName string) {
 	if _, found := ps[k]; !found {
+		log.Infof("DEBUG_HOLDOVER: Creating new stats entry for iface=%s, config=%s, process=%s",
+			k, configName, processName)
 		ps[k] = NewStats(configName)
 		ps[k].SetProcessName(processName)
 	}
