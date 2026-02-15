@@ -52,6 +52,7 @@ const (
 	ptpConfigDir       = "/var/run/"
 	phc2sysProcessName = "phc2sys"
 	ptp4lProcessName   = "ptp4l"
+	pmcProcessName     = "pmc"
 	ts2PhcProcessName  = "ts2phc"
 	chronydProcessName = "chronyd"
 	gnssProcessName    = "gnss"
@@ -395,6 +396,13 @@ func processPtp4lConfigFileUpdates() {
 				if eventManager.Ptp4lConfigInterfaces[ptpConfigFileName] != nil &&
 					HasEqualInterface(newInterfaces, eventManager.Ptp4lConfigInterfaces[ptpConfigFileName].Interfaces) {
 					log.Infof("skipped update,interface not changed in ptl4lconfig")
+					// DEBUG: Log current interface roles before re-adding config
+					for _, iface := range eventManager.Ptp4lConfigInterfaces[ptpConfigFileName].Interfaces {
+						if iface != nil {
+							log.Infof("DEBUG_HOLDOVER: Skipped update - preserving iface=%s, portID=%d, role=%d for config=%s",
+								iface.Name, iface.PortID, iface.Role, ptpConfigFileName)
+						}
+					}
 					// add to eventManager
 					eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
 					continue
@@ -469,6 +477,9 @@ func processPtp4lConfigFileUpdates() {
 							Role:     role,
 						}
 						ptpInterfaces = append(ptpInterfaces, ptpIFace)
+						// DEBUG: Log initial role assignment from file watcher
+						log.Infof("DEBUG_HOLDOVER: FileWatcher built iface=%s, portID=%d, initialRole=%d for config=%s",
+							*ptpInterface, index+1, role, ptpConfigFileName)
 
 						// Update interface role metrics
 						ptpMetrics.UpdateInterfaceRoleMetrics(ptp4lProcessName, *ptpInterface, role)
@@ -484,6 +495,8 @@ func processPtp4lConfigFileUpdates() {
 				// if profile is not set then set it to default profile
 				ptp4lConfig.ProfileType = eventManager.GetProfileType(ptp4lConfig.Profile)
 				// add to eventManager
+				log.Infof("DEBUG_HOLDOVER: Adding ptp4l config %s with profile %s and %d interfaces",
+					ptpConfigFileName, *ptpConfigEvent.Profile, len(ptpInterfaces))
 				eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
 				// clean up process metrics
 				for cName, opts := range eventManager.PtpConfigMapUpdates.PtpProcessOpts {
@@ -566,6 +579,8 @@ func processPtp4lConfigFileUpdates() {
 					}
 					if t, ok2 := eventManager.PtpConfigMapUpdates.EventThreshold[ptpConfig.Profile]; ok2 {
 						// Make sure that the function does close the channel
+						log.Infof("DEBUG_HOLDOVER: Closing holdover channel for profile=%s, config=%s",
+							ptpConfig.Profile, ptpConfigFileName)
 						t.SafeClose()
 					}
 					ptpMetrics.DeleteThresholdMetrics(ptpConfig.Profile)
@@ -585,27 +600,33 @@ func processPtp4lConfigFileUpdates() {
 					} else {
 						ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), ts2PhcProcessName, s.Alias())
 						for _, p := range ptpStats {
-							if p.PtpDependentEventState() != nil {
-								if p.HasProcessEnabled(gnssProcessName) {
-									if ptpMetrics.NmeaStatus != nil {
-										ptpMetrics.NmeaStatus.Delete(prometheus.Labels{
-											"process": ts2PhcProcessName, "node": eventManager.NodeName(), "iface": p.Alias()})
-									}
-									masterResource := fmt.Sprintf("%s/%s", p.Alias(), MasterClockType)
-									eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, masterResource, ptp.GnssStateChange)
-								}
-							}
-							if ptpMetrics.ClockClassMetrics != nil {
-								ptpMetrics.ClockClassMetrics.Delete(prometheus.Labels{
-									"process": ptp4lProcessName, "config": string(ptpConfigFileName), "node": eventManager.NodeName()})
-							}
 							ptpMetrics.DeletedPTPMetrics(MasterClockType, ts2PhcProcessName, p.Alias())
 							p.DeleteAllMetrics([]*prometheus.GaugeVec{ptpMetrics.PtpOffset, ptpMetrics.SyncState})
 						}
 					}
+					for _, p := range ptpStats {
+						if p.PtpDependentEventState() != nil {
+							if p.HasProcessEnabled(gnssProcessName) {
+								if ptpMetrics.NmeaStatus != nil {
+									ptpMetrics.NmeaStatus.Delete(prometheus.Labels{
+										"process": ts2PhcProcessName, "node": eventManager.NodeName(), "iface": p.Alias()})
+								}
+								masterResource := fmt.Sprintf("%s/%s", p.Alias(), MasterClockType)
+								eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, masterResource, ptp.GnssStateChange)
+							}
+						}
+						if ptpMetrics.ClockClassMetrics != nil {
+							ptpMetrics.ClockClassMetrics.Delete(prometheus.Labels{
+								"process": ptp4lProcessName, "config": string(ptpConfigFileName), "node": eventManager.NodeName()})
+							ptpMetrics.ClockClassMetrics.Delete(prometheus.Labels{
+								"process": pmcProcessName, "config": string(ptpConfigFileName), "node": eventManager.NodeName()})
+						}
+					}
+
 					masterResource := fmt.Sprintf("%s/%s", s.Alias(), MasterClockType)
 					eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, masterResource, ptp.PtpStateChange)
 				}
+				log.Infof("DEBUG_HOLDOVER: Deleting stats and config for %s", ptpConfigFileName)
 				eventManager.DeleteStatsConfig(ptpConfigFileName)
 				eventManager.DeletePTPConfig(ptpConfigFileName)
 				// clean up process metrics

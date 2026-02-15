@@ -193,6 +193,9 @@ func UpdatePTPOffsetMetrics(metricsType, process, eventResourceName string, offs
 
 // DeletedPTPMetrics ... update metrics for deleted ptp config
 func DeletedPTPMetrics(clockType, processName, eventResourceName string) {
+	// DEBUG: Log metric deletion with full labels
+	log.Infof("DEBUG_SYNCSTATE: Deleting SyncState metric - process=%s, node=%s, iface=%s, clockType=%s",
+		processName, ptpNodeName, eventResourceName, clockType)
 	PtpOffset.Delete(prometheus.Labels{"from": clockType,
 		"process": processName, "node": ptpNodeName, "iface": eventResourceName})
 	PtpMaxOffset.Delete(prometheus.Labels{"from": clockType,
@@ -230,6 +233,9 @@ func UpdateSyncStateMetrics(process, iface string, state ptp.SyncState) {
 		log.Errorf("wrong metrics are processed, ignoring interface %s with process %s", iface, process)
 		return
 	}
+	// DEBUG: Log all SyncState metric updates with full labels
+	log.Infof("DEBUG_SYNCSTATE: Updating SyncState metric - process=%s, node=%s, iface=%s, state=%s, value=%.0f",
+		process, ptpNodeName, iface, state, clockState)
 	SyncState.With(prometheus.Labels{
 		"process": process, "node": ptpNodeName, "iface": iface}).Set(clockState)
 }

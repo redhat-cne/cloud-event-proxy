@@ -136,6 +136,11 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		return
 	} else if processName != syncE4lProcessName &&
 		!p.validLogToProcess(profileName, processName, len(ptp4lCfg.Interfaces)) {
+		// DEBUG: Log when port events are dropped due to validation
+		if strings.Contains(output, " port ") {
+			log.Infof("DEBUG_HOLDOVER: Port event DROPPED by validLogToProcess - profile=%s, process=%s, ifaceCount=%d, config=%s, output=%s",
+				profileName, processName, len(ptp4lCfg.Interfaces), configName, output)
+		}
 		log.Infof("%s skipped parsing %s output %s\n", processName, ptp4lCfg.Name, output)
 		return
 	}
