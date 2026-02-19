@@ -149,18 +149,17 @@ func (pt *PtpClockThreshold) SafeClose() (justClosed bool) {
 
 // LinuxPTPConfigMapUpdate for ptp-conf update
 type LinuxPTPConfigMapUpdate struct {
-	lock                        sync.RWMutex
-	UpdateCh                    chan bool
-	NodeProfiles                []PtpProfile
-	appliedNodeProfileJSON      []byte
-	profilePath                 string
-	intervalUpdate              int
-	EventThreshold              map[string]*PtpClockThreshold
-	PtpProcessOpts              map[string]*PtpProcessOpts
-	PtpSettings                 map[string]map[string]string
-	fileWatcherUpdateInProgress bool
-	HAProfile                   string
-	TBCProfiles                 []string // list of TBC profiles
+	lock                   sync.RWMutex
+	UpdateCh               chan bool
+	NodeProfiles           []PtpProfile
+	appliedNodeProfileJSON []byte
+	profilePath            string
+	intervalUpdate         int
+	EventThreshold         map[string]*PtpClockThreshold
+	PtpProcessOpts         map[string]*PtpProcessOpts
+	PtpSettings            map[string]map[string]string
+	HAProfile              string
+	TBCProfiles            []string // list of TBC profiles
 }
 
 // AppliedNodeProfileJSON ....
@@ -235,18 +234,6 @@ func (l *LinuxPTPConfigMapUpdate) DeleteAllPTPThreshold() {
 		delete(l.EventThreshold, k)
 		l.lock.Unlock()
 	}
-}
-
-// FileWatcherUpdateInProgress ... if config file watcher delay config update reads
-func (l *LinuxPTPConfigMapUpdate) FileWatcherUpdateInProgress(inProgress bool) {
-	l.lock.Lock()
-	l.fileWatcherUpdateInProgress = inProgress
-	l.lock.Unlock()
-}
-
-// IsFileWatcherUpdateInProgress ... if config file watcher delay config update reads
-func (l *LinuxPTPConfigMapUpdate) IsFileWatcherUpdateInProgress() bool {
-	return l.fileWatcherUpdateInProgress
 }
 
 func closeHoldover(t *PtpClockThreshold) {
@@ -447,10 +434,6 @@ func (l *LinuxPTPConfigMapUpdate) PushPtpConfigMapChanges(nodeName string) {
 
 func (l *LinuxPTPConfigMapUpdate) updatePtpConfig(nodeName string) (updated bool) {
 	nodeProfile := filepath.Join(l.profilePath, nodeName)
-	if l.IsFileWatcherUpdateInProgress() {
-		log.Infof("delete action on config was detetcted; delaying updating ptpconfig")
-		return // wait until delete is completed
-	}
 	if _, err := os.Stat(nodeProfile); err != nil {
 		if os.IsNotExist(err) {
 			log.Infof("ptp profile %s doesn't exist for node: %v , error %s", nodeProfile, nodeName, err.Error())
