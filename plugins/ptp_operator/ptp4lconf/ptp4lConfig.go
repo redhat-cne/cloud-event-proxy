@@ -236,7 +236,7 @@ func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpd
 	go func() {
 		defer w.fsWatcher.Close()
 		// initialize all
-		for _, ptpConfig := range readAllConfig(dirToWatch) {
+		for _, ptpConfig := range ReadAllConfig(dirToWatch) {
 			log.Infof("sending ptpconfig changes for %s", *ptpConfig.Name)
 			updatedConfig <- ptpConfig
 		}
@@ -279,7 +279,8 @@ func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpd
 	return w, err
 }
 
-func readAllConfig(dir string) []*PtpConfigUpdate {
+// ReadAllConfig reads all ptp4l, phc2sys, synce4l and chronyd config files from dir.
+func ReadAllConfig(dir string) []*PtpConfigUpdate {
 	var ptpConfigs []*PtpConfigUpdate
 	files, fileErr := os.ReadDir(dir)
 	if fileErr != nil {

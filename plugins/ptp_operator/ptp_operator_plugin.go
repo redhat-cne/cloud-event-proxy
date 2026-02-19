@@ -23,6 +23,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"syscall"
 
 	"k8s.io/utils/pointer"
 
@@ -48,8 +49,12 @@ import (
 )
 
 const (
-	eventSocket        = "/cloud-native/events.sock"
-	ptpConfigDir       = "/var/run/"
+	eventSocket  = "/cloud-native/events.sock"
+	ptpConfigDir = "/var/run/"
+	// restartCommand is the control command sent by linuxptp-daemon on the event
+	// socket to request a sidecar restart. The CMD prefix distinguishes it from
+	// process log lines (which always start with a process name like ptp4l, phc2sys).
+	restartCommand     = "CMD RESTART"
 	phc2sysProcessName = "phc2sys"
 	ptp4lProcessName   = "ptp4l"
 	ts2PhcProcessName  = "ts2phc"
@@ -65,13 +70,110 @@ const (
 )
 
 var (
-	resourcePrefix         = "/cluster/node"
-	publishers             = map[ptp.EventType]*ptpTypes.EventPublisherType{}
-	config                 *common.SCConfiguration
-	eventManager           *ptpMetrics.PTPEventManager
-	notifyConfigDirUpdates chan *ptp4lconf.PtpConfigUpdate
-	fileWatcher            *ptp4lconf.Watcher
+	resourcePrefix = "/cluster/node"
+	publishers     = map[ptp.EventType]*ptpTypes.EventPublisherType{}
+	config         *common.SCConfiguration
+	eventManager   *ptpMetrics.PTPEventManager
 )
+
+// restartProcess replaces the current process with a fresh copy of itself via
+// syscall.Exec. This guarantees all in-memory state (metrics, stats, holdover
+// goroutines, interface roles, etc.) is fully reset, equivalent to a container
+// restart but without Kubernetes involvement.
+func restartProcess(reason string) {
+	log.Infof("configuration change detected (%s), restarting process for clean state...", reason)
+
+	// Remove the Unix socket file so the new process can bind cleanly.
+	// The socket Listen() also handles stale sockets as a safety net.
+	if err := os.Remove(eventSocket); err != nil && !os.IsNotExist(err) {
+		log.Warningf("failed to remove socket file %s: %v", eventSocket, err)
+	}
+
+	binary, err := os.Executable()
+	if err != nil {
+		log.Fatalf("failed to get executable path for restart: %v", err)
+	}
+
+	log.Infof("restarting: %s %v", binary, os.Args)
+	if err = syscall.Exec(binary, os.Args, os.Environ()); err != nil {
+		log.Fatalf("failed to restart process: %v", err)
+	}
+}
+
+// loadInitialPtp4lConfigs reads all ptp4l/phc2sys/synce4l/chronyd config files
+// from ptpConfigDir once at startup and registers them with the event manager.
+// If no files exist yet (daemon hasn't written them), the function returns
+// gracefully; the daemon will send CMD RESTART once configs are ready.
+func loadInitialPtp4lConfigs() {
+	configs := ptp4lconf.ReadAllConfig(ptpConfigDir)
+	log.Infof("loading %d initial ptp4l config(s) from %s", len(configs), ptpConfigDir)
+	for _, ptpConfigEvent := range configs {
+		processConfigCreate(ptpConfigEvent)
+	}
+}
+
+// processConfigCreate builds the PTP4lConfig from a PtpConfigUpdate (a parsed
+// config file) and registers it with the event manager. It determines interface
+// roles from the config file parameters (serverOnly / masterOnly / clientOnly /
+// slaveOnly / global section).
+func processConfigCreate(ptpConfigEvent *ptp4lconf.PtpConfigUpdate) {
+	if ptpConfigEvent == nil || ptpConfigEvent.Name == nil || ptpConfigEvent.Profile == nil {
+		return
+	}
+	ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
+	log.Infof("processing initial ptp config %s (profile: %s)", *ptpConfigEvent.Name, *ptpConfigEvent.Profile)
+
+	newInterfaces := ptpConfigEvent.GetAllInterface()
+	allSections := ptpConfigEvent.GetAllSections()
+
+	var ptpInterfaces []*ptp4lconf.PTPInterface
+	for index, ptpInterface := range newInterfaces {
+		role := ptpTypes.UNKNOWN
+		if interfaceSection, exists := allSections[*ptpInterface]; exists {
+			if serverOnlyValue, hasServerOnly := interfaceSection["serverOnly"]; hasServerOnly {
+				if serverOnlyValue == "1" {
+					role = ptpTypes.MASTER
+				} else if serverOnlyValue == "0" {
+					role = ptpTypes.SLAVE
+				}
+			} else if masterOnlyValue, hasMasterOnly := interfaceSection["masterOnly"]; hasMasterOnly {
+				if masterOnlyValue == "1" {
+					role = ptpTypes.MASTER
+				} else if masterOnlyValue == "0" {
+					role = ptpTypes.SLAVE
+				}
+			} else {
+				if globalSection, hasGlobal := allSections["global"]; hasGlobal {
+					if globalClientOnly, hasGlobalClientOnly := globalSection["clientOnly"]; hasGlobalClientOnly && globalClientOnly == "1" {
+						role = ptpTypes.SLAVE
+					} else if globalSlaveOnly, hasGlobalSlaveOnly := globalSection["slaveOnly"]; hasGlobalSlaveOnly && globalSlaveOnly == "1" {
+						role = ptpTypes.SLAVE
+					} else {
+						role = ptpTypes.SLAVE
+					}
+				} else {
+					role = ptpTypes.SLAVE
+				}
+			}
+		}
+		ptpInterfaces = append(ptpInterfaces, &ptp4lconf.PTPInterface{
+			Name:     *ptpInterface,
+			PortID:   index + 1,
+			PortName: fmt.Sprintf("port %d", index+1),
+			Role:     role,
+		})
+		ptpMetrics.UpdateInterfaceRoleMetrics(ptp4lProcessName, *ptpInterface, role)
+	}
+
+	ptp4lConfig := &ptp4lconf.PTP4lConfig{
+		Name:       string(ptpConfigFileName),
+		Profile:    *ptpConfigEvent.Profile,
+		Interfaces: ptpInterfaces,
+		Sections:   allSections,
+	}
+	ptp4lConfig.ProfileType = eventManager.GetProfileType(ptp4lConfig.Profile)
+	eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
+}
 
 // Start ptp plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
 func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e interface{}) error) error { //nolint:deadcode,unused
@@ -113,65 +215,35 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 	}
 	eventManager.SetInitalMetrics()
 	wg.Add(1)
-	// create socket listener
+	// create socket listener; the daemon sends log lines and CMD RESTART commands here
 	go listenToSocket(wg)
-	// watch for ptp any config updates
+	// read configmap once at startup to load thresholds, process options and settings
 	go eventManager.PtpConfigMapUpdates.WatchConfigMapUpdate(nodeName, configuration.CloseCh, false)
-	// watch and monitor ptp4l config file creation and deletion
-	// create a ptpConfigDir directory watcher for config changes
-	notifyConfigDirUpdates = make(chan *ptp4lconf.PtpConfigUpdate, 20) // max 20 profiles since all files will be deleted in reapply
-	fileWatcher, err = ptp4lconf.NewPtp4lConfigWatcher(ptpConfigDir, notifyConfigDirUpdates)
-	if err != nil {
-		log.Errorf("cannot monitor ptp4l configuation folder at %s : %s", ptpConfigDir, err)
-		return err
-	}
+	// read existing config files once at startup to register interface/role mappings;
+	// if no files exist yet the daemon will send CMD RESTART once configs are ready
+	loadInitialPtp4lConfigs()
 
-	// process ptp4l conf file updates under /var/run/ptp4l.X.conf
-	go processPtp4lConfigFileUpdates()
-
-	// Reading configmap on any updates to configmap
-	// get threshold data on change of ptp config
-	// update node profile when configmap changes
+	// one-shot configmap handler: load thresholds/options on the first update then exit
 	go func() {
-		for {
-			select {
-			case <-eventManager.PtpConfigMapUpdates.UpdateCh:
-				log.Infof("updating ptp profile changes %d", len(eventManager.PtpConfigMapUpdates.NodeProfiles))
-				// clean up when no profiles found in configmap
-				if len(eventManager.PtpConfigMapUpdates.NodeProfiles) == 0 {
-					log.Infof("Zero Profile to update: cleaning up threshold")
-					eventManager.PtpConfigMapUpdates.DeleteAllPTPThreshold()
-					for _, pConfig := range eventManager.Ptp4lConfigInterfaces {
-						ptpMetrics.DeleteThresholdMetrics(pConfig.Profile)
-					}
-					// delete all metrics related to process
-					ptpMetrics.DeleteProcessStatusMetricsForConfig(nodeName, "", "")
-					// delete all metrics related to ptp ha if haProfile is deleted
-					if _, haProfiles := eventManager.HAProfiles(); len(haProfiles) > 0 {
-						for _, p := range haProfiles {
-							ptpMetrics.DeletePTPHAMetrics(strings.TrimSpace(p))
-						}
-					}
-				} else {
-					// updates found in configmap
-					eventManager.PtpConfigMapUpdates.UpdatePTPProcessOptions()
-					eventManager.PtpConfigMapUpdates.UpdatePTPThreshold()
-					eventManager.PtpConfigMapUpdates.UpdatePTPSetting()
-					// if profile 1 is removed for ha then remove those metrics
-					// if hasProfile is not found then we need to remove all metrics for HA
-					// this is done by file watcher
-					for key, np := range eventManager.PtpConfigMapUpdates.EventThreshold {
-						ptpMetrics.Threshold.With(prometheus.Labels{
-							"threshold": "MinOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MinOffsetThreshold))
-						ptpMetrics.Threshold.With(prometheus.Labels{
-							"threshold": "MaxOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MaxOffsetThreshold))
-						ptpMetrics.Threshold.With(prometheus.Labels{
-							"threshold": "HoldOverTimeout", "node": nodeName, "profile": key}).Set(float64(np.HoldOverTimeout))
-					}
+		select {
+		case <-eventManager.PtpConfigMapUpdates.UpdateCh:
+			log.Infof("loading ptp profile config: %d profiles", len(eventManager.PtpConfigMapUpdates.NodeProfiles))
+			if len(eventManager.PtpConfigMapUpdates.NodeProfiles) > 0 {
+				eventManager.PtpConfigMapUpdates.UpdatePTPProcessOptions()
+				eventManager.PtpConfigMapUpdates.UpdatePTPThreshold()
+				eventManager.PtpConfigMapUpdates.UpdatePTPSetting()
+				for key, np := range eventManager.PtpConfigMapUpdates.EventThreshold {
+					ptpMetrics.Threshold.With(prometheus.Labels{
+						"threshold": "MinOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MinOffsetThreshold))
+					ptpMetrics.Threshold.With(prometheus.Labels{
+						"threshold": "MaxOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MaxOffsetThreshold))
+					ptpMetrics.Threshold.With(prometheus.Labels{
+						"threshold": "HoldOverTimeout", "node": nodeName, "profile": key}).Set(float64(np.HoldOverTimeout))
 				}
-			case <-config.CloseCh:
-				return
 			}
+			// exit after first load; ConfigMap changes trigger a daemon-sent CMD RESTART
+		case <-config.CloseCh:
+			return
 		}
 	}()
 
@@ -363,279 +435,6 @@ func getOverallState(current, updated ptp.SyncState) ptp.SyncState {
 	return ptpMetrics.OverallState(current, updated)
 }
 
-// update interface details  and threshold details when ptpConfig change found.
-// These are updated when config file is created or deleted under /var/run folder
-// by  linuxptp-daemon.
-// issue to resolve: linuxptp-daemon-container will read ptpconfig and update ptpConfigMap
-// the updates are incremental and file creation happens when  ptpConfigMap is updated
-// NOTE: there is delay between configmap updates and file creation
-// FIRST ptpConfigMap created and then the daemon ticker when starting the process
-// creates the files or deletes the  file when process is stopped
-// This routine tries to rely on file creation to detect ptp config updates
-// and on file creation call ptpConfig updates
-// on file deletion reset to read fresh ptpconfig updates
-
-func processPtp4lConfigFileUpdates() {
-	fileModified := make(chan bool, 10) // buffered should not have 10 profile; made it 10 for qe; usually you will have only max 3 profiles
-	for {
-		// No Default Case: If no channel is ready and there's no default case in the select statement,
-		// the entire select statement will block until at least one channel becomes ready.
-		select {
-		case ptpConfigEvent := <-notifyConfigDirUpdates:
-			if ptpConfigEvent == nil || ptpConfigEvent.Name == nil {
-				continue
-			}
-			log.Infof("updating ptp config changes for %s", *ptpConfigEvent.Name)
-			switch ptpConfigEvent.Removed {
-			case false: // create or modified
-				// get config fileName
-				ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
-				// read all interface names from the config
-				newInterfaces := ptpConfigEvent.GetAllInterface()
-				allSections := ptpConfigEvent.GetAllSections()
-				ptp4lConfig := eventManager.GetPTPConfig(ptpConfigFileName)
-
-				if ptp4lConfig.Profile == "" {
-					ptp4lConfig.Profile = *ptpConfigEvent.Profile
-				}
-				// if profile is not set then set it to default profile
-				ptp4lConfig.ProfileType = eventManager.GetProfileType(ptp4lConfig.Profile)
-
-				// loop through to find if any interface changed
-				if eventManager.Ptp4lConfigInterfaces[ptpConfigFileName] != nil &&
-					HasEqualInterface(newInterfaces, eventManager.Ptp4lConfigInterfaces[ptpConfigFileName].Interfaces) {
-					log.Infof("skipped update,interface not changed in ptl4lconfig")
-					// add to eventManager
-					eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
-					continue
-				}
-
-				// cleanup functions to check if interface exists
-				isExists := func(i string) bool {
-					for _, ptpInterface := range newInterfaces {
-						if ptpInterface != nil && i == *ptpInterface {
-							return true
-						}
-					}
-					return false
-				}
-
-				if ptp4lConfig != nil {
-					for _, ptpInterface := range ptp4lConfig.Interfaces {
-						if !isExists(ptpInterface.Name) {
-							log.Errorf("config updated and interface not found, deleting %s", ptpInterface.Name)
-							// Remove interface role metrics if the interface has been removed from ptpConfig
-							ptpMetrics.DeleteInterfaceRoleMetrics("", ptpInterface.Name)
-						}
-					}
-				}
-				// build new interfaces and its order of index
-				var ptpInterfaces []*ptp4lconf.PTPInterface
-				for index, ptpInterface := range newInterfaces {
-					role := ptpTypes.UNKNOWN
-
-					// Check if interface section exists in config
-					if interfaceSection, exists := allSections[*ptpInterface]; exists {
-						// Try to preserve existing role if interface exists and port ID matches
-						if p, e := ptp4lConfig.ByInterface(*ptpInterface); e == nil && p.PortID == index+1 {
-							role = p.Role
-						} else {
-							// Assign role based on serverOnly (new) or masterOnly (deprecated) parameter from config
-							// serverOnly takes precedence over masterOnly for backward compatibility
-							if serverOnlyValue, hasServerOnly := interfaceSection["serverOnly"]; hasServerOnly {
-								if serverOnlyValue == "1" {
-									role = ptpTypes.MASTER
-								} else if serverOnlyValue == "0" {
-									role = ptpTypes.SLAVE
-								}
-							} else if masterOnlyValue, hasMasterOnly := interfaceSection["masterOnly"]; hasMasterOnly {
-								if masterOnlyValue == "1" {
-									role = ptpTypes.MASTER
-								} else if masterOnlyValue == "0" {
-									role = ptpTypes.SLAVE
-								}
-							} else {
-								// Check global clientOnly/slaveOnly setting if no interface-specific parameters
-								if globalSection, hasGlobal := allSections["global"]; hasGlobal {
-									if globalClientOnly, hasGlobalClientOnly := globalSection["clientOnly"]; hasGlobalClientOnly && globalClientOnly == "1" {
-										role = ptpTypes.SLAVE
-									} else if globalSlaveOnly, hasGlobalSlaveOnly := globalSection["slaveOnly"]; hasGlobalSlaveOnly && globalSlaveOnly == "1" {
-										role = ptpTypes.SLAVE
-									} else {
-										// Default to SLAVE if no masterOnly/slaveOnly parameters (OC scenario)
-										role = ptpTypes.SLAVE
-									}
-								} else {
-									// Default to SLAVE if no global section (OC scenario)
-									role = ptpTypes.SLAVE
-								}
-							}
-						}
-
-						ptpIFace := &ptp4lconf.PTPInterface{
-							Name:     *ptpInterface,
-							PortID:   index + 1,
-							PortName: fmt.Sprintf("%s%d", "port ", index+1),
-							Role:     role,
-						}
-						ptpInterfaces = append(ptpInterfaces, ptpIFace)
-
-						// Update interface role metrics
-						ptpMetrics.UpdateInterfaceRoleMetrics(ptp4lProcessName, *ptpInterface, role)
-					}
-				}
-				// updated ptp4lConfig is ready
-				ptp4lConfig = &ptp4lconf.PTP4lConfig{
-					Name:       string(ptpConfigFileName),
-					Profile:    *ptpConfigEvent.Profile,
-					Interfaces: ptpInterfaces,
-					Sections:   allSections,
-				}
-				// if profile is not set then set it to default profile
-				ptp4lConfig.ProfileType = eventManager.GetProfileType(ptp4lConfig.Profile)
-				// add to eventManager
-				eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
-				// clean up process metrics
-				for cName, opts := range eventManager.PtpConfigMapUpdates.PtpProcessOpts {
-					var process []string
-					if !opts.Ptp4lEnabled() {
-						process = append(process, ptp4lProcessName)
-					}
-					if !opts.Phc2SysEnabled() {
-						process = append(process, phc2sysProcessName)
-					}
-					if !opts.SyncE4lEnabled() {
-						process = append(process, syncE4lProcessName)
-					}
-					ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), cName,
-						process...)
-					// special ts2phc due to different configName replace ptp4l.0.conf to ts2phc.0.cnf
-					if !opts.TS2PhcEnabled() {
-						ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(),
-							strings.Replace(cName, ptp4lProcessName, ts2PhcProcessName, 1), ts2PhcProcessName)
-					}
-					// special chronyd due to different configName replace ptp4l.0.conf to chronyd.0.cnf
-					if !opts.ChronydEnabled() {
-						ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(),
-							strings.Replace(cName, ptp4lProcessName, chronydProcessName, 1), chronydProcessName)
-					}
-				}
-				for key, np := range eventManager.PtpConfigMapUpdates.EventThreshold {
-					ptpMetrics.Threshold.With(prometheus.Labels{
-						"threshold": "MinOffsetThreshold", "node": eventManager.NodeName(), "profile": key}).Set(float64(np.MinOffsetThreshold))
-					ptpMetrics.Threshold.With(prometheus.Labels{
-						"threshold": "MaxOffsetThreshold", "node": eventManager.NodeName(), "profile": key}).Set(float64(np.MaxOffsetThreshold))
-					ptpMetrics.Threshold.With(prometheus.Labels{
-						"threshold": "HoldOverTimeout", "node": eventManager.NodeName(), "profile": key}).Set(float64(np.HoldOverTimeout))
-				}
-			case true: // ptp4l.X.conf is deleted ; how to prevent updates happening at same time
-				// delete metrics, ptp4l config is removed
-				// set lock prevent any prpConfig update until delete operation is completed
-				eventManager.PtpConfigMapUpdates.FileWatcherUpdateInProgress(true)
-				ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
-				ptp4lConfig := eventManager.GetPTPConfig(ptpConfigFileName)
-				log.Infof("deleting config %s with profile %s\n", *ptpConfigEvent.Name, ptp4lConfig.Profile)
-				ptpStats := eventManager.GetStats(ptpConfigFileName)
-				// to avoid new one getting created , make a copy of this stats
-				ptpStats.SetConfigAsDeleted(true)
-				// there is a possibility of new config with same name is  created immediately after the delete of the old config.
-				// time="2024-03-19T19:40:16Z" level=info msg="config removed file: /var/run/phc2sys.2.config"
-				// time="2024-03-19T19:40:16Z" level=info msg="updating ptp config changes for phc2sys.2.config"
-				if eventManager.PtpConfigMapUpdates.HAProfile == ptp4lConfig.Profile {
-					eventManager.PtpConfigMapUpdates.HAProfile = "" // clear profile
-				}
-				// Remove only the specific profile being deleted from TBCProfiles, not all profiles
-				if eventManager.GetProfileType(ptp4lConfig.Profile) == ptp4lconf.TBC {
-					var updatedProfiles []string
-					for _, p := range eventManager.PtpConfigMapUpdates.TBCProfiles {
-						if p != ptp4lConfig.Profile {
-							updatedProfiles = append(updatedProfiles, p)
-						}
-					}
-					eventManager.PtpConfigMapUpdates.TBCProfiles = updatedProfiles
-				}
-				// clean up synce metrics
-				for d, s := range ptpStats {
-					if s != nil && s.GetSyncE() != nil {
-						ptpMetrics.DeleteSyncEMetrics(syncE4lProcessName, string(ptpConfigFileName), *s.GetSyncE())
-						ptpStats[d].SetSyncE(nil) // clear all
-					}
-				}
-				// clean up
-				if ptpConfig, ok := eventManager.Ptp4lConfigInterfaces[ptpConfigFileName]; ok {
-					//clean up any ha metrics
-					ptpMetrics.DeletePTPHAMetrics(ptpConfig.Profile)
-					for _, ptpInterface := range ptpConfig.Interfaces {
-						ptpMetrics.DeleteInterfaceRoleMetrics(ptp4lProcessName, ptpInterface.Name)
-						// Clean up ts2phc and ptp4l sync state metrics for T-BC profiles
-						// These metrics are created by T-BC state synchronization logic
-						if eventManager.GetProfileType(ptpConfig.Profile) == ptp4lconf.TBC {
-							ptpMetrics.SyncState.Delete(prometheus.Labels{
-								"process": ts2PhcProcessName, "node": eventManager.NodeName(), "iface": ptpInterface.Name})
-						}
-					}
-					if t, ok2 := eventManager.PtpConfigMapUpdates.EventThreshold[ptpConfig.Profile]; ok2 {
-						// Make sure that the function does close the channel
-						t.SafeClose()
-					}
-					ptpMetrics.DeleteThresholdMetrics(ptpConfig.Profile)
-					eventManager.PtpConfigMapUpdates.DeletePTPThreshold(ptpConfig.Profile)
-				}
-
-				//  offset related metrics are reported only for clock realtime and master
-				// if ptp4l config is deleted ,  remove any metrics reported by it config
-				// for dual nic, keep the CLOCK_REALTIME,if master interface not in same config
-				if s, found := ptpStats[ClockRealTime]; found {
-					ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), phc2sysProcessName, ClockRealTime)
-					eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, ClockRealTime, ptp.OsClockSyncStateChange)
-				}
-				if s, found := ptpStats[MasterClockType]; found {
-					if s.ProcessName() == ptp4lProcessName {
-						ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), ptp4lProcessName, s.Alias())
-					} else {
-						ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), ts2PhcProcessName, s.Alias())
-						for _, p := range ptpStats {
-							if p.PtpDependentEventState() != nil {
-								if p.HasProcessEnabled(gnssProcessName) {
-									if ptpMetrics.NmeaStatus != nil {
-										ptpMetrics.NmeaStatus.Delete(prometheus.Labels{
-											"process": ts2PhcProcessName, "node": eventManager.NodeName(), "iface": p.Alias()})
-									}
-									masterResource := fmt.Sprintf("%s/%s", p.Alias(), MasterClockType)
-									eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, masterResource, ptp.GnssStateChange)
-								}
-							}
-							if ptpMetrics.ClockClassMetrics != nil {
-								ptpMetrics.ClockClassMetrics.Delete(prometheus.Labels{
-									"process": ptp4lProcessName, "config": string(ptpConfigFileName), "node": eventManager.NodeName()})
-							}
-							ptpMetrics.DeletedPTPMetrics(MasterClockType, ts2PhcProcessName, p.Alias())
-							p.DeleteAllMetrics([]*prometheus.GaugeVec{ptpMetrics.PtpOffset, ptpMetrics.SyncState})
-						}
-					}
-					masterResource := fmt.Sprintf("%s/%s", s.Alias(), MasterClockType)
-					eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, masterResource, ptp.PtpStateChange)
-				}
-				eventManager.DeleteStatsConfig(ptpConfigFileName)
-				eventManager.DeletePTPConfig(ptpConfigFileName)
-				// clean up process metrics
-				ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), string(ptpConfigFileName), ptp4lProcessName, phc2sysProcessName, syncE4lProcessName)
-				ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), strings.Replace(string(ptpConfigFileName), ptp4lProcessName, ts2PhcProcessName, 1), ts2PhcProcessName)
-				ptpMetrics.DeleteProcessStatusMetricsForConfig(eventManager.NodeName(), strings.Replace(string(ptpConfigFileName), ptp4lProcessName, chronydProcessName, 1), chronydProcessName)
-				fileModified <- true
-			}
-		case <-config.CloseCh:
-			fileWatcher.Close()
-			return
-		case <-fileModified:
-			// release lock for ptpconfig updates
-			eventManager.PtpConfigMapUpdates.FileWatcherUpdateInProgress(false)
-			// reset ptpconfig dataset and update again clean
-			eventManager.PtpConfigMapUpdates.SetAppliedNodeProfileJSON([]byte{})
-			eventManager.PtpConfigMapUpdates.PushPtpConfigMapChanges(eventManager.NodeName())
-		}
-	}
-}
 func createPublisher(address string) (pub pubsub.PubSub, err error) {
 	// this is loop back on server itself. Since current pod does not create any server
 	returnURL := fmt.Sprintf("%s%s", config.BaseURL, "dummy")
@@ -675,21 +474,12 @@ func processMessages(c net.Conn) {
 			break
 		}
 		msg := scanner.Text()
+		if msg == restartCommand {
+			restartProcess("restart requested by daemon via socket")
+			return // unreachable after exec
+		}
 		eventManager.ExtractMetrics(msg)
 	}
-}
-
-// HasEqualInterface checks if configmap changes have the same interface list (names and order).
-func HasEqualInterface(a []*string, b []*ptp4lconf.PTPInterface) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i, v := range a {
-		if *v != b[i].Name {
-			return false
-		}
-	}
-	return true
 }
 
 // InitPubSubTypes ... initialize types of publishers for ptp operator
