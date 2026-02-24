@@ -14,7 +14,7 @@ require (
 	github.com/prometheus/client_golang v1.14.0
 	github.com/redhat-cne/rest-api v1.21.4
 	github.com/redhat-cne/sdk-go v1.21.5
-	github.com/sirupsen/logrus v1.9.0
+	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/net v0.33.0
 	k8s.io/api v0.26.0
