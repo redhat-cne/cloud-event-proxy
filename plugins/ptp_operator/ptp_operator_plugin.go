@@ -388,6 +388,10 @@ func processPtp4lConfigFileUpdates() {
 			log.Infof("updating ptp config changes for %s", *ptpConfigEvent.Name)
 			switch ptpConfigEvent.Removed {
 			case false: // create or modified
+				// Sync aliases when profile is loaded
+				if err := ptpMetrics.SyncAliasesFromDaemon(); err != nil {
+					log.Warnf("failed to sync aliases from linuxptp-daemon: %v", err)
+				}
 				// get config fileName
 				ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
 				// read all interface names from the config
@@ -589,6 +593,7 @@ func processPtp4lConfigFileUpdates() {
 					ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), phc2sysProcessName, ClockRealTime)
 					eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, ClockRealTime, ptp.OsClockSyncStateChange)
 				}
+				// TODO remove all metric CHECK THIS
 				if s, found := ptpStats[MasterClockType]; found {
 					if s.ProcessName() == ptp4lProcessName {
 						ptpMetrics.DeletedPTPMetrics(s.OffsetSource(), ptp4lProcessName, s.Alias())
