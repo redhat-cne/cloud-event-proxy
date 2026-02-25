@@ -2,6 +2,8 @@ name: CI tests AWS
 on:
   pull_request_target:
     types: [labeled, synchronize]  # Triggered when the PR is labeled or synchronized (PR code changed)
+    branches:
+      - main  # Only run for PRs targeting the main branch
 permissions:
   id-token: write
   contents: read
