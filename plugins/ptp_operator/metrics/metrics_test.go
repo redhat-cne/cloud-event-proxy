@@ -21,6 +21,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/alias"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/config"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
@@ -437,6 +438,12 @@ var testCases = []TestCase{
 }
 
 func setup() {
+	alias.SetAlias("ens2f0", "ens2fx")
+	alias.SetAlias("ens2f1", "ens2fx")
+	alias.SetAlias("ens7f0", "ens7fx")
+	alias.SetAlias("ens3f0", "ens3fx")
+	alias.SetAlias("ens3f1", "ens3fx")
+
 	mockFS := &metrics.MockFileSystem{}
 	scConfig = &common.SCConfiguration{StorePath: "/tmp/store"}
 	metrics.Filesystem = mockFS
