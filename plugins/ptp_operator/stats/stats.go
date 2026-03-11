@@ -18,6 +18,12 @@ import (
 // PTPStats ...
 type PTPStats map[types.IFace]*Stats
 
+const (
+	TBCMainClockName    = "T-BC"
+	GMMainClockName     = "GM"
+	MasterMainClockName = "master"
+)
+
 // Stats calculates stats  nolint:unused
 type Stats struct {
 	configName             string
@@ -439,4 +445,18 @@ func (ps PTPStats) HasMetricHelp(process string) map[string]string {
 		}
 	}
 	return nil
+}
+
+// GetMainClockName ...
+func (ps PTPStats) GetMainClockName() types.IFace {
+	if ps == nil {
+		return MasterMainClockName
+	}
+	if _, ok := ps[GMMainClockName]; ok {
+		return GMMainClockName
+	}
+	if _, ok := ps[TBCMainClockName]; ok {
+		return TBCMainClockName
+	}
+	return MasterMainClockName
 }
