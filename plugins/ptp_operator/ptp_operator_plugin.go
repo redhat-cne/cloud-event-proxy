@@ -162,6 +162,7 @@ func processConfigCreate(ptpConfigEvent *ptp4lconf.PtpConfigUpdate) {
 			PortName: fmt.Sprintf("port %d", index+1),
 			Role:     role,
 		})
+
 		ptpMetrics.UpdateInterfaceRoleMetrics(ptp4lProcessName, *ptpInterface, role)
 	}
 
@@ -173,6 +174,7 @@ func processConfigCreate(ptpConfigEvent *ptp4lconf.PtpConfigUpdate) {
 	}
 	ptp4lConfig.ProfileType = eventManager.GetProfileType(ptp4lConfig.Profile)
 	eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
+	ptpMetrics.SyncAliasesFromDaemon()
 }
 
 // Start ptp plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
