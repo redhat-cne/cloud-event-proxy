@@ -211,13 +211,11 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 	if err != nil {
 		log.Warn(err)
 	}
-	err = eventManager.TriggerLogs()
-	if err != nil {
-		log.Warn(err)
-	}
 	eventManager.SetInitalMetrics()
 	wg.Add(1)
-	// create socket listener; the daemon sends log lines and CMD RESTART commands here
+	// create socket listener; the daemon sends log lines and CMD RESTART commands here.
+	// When a new connection is accepted, processMessages calls TriggerLogs() to request
+	// the daemon to re-emit all metrics logs.
 	go listenToSocket(wg)
 	// read configmap once at startup to load thresholds, process options and settings
 	go eventManager.PtpConfigMapUpdates.WatchConfigMapUpdate(nodeName, configuration.CloseCh, false)
@@ -468,6 +466,13 @@ func listenToSocket(wg *sync.WaitGroup) {
 }
 
 func processMessages(c net.Conn) {
+	// A new socket connection means the daemon (re)connected.
+	// Request a full state re-emit so metrics are populated after restart.
+	if eventManager != nil {
+		if err := eventManager.TriggerLogs(); err != nil {
+			log.Warnf("failed to trigger logs on new connection: %v", err)
+		}
+	}
 	scanner := bufio.NewScanner(c)
 	for {
 		ok := scanner.Scan()
