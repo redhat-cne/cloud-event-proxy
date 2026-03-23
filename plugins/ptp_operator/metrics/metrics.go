@@ -135,7 +135,12 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		return
 	} else if processName != syncE4lProcessName &&
 		!p.validLogToProcess(profileName, processName, len(ptp4lCfg.Interfaces)) {
-		log.Infof("%s skipped parsing %s output %s\n", processName, ptp4lCfg.Name, output)
+		if strings.Contains(output, classChangeIdentifier) {
+			p.ParsePTP4l(processName, configName, profileName, output, fields,
+				ptp4lconf.PTPInterface{}, ptp4lCfg, ptpStats)
+		} else {
+			log.Infof("%s skipped parsing %s output %s\n", processName, ptp4lCfg.Name, output)
+		}
 		return
 	}
 	var ptpInterface ptp4lconf.PTPInterface
