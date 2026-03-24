@@ -529,6 +529,12 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 	}
 }
 
+// SetLastOverallGMStateForTesting sets the cached GM sync state used by ExtractMetrics when
+// deciding whether to force downstream (non-ts2phc) sync state to FREERUN. For unit tests only.
+func (p *PTPEventManager) SetLastOverallGMStateForTesting(state ptp.SyncState) {
+	p.lastOverallGMState = state
+}
+
 // NodeName ...
 func (p *PTPEventManager) NodeName() string {
 	return p.nodeName
