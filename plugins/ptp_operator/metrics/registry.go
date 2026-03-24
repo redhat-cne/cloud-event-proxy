@@ -172,6 +172,9 @@ func RegisterMetrics(nodeName string) {
 
 // UpdatePTPMetrics ... update ptp metrics
 func UpdatePTPMetrics(metricsType, process, eventResourceName string, offset, maxOffset, frequencyAdjustment, delay float64) {
+	if !CheckMetricSanity("PTPMetrics", process, eventResourceName) {
+		return
+	}
 	PtpOffset.With(prometheus.Labels{"from": metricsType,
 		"process": process, "node": ptpNodeName, "iface": eventResourceName}).Set(offset)
 
@@ -187,12 +190,18 @@ func UpdatePTPMetrics(metricsType, process, eventResourceName string, offset, ma
 
 // UpdatePTPOffsetMetrics ... update ptp offset metrics
 func UpdatePTPOffsetMetrics(metricsType, process, eventResourceName string, offset float64) {
+	if !CheckMetricSanity("PTPOffsetMetrics", process, eventResourceName) {
+		return
+	}
 	PtpOffset.With(prometheus.Labels{"from": metricsType,
 		"process": process, "node": ptpNodeName, "iface": eventResourceName}).Set(offset)
 }
 
 // DeletedPTPMetrics ... update metrics for deleted ptp config
 func DeletedPTPMetrics(clockType, processName, eventResourceName string) {
+	if !CheckMetricSanity("DeletedPTPMetrics", processName, eventResourceName) {
+		return
+	}
 	PtpOffset.Delete(prometheus.Labels{"from": clockType,
 		"process": processName, "node": ptpNodeName, "iface": eventResourceName})
 	PtpMaxOffset.Delete(prometheus.Labels{"from": clockType,
@@ -217,6 +226,9 @@ func DeleteThresholdMetrics(profile string) {
 
 // UpdateSyncStateMetrics ... update sync state metrics
 func UpdateSyncStateMetrics(process, iface string, state ptp.SyncState) {
+	if !CheckMetricSanity("SyncStateMetrics", process, iface) {
+		return
+	}
 	var clockState float64
 	if state == ptp.LOCKED {
 		clockState = float64(types.LOCKED)
@@ -236,6 +248,9 @@ func UpdateSyncStateMetrics(process, iface string, state ptp.SyncState) {
 
 // UpdateNmeaStatusMetrics ... update nmea status metrics
 func UpdateNmeaStatusMetrics(process, iface string, status float64) {
+	if !CheckMetricSanity("NmeaStatusMetrics", process, iface) {
+		return
+	}
 	NmeaStatus.With(prometheus.Labels{
 		"process": process, "node": ptpNodeName, "iface": iface}).Set(status)
 }
@@ -248,6 +263,9 @@ func UpdatePTPHaMetrics(profile string, status int64) {
 
 // UpdateInterfaceRoleMetrics ... update interface role metrics
 func UpdateInterfaceRoleMetrics(process, ptpInterface string, role types.PtpPortRole) {
+	if !CheckMetricSanity("InterfaceRoleMetrics", process, ptpInterface) {
+		return
+	}
 	InterfaceRole.With(prometheus.Labels{
 		"process": process, "node": ptpNodeName, "iface": ptpInterface}).Set(float64(role))
 }
