@@ -575,4 +575,38 @@ func Test_ExtractMetrics(t *testing.T) {
 			assert.Equal(tc.expectedEvent, ptpEventManager.GetMockEvent(), "Expected Event does not match\n%s", tc.String())
 		})
 	}
+
+	// lastOverallGMState (see ParseGMLogs): when master offset source is ts2phc, ExtractMetrics
+	// forces non-ts2phc downstream sync to FREERUN only if last GM snapshot was FREERUN.
+	t.Run("lastOverallGMState_holdover_vs_freerun", func(t *testing.T) {
+		const logPhcLocked = "phc2sys[1000000900]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -62 s2 freq  -78368 delay   1100"
+		assert := assert.New(t)
+		t.Cleanup(func() {
+			ptpEventManager.SetLastOverallGMStateForTesting("")
+		})
+
+		t.Run("FREERUN_GM_forces_ClockRealTime_even_when_log_reports_s2", func(t *testing.T) {
+			metrics.SyncState.With(map[string]string{"process": "phc2sys", "node": MYNODE, "iface": metrics.ClockRealTime}).Set(CLEANUP)
+			setLastSyncState(metrics.ClockRealTime, ptp.FREERUN, logPtp4lConfig.Name)
+			ptpEventManager.SetLastOverallGMStateForTesting(ptp.FREERUN)
+			ptpEventManager.ResetMockEvent()
+			ptpEventManager.ExtractMetrics(logPhcLocked)
+
+			ss := metrics.SyncState.With(map[string]string{"process": "phc2sys", "node": MYNODE, "iface": metrics.ClockRealTime})
+			assert.Equal(float64(types.FREERUN), testutil.ToFloat64(ss),
+				"when last GM state is FREERUN, downstream phc2sys sync state must be forced to FREERUN")
+		})
+
+		t.Run("HOLDOVER_GM_preserves_LOCKED_from_log_s2", func(t *testing.T) {
+			metrics.SyncState.With(map[string]string{"process": "phc2sys", "node": MYNODE, "iface": metrics.ClockRealTime}).Set(CLEANUP)
+			setLastSyncState(metrics.ClockRealTime, ptp.FREERUN, logPtp4lConfig.Name)
+			ptpEventManager.SetLastOverallGMStateForTesting(ptp.HOLDOVER)
+			ptpEventManager.ResetMockEvent()
+			ptpEventManager.ExtractMetrics(logPhcLocked)
+
+			ss := metrics.SyncState.With(map[string]string{"process": "phc2sys", "node": MYNODE, "iface": metrics.ClockRealTime})
+			assert.Equal(float64(types.LOCKED), testutil.ToFloat64(ss),
+				"when last GM state is HOLDOVER, phc2sys must keep LOCKED from the s2 log line")
+		})
+	})
 }
