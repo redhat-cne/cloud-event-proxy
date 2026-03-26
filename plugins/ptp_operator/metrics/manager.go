@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"fmt"
+	"net/http"
 	"path"
 	"strings"
 	"sync"
@@ -644,4 +645,17 @@ func OverallState(current, updated ptp.SyncState) ptp.SyncState {
 		log.Warnf("last sync state is unknown: %s", updated)
 	}
 	return ""
+}
+
+const logsEndpoint = "http://localhost:8081/emit-logs"
+
+// TriggerLogs makes an HTTP request to the linuxptp-daemon to re-emit
+// all metrics logs so that cloud-event-proxy can repopulate its state.
+func (p *PTPEventManager) TriggerLogs() error {
+	resp, err := http.Get(logsEndpoint) //nolint:gosec
+	if err != nil {
+		return fmt.Errorf("failed to trigger logs: %w", err)
+	}
+	defer resp.Body.Close()
+	return nil
 }
