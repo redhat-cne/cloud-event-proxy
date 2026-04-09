@@ -17,9 +17,12 @@ package common_test
 import (
 	"net"
 	"testing"
+	"time"
 
+	"github.com/redhat-cne/sdk-go/pkg/channel"
+	ceevent "github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/types"
-
+	v1pubsub "github.com/redhat-cne/sdk-go/v1/pubsub"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
@@ -60,4 +63,42 @@ func TestTransportHost_ParseTransportHost(t *testing.T) {
 			assert.Nil(t, tc.want.Err, tc.input.Err, tc.input.String())
 		}
 	}
+}
+
+func TestPublishEventViaAPI_NonBlockingWhenChannelFull(t *testing.T) {
+	// Create a channel with buffer size 1 and fill it
+	eventOutCh := make(chan *channel.DataChan, 1)
+	eventOutCh <- &channel.DataChan{} // fill the buffer
+
+	pubSubAPI := v1pubsub.GetAPIInstance("/tmp/test-store")
+	pub, _ := pubSubAPI.CreatePublisher(v1pubsub.NewPubSub(
+		types.ParseURI("http://localhost/dummy"),
+		"/test/resource",
+	))
+
+	scConfig := &common.SCConfiguration{
+		EventOutCh: eventOutCh,
+		PubSubAPI:  pubSubAPI,
+	}
+
+	// Create event with matching publisher ID
+	event := ceevent.Event{ID: pub.ID}
+
+	// PublishEventViaAPI should return after the 5s timeout (not block forever)
+	// even though the channel is full
+	done := make(chan struct{})
+	go func() {
+		_ = common.PublishEventViaAPI(scConfig, event, "/test/resource")
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// success — returned after timeout, did not block forever
+	case <-time.After(10 * time.Second):
+		t.Fatal("PublishEventViaAPI blocked on full EventOutCh — should return after 5s timeout")
+	}
+
+	// Channel should still have exactly 1 item (the original, not the new one)
+	assert.Equal(t, 1, len(eventOutCh))
 }
