@@ -759,7 +759,8 @@ func (p *PTPEventManager) SetInitalMetrics() {
 }
 
 func (p *PTPEventManager) TriggerLogs() error {
-	resp, err := http.Get(logsEndpoint) //nolint:gosec
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(logsEndpoint) //nolint:gosec
 	if err != nil {
 		return fmt.Errorf("failed to trigger logs: %w", err)
 	}
