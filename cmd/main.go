@@ -417,7 +417,9 @@ func ProcessInChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 						out.Status = channel.SUCCESS
 					}
 				}
-				scConfig.EventOutCh <- &out
+				if !common.SendToChannel(scConfig.EventOutCh, &out) {
+					log.Warningf("EventOutCh full, dropping ack for %s", d.Address)
+				}
 			} else if d.Type == channel.STATUS && d.Status == channel.NEW {
 				log.Warnf("event disabled,no action taken(can't send to a destination): logging new status check %v\n", d)
 				out := channel.DataChan{
