@@ -30,15 +30,29 @@ var (
 )
 
 func storeCleanUp() {
-	_ = scConfig.PubSubAPI.DeleteAllPublishers()
-	_ = scConfig.PubSubAPI.DeleteAllSubscriptions()
+	if scConfig != nil && scConfig.PubSubAPI != nil {
+		log.Info("deleting all publishers")
+		_ = scConfig.PubSubAPI.DeleteAllPublishers()
+	}
+	if scConfig != nil && scConfig.SubscriberAPI != nil {
+		log.Info("deleting all subscription")
+		_, _ = scConfig.SubscriberAPI.DeleteAllSubscriptions()
+	}
 }
 
 func TestSidecar_Main(t *testing.T) {
 	apiPort = 8990
-	defer storeCleanUp()
+	
+	// Create a unique temporary directory for this test run to avoid conflicts
+	tempDir, err := os.MkdirTemp("", "sidecar-test-*")
+	assert.NoError(t, err)
+	defer func() {
+		storeCleanUp()
+		os.RemoveAll(tempDir) // Clean up temp directory
+	}()
+	
 	wg := &sync.WaitGroup{}
-	var storePath = "."
+	var storePath = tempDir
 	if sPath, ok := os.LookupEnv("STORE_PATH"); ok && sPath != "" {
 		storePath = sPath
 	}
@@ -59,10 +73,14 @@ func TestSidecar_Main(t *testing.T) {
 			Err:  nil,
 		},
 	}
+	
+	// Clean up any existing state before starting the test
+	storeCleanUp()
+	
 	log.Infof("Configuration set to %#v", scConfig)
 
 	//start rest service
-	err := common.StartPubSubService(scConfig)
+	err = common.StartPubSubService(scConfig)
 	assert.Nil(t, err)
 
 	// imitate main process
