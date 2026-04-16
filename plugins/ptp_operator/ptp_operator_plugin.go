@@ -466,12 +466,16 @@ func listenToSocket(wg *sync.WaitGroup) {
 }
 
 func processMessages(c net.Conn) {
-	// A new socket connection means the daemon (re)connected.
-	// Request a full state re-emit so metrics are populated after restart.
+	// Request a full state re-emit in a separate goroutine so the scanner
+	// can start reading immediately. TriggerLogs writes emit data back through
+	// this same socket connection; if we block here waiting for the HTTP response,
+	// nobody reads the socket, the kernel buffer fills, and the emit handler blocks.
 	if eventManager != nil {
-		if err := eventManager.TriggerLogs(); err != nil {
-			log.Warnf("failed to trigger logs on new connection: %v", err)
-		}
+		go func() {
+			if err := eventManager.TriggerLogs(); err != nil {
+				log.Warnf("failed to trigger logs on new connection: %v", err)
+			}
+		}()
 	}
 	scanner := bufio.NewScanner(c)
 	for {
