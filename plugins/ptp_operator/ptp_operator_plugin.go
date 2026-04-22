@@ -212,6 +212,10 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 		log.Warn(err)
 	}
 	eventManager.SetInitalMetrics()
+	// We must attempt to get aliases here for the case of restarting cloud-event-proxy
+	// against an extablished linuxptp-daemon, which will have aliases already populated
+	// and log lines waiting in the buffer.
+	ptpMetrics.SyncAliasesFromDaemon()
 	wg.Add(1)
 	// create socket listener; the daemon sends log lines and CMD RESTART commands here.
 	// When a new connection is accepted, processMessages calls TriggerLogs() to request
