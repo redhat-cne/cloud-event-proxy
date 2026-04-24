@@ -77,7 +77,7 @@ type PtpClockThreshold struct {
 	// min offset in nano secs
 	MinOffsetThreshold int64 `json:"minOffsetThreshold,omitempty"`
 	// Close  any  previous holdover
-	Close chan struct{} `json:"close,omitempty"`
+	Close chan struct{} `json:"-"`
 }
 
 // PtpProcessOpts ... prp process options
