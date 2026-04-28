@@ -29,6 +29,7 @@ import (
 	"k8s.io/utils/pointer"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/filesystem"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -76,7 +77,7 @@ type PtpClockThreshold struct {
 	// min offset in nano secs
 	MinOffsetThreshold int64 `json:"minOffsetThreshold,omitempty"`
 	// Close  any  previous holdover
-	Close chan struct{} `json:"close,omitempty"`
+	Close chan struct{} `json:"-"`
 }
 
 // PtpProcessOpts ... prp process options
@@ -434,7 +435,7 @@ func (l *LinuxPTPConfigMapUpdate) PushPtpConfigMapChanges(nodeName string) {
 
 func (l *LinuxPTPConfigMapUpdate) updatePtpConfig(nodeName string) (updated bool) {
 	nodeProfile := filepath.Join(l.profilePath, nodeName)
-	if _, err := os.Stat(nodeProfile); err != nil {
+	if _, err := filesystem.Stat(nodeProfile); err != nil {
 		if os.IsNotExist(err) {
 			log.Infof("ptp profile %s doesn't exist for node: %v , error %s", nodeProfile, nodeName, err.Error())
 			l.UpdateCh <- true // if profile doesn't exist let the caller know
@@ -448,7 +449,7 @@ func (l *LinuxPTPConfigMapUpdate) updatePtpConfig(nodeName string) (updated bool
 		log.Errorf("reading nodeProfile %s from unknon path ", nodeProfile)
 		return
 	}
-	nodeProfilesJSON, err := os.ReadFile(nodeProfile)
+	nodeProfilesJSON, err := filesystem.ReadFile(nodeProfile)
 	if err != nil {
 		log.Errorf("error reading node profile: %v", nodeProfile)
 		return

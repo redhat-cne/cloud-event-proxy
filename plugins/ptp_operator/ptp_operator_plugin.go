@@ -24,6 +24,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"k8s.io/utils/pointer"
 
@@ -64,9 +65,10 @@ const (
 	// ClockRealTime is the slave
 	ClockRealTime = "CLOCK_REALTIME"
 	// MasterClockType is the slave sync slave clock to master
-	MasterClockType = "master"
-	EventNotFound   = "event-not-found"
-	PTPNotSet       = "ptp-not-set"
+	MasterClockType             = "master"
+	EventNotFound               = "event-not-found"
+	PTPNotSet                   = "ptp-not-set"
+	ptpConfigSyncInitialTimeout = 1 * time.Second
 )
 
 var (
@@ -177,6 +179,37 @@ func processConfigCreate(ptpConfigEvent *ptp4lconf.PtpConfigUpdate) {
 	ptpMetrics.SyncAliasesFromDaemon()
 }
 
+// startPtpConfigSync starts the configmap watcher and blocks until the first
+// update arrives or the timeout expires. This ensures TBCProfiles and
+// thresholds are populated before loadInitialPtp4lConfigs registers configs,
+// eliminating the race where ProfileType is cached as NONE because the
+// configmap hasn't been read yet.
+func startPtpConfigSync(timeout time.Duration, nodeName string, configuration *common.SCConfiguration) {
+	go eventManager.PtpConfigMapUpdates.WatchConfigMapUpdate(nodeName, configuration.CloseCh, false)
+	select {
+	case <-eventManager.PtpConfigMapUpdates.UpdateCh:
+		log.Infof("loading ptp profile config: %d profiles", len(eventManager.PtpConfigMapUpdates.NodeProfiles))
+		if len(eventManager.PtpConfigMapUpdates.NodeProfiles) > 0 {
+			eventManager.PtpConfigMapUpdates.UpdatePTPProcessOptions()
+			eventManager.PtpConfigMapUpdates.UpdatePTPThreshold()
+			eventManager.PtpConfigMapUpdates.UpdatePTPSetting()
+			eventManager.RefreshProfileTypes()
+			for key, np := range eventManager.PtpConfigMapUpdates.EventThreshold {
+				ptpMetrics.Threshold.With(prometheus.Labels{
+					"threshold": "MinOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MinOffsetThreshold))
+				ptpMetrics.Threshold.With(prometheus.Labels{
+					"threshold": "MaxOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MaxOffsetThreshold))
+				ptpMetrics.Threshold.With(prometheus.Labels{
+					"threshold": "HoldOverTimeout", "node": nodeName, "profile": key}).Set(float64(np.HoldOverTimeout))
+			}
+		}
+	case <-time.After(timeout):
+		log.Warnf("configmap not available after %s, proceeding without profile settings", timeout)
+	case <-config.CloseCh:
+		log.Info("shutdown signal received during configmap sync")
+	}
+}
+
 // Start ptp plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
 func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e interface{}) error) error { //nolint:deadcode,unused
 	// The name of NodePtpDevice CR for this node is equal to the node name
@@ -216,40 +249,13 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 	// against an extablished linuxptp-daemon, which will have aliases already populated
 	// and log lines waiting in the buffer.
 	ptpMetrics.SyncAliasesFromDaemon()
+	startPtpConfigSync(ptpConfigSyncInitialTimeout, nodeName, configuration)
+	loadInitialPtp4lConfigs()
 	wg.Add(1)
 	// create socket listener; the daemon sends log lines and CMD RESTART commands here.
 	// When a new connection is accepted, processMessages calls TriggerLogs() to request
 	// the daemon to re-emit all metrics logs.
 	go listenToSocket(wg)
-	// read configmap once at startup to load thresholds, process options and settings
-	go eventManager.PtpConfigMapUpdates.WatchConfigMapUpdate(nodeName, configuration.CloseCh, false)
-	// read existing config files once at startup to register interface/role mappings;
-	// if no files exist yet the daemon will send CMD RESTART once configs are ready
-	loadInitialPtp4lConfigs()
-
-	// one-shot configmap handler: load thresholds/options on the first update then exit
-	go func() {
-		select {
-		case <-eventManager.PtpConfigMapUpdates.UpdateCh:
-			log.Infof("loading ptp profile config: %d profiles", len(eventManager.PtpConfigMapUpdates.NodeProfiles))
-			if len(eventManager.PtpConfigMapUpdates.NodeProfiles) > 0 {
-				eventManager.PtpConfigMapUpdates.UpdatePTPProcessOptions()
-				eventManager.PtpConfigMapUpdates.UpdatePTPThreshold()
-				eventManager.PtpConfigMapUpdates.UpdatePTPSetting()
-				for key, np := range eventManager.PtpConfigMapUpdates.EventThreshold {
-					ptpMetrics.Threshold.With(prometheus.Labels{
-						"threshold": "MinOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MinOffsetThreshold))
-					ptpMetrics.Threshold.With(prometheus.Labels{
-						"threshold": "MaxOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MaxOffsetThreshold))
-					ptpMetrics.Threshold.With(prometheus.Labels{
-						"threshold": "HoldOverTimeout", "node": nodeName, "profile": key}).Set(float64(np.HoldOverTimeout))
-				}
-			}
-			// exit after first load; ConfigMap changes trigger a daemon-sent CMD RESTART
-		case <-config.CloseCh:
-			return
-		}
-	}()
 
 	// 2.Create Status Listener
 	// method to be called when ping received

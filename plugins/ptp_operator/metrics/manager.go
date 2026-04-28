@@ -615,6 +615,18 @@ func (p *PTPEventManager) GetProfileType(name string) ptp4lconf.PtpProfileType {
 	return ptp4lconf.NONE
 }
 
+// RefreshProfileTypes re-evaluates the cached ProfileType on all registered
+// PTP4lConfigs from the current TBCProfiles list. Call this after
+// UpdatePTPSetting() has populated TBCProfiles so that configs registered
+// before the configmap loaded get the correct ProfileType.
+func (p *PTPEventManager) RefreshProfileTypes() {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	for _, cfg := range p.Ptp4lConfigInterfaces {
+		cfg.ProfileType = p.GetProfileType(cfg.Profile)
+	}
+}
+
 func (p *PTPEventManager) ListHAProfilesWith(currentProfile string) (profile string, profiles []string) {
 	// Check if PtpSettings exist, if so proceed
 	currentProfile = strings.TrimSpace(currentProfile)
