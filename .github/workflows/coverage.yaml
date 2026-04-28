@@ -1,0 +1,35 @@
+---
+name: "Coverage Quality Gate"
+on:
+  push:
+    paths-ignore:
+      - ".github/**"
+      - "docs/**"
+      - "examples/manifests/**"
+      - "**.md"
+  pull_request:
+    paths-ignore:
+      - ".github/**"
+      - "docs/**"
+      - "examples/manifests/**"
+      - "**.md"
+jobs:
+  coverage:
+    if: "!contains(github.event.pull_request.labels.*.name, 'skip-coverage')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: tidy
+        run: go mod tidy
+      - name: Coverage Gate
+        if: github.event_name == 'pull_request'
+        run: make coverage-gate BASE_REF=${{ github.event.pull_request.base.sha }}
+      - name: Generate Coverage
+        if: github.event_name == 'push'
+        run: make test

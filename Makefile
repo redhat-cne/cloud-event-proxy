@@ -1,4 +1,4 @@
-.PHONY: build, test
+.PHONY: build test coverage-gate
 
 #for examples
 # Current  version
@@ -88,7 +88,11 @@ run:
 run-consumer:
 	go run examples/consumer/main.go
 
-test: gha
+test:
+	./hack/unit-test.sh
+
+coverage-gate:
+	./hack/coverage-gate.sh $(BASE_REF)
 
 functests:
 	SUITE=./test/cne hack/run-functests.sh
