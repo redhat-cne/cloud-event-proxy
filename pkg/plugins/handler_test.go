@@ -50,7 +50,7 @@ func init() {
 		CloseCh:       make(chan struct{}),
 		APIPort:       8989,
 		APIPath:       "/api/cne/",
-		PubSubAPI:     v1pubsub.GetAPIInstance("../.."),
+		PubSubAPI:     v1pubsub.GetAPIInstance(storePath),
 		SubscriberAPI: subscriberApi.GetAPIInstance(storePath),
 		StorePath:     storePath,
 		BaseURL:       nil,
