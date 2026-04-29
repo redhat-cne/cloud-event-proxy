@@ -1,4 +1,4 @@
-.PHONY: build, test
+.PHONY: build test coverage-gate
 
 #for examples
 # Current  version
@@ -27,6 +27,15 @@ else
 endif
 
 export GOPATH=$(shell go env GOPATH)
+# Fix GOPATH == GOROOT for GO111MODULE=off builds (common on servers with Go at ~/go).
+_SYS_GOROOT := $(shell GO111MODULE=off go env GOROOT 2>/dev/null)
+_SYS_GOPATH := $(shell GO111MODULE=off go env GOPATH 2>/dev/null)
+ifeq ($(_SYS_GOPATH),$(_SYS_GOROOT))
+export GOMODCACHE := $(_SYS_GOPATH)/pkg/mod
+export GOPATH := /tmp/gopath
+endif
+# Module-aware GOROOT (may point to an auto-downloaded newer toolchain)
+_MOD_GOROOT := $(shell go env GOROOT 2>/dev/null)
 
 ##@ Build Dependencies
 
@@ -88,7 +97,11 @@ run:
 run-consumer:
 	go run examples/consumer/main.go
 
-test: gha
+test:
+	./hack/unit-test.sh
+
+coverage-gate:
+	./hack/coverage-gate.sh $(BASE_REF)
 
 functests:
 	SUITE=./test/cne hack/run-functests.sh
@@ -105,6 +118,12 @@ undeploy-consumer:kustomize
 # For GitHub Actions CI
 gha:
 	mkdir -p $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy
+	@if [ "$(_SYS_GOPATH)" = "$(_SYS_GOROOT)" ] && [ -n "$(_SYS_GOROOT)" ]; then \
+		echo "Cleaning stale vendor copies from GOROOT/src..."; \
+		for d in golang.org github.com k8s.io sigs.k8s.io google.golang.org; do \
+			rm -rf "$(_SYS_GOROOT)/src/$$d" 2>/dev/null || true; \
+		done; \
+	fi
 	@if [ "$$(realpath $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy)" != "$$(realpath .)" ]; then \
 		echo "✅ Safe to delete: cleaning GOPATH workspace..."; \
 		rm -rf $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy/*; \
@@ -115,9 +134,9 @@ gha:
 		echo "⚠️ Skipping delete: GOPATH is pointing to current working directory!"; \
 	fi
 
-	GO111MODULE=off go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
-	GO111MODULE=off go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
-	GO111MODULE=off STORE_PATH=/tmp/sub-store go test ./... --tags=unittests -coverprofile=cover.out
+	PATH=$(_MOD_GOROOT)/bin:$$PATH GOROOT=$(_MOD_GOROOT) GO111MODULE=off go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
+	PATH=$(_MOD_GOROOT)/bin:$$PATH GOROOT=$(_MOD_GOROOT) GO111MODULE=off go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
+	PATH=$(_MOD_GOROOT)/bin:$$PATH GOROOT=$(_MOD_GOROOT) GO111MODULE=off STORE_PATH=/tmp/sub-store go test ./... --tags=unittests -coverprofile=cover.out
 
 docker-build:
 	# make sure build the right target when developer using a Mac

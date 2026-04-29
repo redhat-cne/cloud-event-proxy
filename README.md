@@ -301,6 +301,30 @@ Cloud native events rest API comes with following metrics collectors .
 1. Number of events received.
 
 [Metrics details ](docs/metrics.md)
+## Test Coverage
+
+Run `make coverage-gate` to compare test coverage of your branch against the upstream main branch. The script auto-detects the upstream remote and its tracking branch.
+
+```sh
+$ make coverage-gate
+
+Base coverage (up-main): 32.1%
+Current coverage:            32.1%
+Difference:                  0%
+✅ Coverage unchanged.
+```
+
+You can also compare against a specific branch:
+
+```sh
+$ BASE_REF=release-4.20 make coverage-gate
+
+Base coverage (release-4.20): 28.5%
+Current coverage:            32.1%
+Difference:                  3.6%
+🎉 Coverage increased by 3.6%, good job!
+```
+
 ## Plugin
 [Plugin details](plugins/README.md)
 

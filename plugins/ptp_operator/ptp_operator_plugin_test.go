@@ -62,6 +62,9 @@ var (
 
 func TestMain(m *testing.M) {
 	defer cleanUP()
+	if sPath, ok := os.LookupEnv("STORE_PATH"); ok && sPath != "" {
+		storePath = sPath
+	}
 	scConfig = &common.SCConfiguration{
 		EventInCh:     make(chan *channel.DataChan, channelBufferSize),
 		EventOutCh:    make(chan *channel.DataChan, channelBufferSize),

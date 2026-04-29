@@ -1,0 +1,99 @@
+#!/bin/bash
+# Compare test coverage of the current branch against a base ref.
+# Usage: hack/coverage-gate.sh [base-ref]
+# When base-ref is omitted, auto-detects the local branch tracking
+# the upstream redhat-cne remote's default branch.
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+resolve_base_ref() {
+  if [ -n "$1" ]; then
+    echo "$1"
+    return
+  fi
+
+  # Find the remote pointing to redhat-cne
+  UPSTREAM_REMOTE=$(git remote -v | grep 'redhat-cne/.*fetch' | awk '{print $1}' | head -1)
+  if [ -z "${UPSTREAM_REMOTE}" ]; then
+    echo "main"
+    return
+  fi
+
+  git fetch "${UPSTREAM_REMOTE}" --quiet
+
+  # Find the default branch of the upstream remote
+  UPSTREAM_HEAD=$(git remote show "${UPSTREAM_REMOTE}" | sed -n '/HEAD branch/s/.*: //p')
+  UPSTREAM_REF="${UPSTREAM_REMOTE}/${UPSTREAM_HEAD}"
+
+  # Find or create a local branch tracking this remote branch
+  LOCAL_BRANCH=$(git branch --list --format='%(refname:short) %(upstream:short)' | grep " ${UPSTREAM_REF}$" | awk '{print $1}' | head -1)
+  if [ -z "${LOCAL_BRANCH}" ]; then
+    LOCAL_BRANCH="up-${UPSTREAM_HEAD}"
+    echo "==> Creating tracking branch '${LOCAL_BRANCH}' for '${UPSTREAM_REF}'..." >&2
+    git branch "${LOCAL_BRANCH}" "${UPSTREAM_REF}" --quiet
+    git branch --set-upstream-to="${UPSTREAM_REF}" "${LOCAL_BRANCH}" --quiet >/dev/null
+  fi
+
+  # Update tracking branch to latest (skip if currently checked out)
+  CURRENT=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+  if [ "${LOCAL_BRANCH}" != "${CURRENT}" ]; then
+    git branch -f "${LOCAL_BRANCH}" "${UPSTREAM_REF}" --quiet 2>/dev/null || true
+  fi
+
+  echo "${LOCAL_BRANCH}"
+}
+
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "==> No git repository found, running tests only..."
+  "${SCRIPT_DIR}/unit-test.sh"
+  CURRENT_COV=$(go tool cover -func=coverage.out | grep ^total | awk '{print $3}' | tr -d '%')
+  echo ""
+  echo "Current coverage: ${CURRENT_COV}%"
+  echo "(base-ref comparison skipped — not a git repo)"
+  exit 0
+fi
+
+BASE_REF=$(resolve_base_ref "$1")
+
+echo "==> Running tests on current branch..."
+"${SCRIPT_DIR}/unit-test.sh"
+CURRENT_COV=$(go tool cover -func=coverage.out | grep ^total | awk '{print $3}' | tr -d '%')
+
+echo "==> Running tests on base ref '${BASE_REF}'..."
+CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse HEAD)
+TMPDIR_SAVE=$(mktemp -d)
+cp "${SCRIPT_DIR}/unit-test.sh" "${TMPDIR_SAVE}/unit-test.sh"
+cp "${SCRIPT_DIR}/../Makefile" "${TMPDIR_SAVE}/Makefile"
+STASHED=false
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  git stash --quiet
+  STASHED=true
+fi
+git checkout "${BASE_REF}" --quiet
+cp "${TMPDIR_SAVE}/Makefile" "${SCRIPT_DIR}/../Makefile"
+cp "${TMPDIR_SAVE}/unit-test.sh" "${SCRIPT_DIR}/unit-test.sh"
+rm -rf "${TMPDIR_SAVE}"
+"${SCRIPT_DIR}/unit-test.sh"
+BASE_COV=$(go tool cover -func=coverage.out | grep ^total | awk '{print $3}' | tr -d '%')
+git checkout -- "${SCRIPT_DIR}/../Makefile" 2>/dev/null || true
+rm -f "${SCRIPT_DIR}/unit-test.sh" 2>/dev/null || true
+git checkout "${CURRENT_BRANCH}" --quiet
+if [ "${STASHED}" = true ]; then
+  git stash pop --quiet
+fi
+
+DIFF=$(echo "${CURRENT_COV} - ${BASE_COV}" | bc)
+echo ""
+echo "Base coverage (${BASE_REF}): ${BASE_COV}%"
+echo "Current coverage:            ${CURRENT_COV}%"
+echo "Difference:                  ${DIFF}%"
+
+if (( $(echo "${DIFF} < 0" | bc -l) )); then
+  echo "❌ FAIL: Coverage decreased by ${DIFF}%"
+  exit 1
+elif (( $(echo "${DIFF} > 0" | bc -l) )); then
+  echo "🎉 Coverage increased by ${DIFF}%, good job!"
+else
+  echo "✅ Coverage unchanged."
+fi
