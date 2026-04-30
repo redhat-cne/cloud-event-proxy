@@ -17,13 +17,13 @@ package ptp4lconf
 import (
 	"bufio"
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/alias"
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/filesystem"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/types"
 	log "github.com/sirupsen/logrus"
 )
@@ -286,7 +286,7 @@ func NewPtp4lConfigWatcher(dirToWatch string, updatedConfig chan<- *PtpConfigUpd
 // ReadAllConfig reads all ptp4l, phc2sys, synce4l and chronyd config files from dir.
 func ReadAllConfig(dir string) []*PtpConfigUpdate {
 	var ptpConfigs []*PtpConfigUpdate
-	files, fileErr := os.ReadDir(dir)
+	files, fileErr := filesystem.ReadDir(dir)
 	if fileErr != nil {
 		log.Errorf("error reading all config fils %s", fileErr)
 	}
@@ -306,7 +306,7 @@ func readConfig(path string) (*PtpConfigUpdate, error) {
 		log.Errorf("reading ptpconfig %s from unknon path ", path)
 		return nil, fmt.Errorf("reading ptpconfig %s from unknon path ", path)
 	}
-	b, err := os.ReadFile(path)
+	b, err := filesystem.ReadFile(path)
 	if err != nil {
 		log.Errorf("error reading ptpconfig %s error %s", path, err)
 		return nil, err
