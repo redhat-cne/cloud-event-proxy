@@ -69,6 +69,8 @@ const (
 	EventNotFound               = "event-not-found"
 	PTPNotSet                   = "ptp-not-set"
 	ptpConfigSyncInitialTimeout = 1 * time.Second
+	aliasRetryInterval          = 1 * time.Second
+	aliasRetryTimeout           = 30 * time.Second
 )
 
 var (
@@ -76,6 +78,7 @@ var (
 	publishers     = map[ptp.EventType]*ptpTypes.EventPublisherType{}
 	config         *common.SCConfiguration
 	eventManager   *ptpMetrics.PTPEventManager
+	aliasReady     chan struct{}
 )
 
 // restartProcess replaces the current process with a fresh copy of itself via
@@ -106,11 +109,34 @@ func restartProcess(reason string) {
 // from ptpConfigDir once at startup and registers them with the event manager.
 // If no files exist yet (daemon hasn't written them), the function returns
 // gracefully; the daemon will send CMD RESTART once configs are ready.
-func loadInitialPtp4lConfigs() {
+func loadInitialPtp4lConfigs() int {
 	configs := ptp4lconf.ReadAllConfig(ptpConfigDir)
 	log.Infof("loading %d initial ptp4l config(s) from %s", len(configs), ptpConfigDir)
 	for _, ptpConfigEvent := range configs {
 		processConfigCreate(ptpConfigEvent)
+	}
+	return len(configs)
+}
+
+// waitForAliases retries SyncAliasesFromDaemon until at least one alias is
+// returned or the timeout expires. This ensures linuxptp-daemon has finished
+// reading its ptp4l configs and can serve alias mappings before we start
+// processing events on the socket.
+func waitForAliases(timeout, interval time.Duration) {
+	deadline := time.After(timeout)
+	for {
+		n, err := ptpMetrics.SyncAliasesFromDaemon()
+		if err != nil {
+			log.Warnf("alias sync failed: %v, retrying...", err)
+		} else if n > 0 {
+			return
+		}
+		select {
+		case <-deadline:
+			log.Warnf("alias sync: no aliases available after %s, proceeding without aliases", timeout)
+			return
+		case <-time.After(interval):
+		}
 	}
 }
 
@@ -176,7 +202,9 @@ func processConfigCreate(ptpConfigEvent *ptp4lconf.PtpConfigUpdate) {
 	}
 	ptp4lConfig.ProfileType = eventManager.GetProfileType(ptp4lConfig.Profile)
 	eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
-	ptpMetrics.SyncAliasesFromDaemon()
+	if _, err := ptpMetrics.SyncAliasesFromDaemon(); err != nil {
+		log.Warnf("failed to sync aliases for config %s: %v", *ptpConfigEvent.Name, err)
+	}
 }
 
 // startPtpConfigSync starts the configmap watcher and blocks until the first
@@ -245,14 +273,25 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 		log.Warn(err)
 	}
 	eventManager.SetInitalMetrics()
-	// We must attempt to get aliases here for the case of restarting cloud-event-proxy
-	// against an extablished linuxptp-daemon, which will have aliases already populated
-	// and log lines waiting in the buffer.
-	ptpMetrics.SyncAliasesFromDaemon()
 	startPtpConfigSync(ptpConfigSyncInitialTimeout, nodeName, configuration)
-	loadInitialPtp4lConfigs()
+	nConfigs := loadInitialPtp4lConfigs()
+
+	// Wait for port aliases from linuxptp-daemon in the background. The socket
+	// listener starts immediately so the daemon can connect, but processMessages
+	// blocks on aliasReady before processing events -- ensuring aliases are
+	// populated before any metrics/events use interface names.
+	aliasReady = make(chan struct{})
+	if nConfigs > 0 {
+		go func() {
+			waitForAliases(aliasRetryTimeout, aliasRetryInterval)
+			close(aliasReady)
+		}()
+	} else {
+		close(aliasReady)
+	}
+
 	wg.Add(1)
-	// create socket listener; the daemon sends log lines and CMD RESTART commands here.
+	// Create socket listener; the daemon sends log lines and CMD RESTART commands here.
 	// When a new connection is accepted, processMessages calls TriggerLogs() to request
 	// the daemon to re-emit all metrics logs.
 	go listenToSocket(wg)
@@ -476,6 +515,8 @@ func listenToSocket(wg *sync.WaitGroup) {
 }
 
 func processMessages(c net.Conn) {
+	<-aliasReady // wait until alias found and this is closed
+	log.Info("alias found, starting to process messages")
 	// Request a full state re-emit in a separate goroutine so the scanner
 	// can start reading immediately. TriggerLogs writes emit data back through
 	// this same socket connection; if we block here waiting for the HTTP response,
