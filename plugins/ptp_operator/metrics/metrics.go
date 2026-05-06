@@ -264,6 +264,14 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			// TODO: understand if the config is GM /BC /OC
 			switch interfaceName { //note: this is not  interface type
 			case ClockRealTime: // CLOCK_REALTIME is active slave interface
+				// T-BC-STATUS is authoritative for overall sync state. When T-BC
+				// reports FREERUN, suppress phc2sys LOCKED reports to prevent
+				// os-clock-sync-state-change event flip-flop during startup.
+				if ptp4lCfg.ProfileType == ptp4lconf.TBC {
+					if tbcStats, ok := ptpStats[stats.TBCMainClockName]; ok && tbcStats.LastSyncState() == ptp.FREERUN {
+						syncState = ptp.FREERUN
+					}
+				}
 				//  for HA we can not rely on master ;since there will be 2 or more leaders; this condition will be skipped
 				// ptpStats clock realtime has its own stats objects
 				//TODO: NEED TO VISIT THIS LOGIC FOR UNASSISTED BOUNDARY CLOCK
