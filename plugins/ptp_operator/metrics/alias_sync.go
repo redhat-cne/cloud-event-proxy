@@ -11,23 +11,24 @@ import (
 
 const portAliasesEndpoint = "http://localhost:8081/port-aliases"
 
-// SyncAliasesFromDaemon fetches aliases from linuxptp-daemon and populates the local alias store
-func SyncAliasesFromDaemon() error {
+// SyncAliasesFromDaemon fetches aliases from linuxptp-daemon and populates
+// the local alias store. It returns the number of aliases synced.
+func SyncAliasesFromDaemon() (int, error) {
 	client := &http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Get(portAliasesEndpoint)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer resp.Body.Close()
 
 	var aliases map[string]string
 	if err = json.NewDecoder(resp.Body).Decode(&aliases); err != nil {
-		return err
+		return 0, err
 	}
 
 	for ifName, aliasValue := range aliases {
 		alias.SetAlias(ifName, aliasValue)
 	}
 	log.Infof("Synced %d port aliases from linuxptp-daemon", len(aliases))
-	return nil
+	return len(aliases), nil
 }
