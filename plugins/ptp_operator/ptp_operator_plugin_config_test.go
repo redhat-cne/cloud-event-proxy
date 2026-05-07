@@ -193,7 +193,11 @@ func TestProcessConfigCreate_InterfaceRoles(t *testing.T) {
 func TestProcessConfigCreate_NilInputs(t *testing.T) {
 	setupProcessConfigTest(t)
 
-	processConfigCreate(nil)
-	processConfigCreate(&ptp4lconf.PtpConfigUpdate{Name: nil, Profile: pointer.String("p")})
-	processConfigCreate(&ptp4lconf.PtpConfigUpdate{Name: pointer.String("n"), Profile: nil})
+	assert.NotPanics(t, func() { processConfigCreate(nil) })
+	assert.NotPanics(t, func() {
+		processConfigCreate(&ptp4lconf.PtpConfigUpdate{Name: nil, Profile: pointer.String("p")})
+	})
+	assert.NotPanics(t, func() {
+		processConfigCreate(&ptp4lconf.PtpConfigUpdate{Name: pointer.String("n"), Profile: nil})
+	})
 }
