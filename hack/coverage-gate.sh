@@ -76,9 +76,9 @@ cp "${TMPDIR_SAVE}/unit-test.sh" "${SCRIPT_DIR}/unit-test.sh"
 rm -rf "${TMPDIR_SAVE}"
 "${SCRIPT_DIR}/unit-test.sh"
 BASE_COV=$(go tool cover -func=coverage.out | grep ^total | awk '{print $3}' | tr -d '%')
-git checkout -- "${SCRIPT_DIR}/../Makefile" 2>/dev/null || true
-rm -f "${SCRIPT_DIR}/unit-test.sh" 2>/dev/null || true
 git checkout "${CURRENT_BRANCH}" --quiet
+git checkout -- "${SCRIPT_DIR}/../Makefile" 2>/dev/null || true
+git checkout -- "${SCRIPT_DIR}/unit-test.sh" 2>/dev/null || true
 if [ "${STASHED}" = true ]; then
   git stash pop --quiet
 fi

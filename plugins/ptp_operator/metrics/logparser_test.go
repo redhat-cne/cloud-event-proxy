@@ -8,6 +8,7 @@ import (
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/alias"
+	ptpConfig "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/config"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/event"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
 
@@ -754,6 +755,27 @@ func TestParsePTP4l_HoldoverResolvesEmptyAlias(t *testing.T) {
 		"master should enter HOLDOVER state")
 	assert.Equal(t, "ens5fx", ptpStats[metrics.MasterClockType].Alias(),
 		"alias should be resolved from ptp4l config slave interface when empty")
+
+	// Subtest: HOLDOVER with alias already set (covers the aliasName != "" branch
+	// and the PtpProcessOpts/mock holdover path)
+	ptpStats[metrics.MasterClockType].SetLastSyncState(ptp.LOCKED)
+	ptpStats[metrics.MasterClockType].SetAlias("ens5fx")
+	ptp4lCfg.Interfaces[0].Role = types.SLAVE
+
+	ptpEventManager.PtpConfigMapUpdates.PtpProcessOpts[profileName] = &ptpConfig.PtpProcessOpts{}
+	ptpEventManager.PtpConfigMapUpdates.EventThreshold[profileName] = &ptpConfig.PtpClockThreshold{
+		HoldOverTimeout:    5,
+		MaxOffsetThreshold: 100,
+		MinOffsetThreshold: -100,
+		Close:              make(chan struct{}),
+	}
+
+	ptpEventManager.ParsePTP4l(processName, cfgName, profileName, output, fields, ptpInterface, ptp4lCfg, ptpStats)
+
+	assert.Equal(t, ptp.HOLDOVER, ptpStats[metrics.MasterClockType].LastSyncState(),
+		"master should re-enter HOLDOVER state with pre-set alias")
+	assert.Equal(t, "ens5fx", ptpStats[metrics.MasterClockType].Alias(),
+		"alias should remain unchanged when already set")
 }
 
 func deepCopyPTP4lCfg(src *ptp4lconf.PTP4lConfig) *ptp4lconf.PTP4lConfig {
