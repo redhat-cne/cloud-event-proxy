@@ -46,6 +46,20 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const sendTimeout = 5 * time.Second
+
+// SendToChannel sends data to a channel with a timeout.
+// Returns true if the send succeeded, false if the channel was full for the
+// entire timeout duration.
+func SendToChannel(ch chan *channel.DataChan, d *channel.DataChan) bool {
+	select {
+	case ch <- d:
+		return true
+	case <-time.After(sendTimeout):
+		return false
+	}
+}
+
 // TransportType  defines transport type supported
 type TransportType int
 
@@ -324,28 +338,39 @@ func PublishEvent(scConfig *SCConfiguration, e ceevent.Event) error {
 func PublishEventViaAPI(scConfig *SCConfiguration, cneEvent ceevent.Event, resourceAddress string) error {
 	if ceEvent, err := GetPublishingCloudEvent(scConfig, cneEvent); err == nil {
 		if IsV1Api(scConfig.APIVersion) {
-			scConfig.EventInCh <- &channel.DataChan{
+			d := &channel.DataChan{
 				Type:     channel.EVENT,
 				Status:   channel.NEW,
 				Data:     ceEvent,
 				Address:  ceEvent.Source(), // this is the publishing address
 				ClientID: scConfig.ClientID(),
 			}
+			if SendToChannel(scConfig.EventInCh, d) {
+				log.Debugf("event source %s sent to queue to process", ceEvent.Source())
+				log.Debugf("event sent %s", cneEvent.JSONString())
+				localmetrics.UpdateEventPublishedCount(ceEvent.Source(), localmetrics.SUCCESS, 1)
+			} else {
+				log.Warningf("EventInCh full for %s, dropping event for %s", sendTimeout, ceEvent.Source())
+				localmetrics.UpdateEventPublishedCount(ceEvent.Source(), localmetrics.FAIL, 1)
+			}
 		} else {
 			// use EventOutCh instead of EventInCh to bypass http transport
-			scConfig.EventOutCh <- &channel.DataChan{
+			d := &channel.DataChan{
 				Type:     channel.EVENT,
 				Status:   channel.NEW,
 				Data:     ceEvent,
 				Address:  resourceAddress, // this is the publishing address
 				ClientID: scConfig.ClientID(),
 			}
+			if SendToChannel(scConfig.EventOutCh, d) {
+				log.Debugf("event source %s sent to queue to process", ceEvent.Source())
+				log.Debugf("event sent %s", cneEvent.JSONString())
+				localmetrics.UpdateEventPublishedCount(ceEvent.Source(), localmetrics.SUCCESS, 1)
+			} else {
+				log.Warningf("EventOutCh full for %s, dropping event for %s", sendTimeout, resourceAddress)
+				localmetrics.UpdateEventPublishedCount(ceEvent.Source(), localmetrics.FAIL, 1)
+			}
 		}
-
-		log.Debugf("event source %s sent to queue to process", ceEvent.Source())
-		log.Debugf("event sent %s", cneEvent.JSONString())
-
-		localmetrics.UpdateEventPublishedCount(ceEvent.Source(), localmetrics.SUCCESS, 1)
 	}
 	return nil
 }
