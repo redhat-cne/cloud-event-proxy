@@ -66,30 +66,20 @@ func NewPTPEventManager(resourcePrefix string, publisherTypes map[ptp.EventType]
 // PtpThreshold ... return ptp threshold
 // resetCh will reset any closed channel
 func (p *PTPEventManager) PtpThreshold(profileName string, resetCh bool) ptpConfig.PtpClockThreshold {
-	if t, found := p.PtpConfigMapUpdates.EventThreshold[profileName]; found {
-		if resetCh {
-			t.Close = make(chan struct{}) // reset channel to new
-		}
-		return ptpConfig.PtpClockThreshold{
-			HoldOverTimeout:    t.HoldOverTimeout,
-			MaxOffsetThreshold: t.MaxOffsetThreshold,
-			MinOffsetThreshold: t.MinOffsetThreshold,
-			Close:              t.Close,
-		}
-	} else if len(p.PtpConfigMapUpdates.EventThreshold) > 0 { // if not found get the first item since one per config)
-		for _, t := range p.PtpConfigMapUpdates.EventThreshold {
-			if resetCh {
-				t.Close = make(chan struct{})
-			}
-			return ptpConfig.PtpClockThreshold{
-				HoldOverTimeout:    t.HoldOverTimeout,
-				MaxOffsetThreshold: t.MaxOffsetThreshold,
-				MinOffsetThreshold: t.MinOffsetThreshold,
-				Close:              t.Close,
-			}
-		}
+	t := p.PtpConfigMapUpdates.LookupEventThreshold(profileName)
+	if t == nil {
+		return ptpConfig.GetDefaultThreshold()
 	}
-	return ptpConfig.GetDefaultThreshold()
+	if resetCh {
+		t.SafeClose()
+		t.Close = make(chan struct{})
+	}
+	return ptpConfig.PtpClockThreshold{
+		HoldOverTimeout:    t.HoldOverTimeout,
+		MaxOffsetThreshold: t.MaxOffsetThreshold,
+		MinOffsetThreshold: t.MinOffsetThreshold,
+		Close:              t.Close,
+	}
 }
 
 // MockTest ... use for test only
@@ -472,6 +462,7 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 			// previous state was HOLDOVER, now it is in LOCKED state, cancel any HOLDOVER
 			if isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
 				log.Infof("interface %s is in LOCKED state, cancel any holdover states", eventResourceName)
+				log.Debugf("cancelling holdover timer: profile=%s resource=%s", ptpProfileName, eventResourceName)
 				threshold.SafeClose()
 				log.Infof(" publishing event for ( profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
 					ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
@@ -538,6 +529,44 @@ func (p *PTPEventManager) SetLastOverallGMStateForTesting(state ptp.SyncState) {
 // NodeName ...
 func (p *PTPEventManager) NodeName() string {
 	return p.nodeName
+}
+
+// GetPtpProcessOpts returns process options for the given profile, resolving the
+// profile from the registered config when needed and refreshing the node profile
+// cache when PtpProcessOpts was never populated due to startup ordering.
+func (p *PTPEventManager) GetPtpProcessOpts(profileName, configName string) *ptpConfig.PtpProcessOpts {
+	profileName = p.resolveProfileName(profileName, configName)
+	if !p.mock {
+		if opts := p.PtpConfigMapUpdates.LookupOrEnsurePtpProcessOpts(p.nodeName, profileName); opts != nil {
+			return opts
+		}
+	} else if opts := p.PtpConfigMapUpdates.LookupPtpProcessOpts(profileName); opts != nil {
+		return opts
+	}
+	if configName != "" {
+		if cfg := p.GetPTPConfig(types.ConfigName(configName)); cfg != nil && cfg.Profile != "" {
+			if !p.mock {
+				if opts := p.PtpConfigMapUpdates.LookupOrEnsurePtpProcessOpts(p.nodeName, cfg.Profile); opts != nil {
+					return opts
+				}
+			}
+			return p.PtpConfigMapUpdates.LookupPtpProcessOpts(cfg.Profile)
+		}
+	}
+	return nil
+}
+
+func (p *PTPEventManager) resolveProfileName(profileName, configName string) string {
+	if profileName != "" {
+		return profileName
+	}
+	if configName == "" {
+		return ""
+	}
+	if cfg := p.GetPTPConfig(types.ConfigName(configName)); cfg != nil {
+		return cfg.Profile
+	}
+	return ""
 }
 
 // GetMockEvent ...
