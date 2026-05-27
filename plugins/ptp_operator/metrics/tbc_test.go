@@ -118,7 +118,7 @@ func TestTBCPtp4lMasterOffsetNoHoldover(t *testing.T) {
 	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
 	eventManager.MockTest(true)
 
-	configName = "ptp4l.0.config"
+	configName = "ptp4l.0.config" //nolint:goconst // reused test config name
 	tbcProfile := "tbc-test-profile"
 
 	// Setup TBC profile
