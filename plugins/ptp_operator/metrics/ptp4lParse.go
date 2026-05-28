@@ -137,11 +137,15 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 			ptpStats[master].SetRole(types.FAULTY) // update slave port as faulty
 			log.Infof("master process name %s and masteroffsetsource %s", ptpStats[master].ProcessName(), masterOffsetSource)
 			if ptpStats[master].ProcessName() == masterOffsetSource {
-				alias := ptpStats[master].Alias()
-				masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
+				aliasName := ptpStats[master].Alias()
+				if aliasName == "" {
+					aliasName = ptp4lCfg.GetAliasByInterface(ptpInterface)
+					ptpStats[master].SetAlias(aliasName)
+				}
+				masterResource := fmt.Sprintf("%s/%s", aliasName, MasterClockType)
 				ptpStats[master].SetLastSyncState(syncState)
 				p.PublishEvent(syncState, ptpStats[master].LastOffset(), masterResource, ptp.PtpStateChange)
-				UpdateSyncStateMetrics(ptpStats[master].ProcessName(), alias, syncState)
+				UpdateSyncStateMetrics(ptpStats[master].ProcessName(), aliasName, syncState)
 				if ptpOpts, ok := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && ptpOpts != nil {
 					p.maybePublishOSClockSyncStateChangeEvent(ptpOpts, configName, profileName)
 					threshold := p.PtpThreshold(profileName, true)
