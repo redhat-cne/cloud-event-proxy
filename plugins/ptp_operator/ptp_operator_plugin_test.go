@@ -21,11 +21,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
+	"net/http"
 	"os"
 	"path"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"github.com/google/uuid"
@@ -405,6 +408,216 @@ func buildEvent(node string, source ptpEvent.EventResource, eventType ptpEvent.E
 	e.SetSource(fmt.Sprintf("/cluster/node/%s%s", node, string(source)))
 	e.SetType(string(eventType))
 	return e
+}
+
+// startMockLogsServer starts a minimal HTTP server on the logsEndpoint port
+// (8081) so that eventManager.TriggerLogs() succeeds during tests.
+// Returns a cleanup function that shuts down the server.
+func startMockLogsServer(t *testing.T) func() {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/emit-logs", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := &http.Server{Addr: ":8081", Handler: mux}
+	var ln net.Listener
+	var err error
+	for i := 0; i < 10; i++ {
+		ln, err = net.Listen("tcp", ":8081")
+		if err == nil {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err != nil {
+		t.Fatalf("failed to listen on :8081 for mock logs server: %v", err)
+	}
+	go func() { _ = srv.Serve(ln) }()
+	return func() { _ = srv.Close() }
+}
+
+// setupProcessMessages prepares the globals that processMessages depends on.
+// aliasReady is returned already closed so processMessages doesn't block.
+// eventManager is configured in mock-test mode.
+func setupProcessMessages(t *testing.T) func() {
+	t.Helper()
+	oldAliasReady := aliasReady
+	oldEventManager := eventManager
+
+	aliasReady = make(chan struct{})
+	close(aliasReady)
+
+	scCfg := &common.SCConfiguration{}
+	eventManager = metrics.NewPTPEventManager(resourcePrefix, pubsubTypes, nodeName, scCfg)
+	eventManager.MockTest(true)
+
+	return func() {
+		aliasReady = oldAliasReady
+		eventManager = oldEventManager
+	}
+}
+
+func TestProcessMessages_LiveStartSkipped(t *testing.T) {
+	cleanup := startMockLogsServer(t)
+	defer cleanup()
+	restore := setupProcessMessages(t)
+	defer restore()
+
+	serverConn, clientConn := net.Pipe()
+	done := make(chan struct{})
+	go func() {
+		processMessages(serverConn)
+		close(done)
+	}()
+
+	_, err := fmt.Fprintf(clientConn, "%s\n", liveStartCommand)
+	assert.NoError(t, err)
+	_ = clientConn.Close()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("processMessages did not return after CMD LIVE_START + EOF")
+	}
+}
+
+func TestProcessMessages_LiveStartBetweenRegularMessages(t *testing.T) {
+	cleanup := startMockLogsServer(t)
+	defer cleanup()
+	restore := setupProcessMessages(t)
+	defer restore()
+
+	serverConn, clientConn := net.Pipe()
+	done := make(chan struct{})
+	go func() {
+		processMessages(serverConn)
+		close(done)
+	}()
+
+	msgs := []string{
+		"ptp4l[123.456]: [ptp4l.0.config] master offset  5 s2 freq -1000 path delay 100",
+		liveStartCommand,
+		"ptp4l[123.457]: [ptp4l.0.config] master offset  3 s2 freq  -998 path delay  99",
+		liveStartCommand,
+		"phc2sys[123.458]: [ptp4l.0.config] CLOCK_REALTIME phc offset  10 s2 freq -500 delay 200",
+	}
+	for _, m := range msgs {
+		_, err := fmt.Fprintf(clientConn, "%s\n", m)
+		assert.NoError(t, err)
+	}
+	_ = clientConn.Close()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("processMessages did not return after mixed LIVE_START and regular messages")
+	}
+}
+
+func TestProcessMessages_TriggerLogsFailureNonBlocking(t *testing.T) {
+	// No mock HTTP server → TriggerLogs will fail, but since it's async
+	// the scanner should still process messages on this connection.
+	restore := setupProcessMessages(t)
+	defer restore()
+
+	serverConn, clientConn := net.Pipe()
+	done := make(chan struct{})
+	go func() {
+		processMessages(serverConn)
+		close(done)
+	}()
+
+	// Even though TriggerLogs fails (no HTTP server), processMessages must
+	// still read from the connection because TriggerLogs is async.
+	_, err := fmt.Fprintf(clientConn, "%s\n", liveStartCommand)
+	assert.NoError(t, err)
+	_ = clientConn.Close()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("processMessages should still process messages when TriggerLogs fails async")
+	}
+}
+
+func TestProcessMessages_MultipleLiveStartOnly(t *testing.T) {
+	cleanup := startMockLogsServer(t)
+	defer cleanup()
+	restore := setupProcessMessages(t)
+	defer restore()
+
+	serverConn, clientConn := net.Pipe()
+	done := make(chan struct{})
+	go func() {
+		processMessages(serverConn)
+		close(done)
+	}()
+
+	for i := 0; i < 5; i++ {
+		_, err := fmt.Fprintf(clientConn, "%s\n", liveStartCommand)
+		assert.NoError(t, err)
+	}
+	_ = clientConn.Close()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("processMessages did not return after multiple CMD LIVE_START messages")
+	}
+}
+
+func TestLiveStartCommand_ConstantValue(t *testing.T) {
+	assert.Equal(t, "CMD LIVE_START", liveStartCommand)
+	assert.NotEqual(t, restartCommand, liveStartCommand,
+		"LIVE_START and RESTART must be distinct commands")
+	assert.True(t, strings.HasPrefix(liveStartCommand, "CMD "),
+		"control commands should use CMD prefix to distinguish from log lines")
+}
+
+func TestProcessMessages_AliasReadyGating(t *testing.T) {
+	cleanup := startMockLogsServer(t)
+	defer cleanup()
+
+	oldAliasReady := aliasReady
+	oldEventManager := eventManager
+	defer func() {
+		aliasReady = oldAliasReady
+		eventManager = oldEventManager
+	}()
+
+	aliasReady = make(chan struct{}) // NOT closed — processMessages should block
+	scCfg := &common.SCConfiguration{}
+	eventManager = metrics.NewPTPEventManager(resourcePrefix, pubsubTypes, nodeName, scCfg)
+	eventManager.MockTest(true)
+
+	serverConn, clientConn := net.Pipe()
+	defer func() { _ = clientConn.Close() }()
+
+	started := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		close(started)
+		processMessages(serverConn)
+		close(done)
+	}()
+	<-started
+
+	select {
+	case <-done:
+		t.Fatal("processMessages should block while aliasReady is open")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	close(aliasReady)
+
+	_, _ = fmt.Fprintf(clientConn, "%s\n", liveStartCommand)
+	_ = clientConn.Close()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("processMessages did not unblock after aliasReady closed")
+	}
 }
 
 func getMockOverrideFn() func(e v2.Event, d *channel.DataChan) error {
