@@ -1,6 +1,7 @@
 package metrics_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -150,12 +151,12 @@ func TestTBCPtp4lMasterOffsetNoHoldover(t *testing.T) {
 	}{
 		{
 			name:          "TBC ptp4l with s0 should be FREERUN",
-			logLine:       "ptp4l[5196819.100]: [ptp4l.0.config] master offset -100 s0 freq +1000 path delay 1000",
+			logLine:       fmt.Sprintf("ptp4l[5196819.100]: [%s] master offset -100 s0 freq +1000 path delay 1000", configName),
 			expectedState: ptp.FREERUN,
 		},
 		{
 			name:          "TBC ptp4l with s2 should be LOCKED",
-			logLine:       "ptp4l[5196819.100]: [ptp4l.0.config] master offset -50 s2 freq +500 path delay 1000",
+			logLine:       fmt.Sprintf("ptp4l[5196819.100]: [%s] master offset -50 s2 freq +500 path delay 1000", configName),
 			expectedState: ptp.LOCKED,
 		},
 	}
@@ -346,7 +347,6 @@ func TestTBCOffsetMetricUpdatedEveryLog(t *testing.T) {
 	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
 	eventManager.MockTest(true)
 
-	configName = "ptp4l.0.config"
 	eventManager.Stats[types.ConfigName(configName)] = make(stats.PTPStats)
 	ptpStats := eventManager.GetStats(types.ConfigName(configName))
 
@@ -360,19 +360,19 @@ func TestTBCOffsetMetricUpdatedEveryLog(t *testing.T) {
 	}{
 		{
 			name:           "T-BC s0 with offset 123",
-			logLine:        "T-BC[1743005894]:[ptp4l.0.config] ens2f0 offset 123 T-BC-STATUS s0",
+			logLine:        fmt.Sprintf("T-BC[1743005894]:[%s] ens2f0 offset 123 T-BC-STATUS s0", configName),
 			expectedOffset: 123,
 			expectedState:  ptp.FREERUN,
 		},
 		{
 			name:           "T-BC s2 with offset 55",
-			logLine:        "T-BC[1743005894]:[ptp4l.0.config] ens2f0 offset 55 T-BC-STATUS s2",
+			logLine:        fmt.Sprintf("T-BC[1743005894]:[%s] ens2f0 offset 55 T-BC-STATUS s2", configName),
 			expectedOffset: 55,
 			expectedState:  ptp.LOCKED,
 		},
 		{
 			name:           "T-BC s2 with offset 0 (still locked)",
-			logLine:        "T-BC[1743005894]:[ptp4l.0.config] ens2f0 offset 0 T-BC-STATUS s2",
+			logLine:        fmt.Sprintf("T-BC[1743005894]:[%s] ens2f0 offset 0 T-BC-STATUS s2", configName),
 			expectedOffset: 0,
 			expectedState:  ptp.LOCKED,
 		},
