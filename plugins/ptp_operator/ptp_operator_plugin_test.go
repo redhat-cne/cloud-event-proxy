@@ -419,18 +419,19 @@ func startMockLogsServer(t *testing.T) func() {
 	mux.HandleFunc("/emit-logs", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	srv := &http.Server{Addr: ":8081", Handler: mux}
+	const mockLogsAddr = "127.0.0.1:8081"
+	srv := &http.Server{Addr: mockLogsAddr, Handler: mux}
 	var ln net.Listener
 	var err error
 	for i := 0; i < 10; i++ {
-		ln, err = net.Listen("tcp", ":8081")
+		ln, err = net.Listen("tcp", mockLogsAddr)
 		if err == nil {
 			break
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
 	if err != nil {
-		t.Fatalf("failed to listen on :8081 for mock logs server: %v", err)
+		t.Fatalf("failed to listen on %s for mock logs server: %v", mockLogsAddr, err)
 	}
 	go func() { _ = srv.Serve(ln) }()
 	return func() { _ = srv.Close() }
