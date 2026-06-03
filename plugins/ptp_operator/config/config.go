@@ -142,7 +142,9 @@ func (pt *PtpClockThreshold) SafeClose() (justClosed bool) {
 	}()
 	select {
 	case <-pt.Close:
+		log.Debugf("cancelling holdover timer: channel already closed")
 	default:
+		log.Debugf("cancelling holdover timer")
 		close(pt.Close) // close any holdover go routines
 	}
 	return true // <=> justClosed = true; return
@@ -177,7 +179,7 @@ func (l *LinuxPTPConfigMapUpdate) SetAppliedNodeProfileJSON(appliedNodeProfileJS
 func NewLinuxPTPConfUpdate() *LinuxPTPConfigMapUpdate {
 	ptpProfileUpdate := &LinuxPTPConfigMapUpdate{
 		lock:           sync.RWMutex{},
-		UpdateCh:       make(chan bool),
+		UpdateCh:       make(chan bool, 1),
 		profilePath:    DefaultProfilePath,
 		intervalUpdate: DefaultUpdateInterval,
 		EventThreshold: make(map[string]*PtpClockThreshold),
@@ -219,22 +221,37 @@ func (p *PtpProfile) GetInterface() (interfaces []*string) {
 
 // DeletePTPThreshold ... delete threshold for profile
 func (l *LinuxPTPConfigMapUpdate) DeletePTPThreshold(name string) {
+	l.lock.Lock()
+	defer l.lock.Unlock()
 	if t, found := l.EventThreshold[name]; found {
-		l.lock.Lock()
 		closeHoldover(t)
 		delete(l.EventThreshold, name)
-		l.lock.Unlock()
 	}
 }
 
 // DeleteAllPTPThreshold ... delete all threshold per config
 func (l *LinuxPTPConfigMapUpdate) DeleteAllPTPThreshold() {
+	l.lock.Lock()
+	defer l.lock.Unlock()
 	for k, t := range l.EventThreshold {
-		l.lock.Lock()
 		closeHoldover(t)
 		delete(l.EventThreshold, k)
-		l.lock.Unlock()
 	}
+}
+
+// LookupEventThreshold returns the PtpClockThreshold for profileName under read
+// lock, falling back to the first available entry when profileName is not found.
+// Returns nil if EventThreshold is empty.
+func (l *LinuxPTPConfigMapUpdate) LookupEventThreshold(profileName string) *PtpClockThreshold {
+	l.lock.RLock()
+	defer l.lock.RUnlock()
+	if t, found := l.EventThreshold[profileName]; found {
+		return t
+	}
+	for _, t := range l.EventThreshold {
+		return t
+	}
+	return nil
 }
 
 func closeHoldover(t *PtpClockThreshold) {
@@ -366,7 +383,7 @@ func (l *LinuxPTPConfigMapUpdate) UpdateConfig(nodeProfilesJSON []byte) (bool, e
 			l.NodeProfiles[index].Interfaces = np.GetInterface()
 			l.NodeProfiles[index].PtpClockThreshold = np.PtpClockThreshold
 		}
-		l.UpdateCh <- true
+		l.notifyUpdate()
 		return true, nil
 	}
 
@@ -380,10 +397,19 @@ func (l *LinuxPTPConfigMapUpdate) UpdateConfig(nodeProfilesJSON []byte) (bool, e
 		log.Info("load profiles using old method")
 		l.appliedNodeProfileJSON = nodeProfilesJSON
 		l.NodeProfiles = nodeProfiles
-		l.UpdateCh <- true
+		l.notifyUpdate()
 		return true, nil
 	}
 	return false, fmt.Errorf("unable to load profile config")
+}
+
+// notifyUpdate signals config watchers without blocking when no receiver is ready.
+func (l *LinuxPTPConfigMapUpdate) notifyUpdate() {
+	select {
+	case l.UpdateCh <- true:
+	default:
+		log.Debug("coalescing config update notification")
+	}
 }
 
 // Try to load the multiple policy config
@@ -438,7 +464,7 @@ func (l *LinuxPTPConfigMapUpdate) updatePtpConfig(nodeName string) (updated bool
 	if _, err := filesystem.Stat(nodeProfile); err != nil {
 		if os.IsNotExist(err) {
 			log.Infof("ptp profile %s doesn't exist for node: %v , error %s", nodeProfile, nodeName, err.Error())
-			l.UpdateCh <- true // if profile doesn't exist let the caller know
+			l.notifyUpdate() // if profile doesn't exist let the caller know
 			return
 		}
 		log.Errorf("error finding node profile %v: %v", nodeName, err)
@@ -459,6 +485,63 @@ func (l *LinuxPTPConfigMapUpdate) updatePtpConfig(nodeName string) (updated bool
 		log.Errorf("error updating the node configuration using the profiles loaded: %v", err)
 	}
 	return
+}
+
+// EnsureProcessOptions reloads the node profile file when needed and populates
+// PtpProcessOpts if NodeProfiles are available but the process-options cache is empty.
+// This handles startup ordering where the one-shot configmap watcher exits before the
+// profile mount is ready, leaving PtpProcessOpts unpopulated when ptp4l configs arrive.
+func (l *LinuxPTPConfigMapUpdate) EnsureProcessOptions(nodeName string) {
+	if len(l.NodeProfiles) == 0 {
+		l.updatePtpConfig(nodeName)
+	}
+
+	l.lock.Lock()
+	defer l.lock.Unlock()
+
+	if len(l.NodeProfiles) == 0 {
+		return
+	}
+	if len(l.PtpProcessOpts) > 0 {
+		return
+	}
+	l.UpdatePTPProcessOptions()
+	l.UpdatePTPThreshold()
+	l.UpdatePTPSetting()
+}
+
+// LookupPtpProcessOpts returns cached process options for a profile under read lock.
+func (l *LinuxPTPConfigMapUpdate) LookupPtpProcessOpts(profileName string) *PtpProcessOpts {
+	if profileName == "" {
+		return nil
+	}
+	l.lock.RLock()
+	opts := l.PtpProcessOpts[profileName]
+	l.lock.RUnlock()
+	return opts
+}
+
+// LookupOrEnsurePtpProcessOpts returns process options for profileName, repopulating
+// the cache under lock when it is still empty. updatePtpConfig runs outside the lock
+// because it performs filesystem I/O.
+func (l *LinuxPTPConfigMapUpdate) LookupOrEnsurePtpProcessOpts(nodeName, profileName string) *PtpProcessOpts {
+	if profileName == "" {
+		return nil
+	}
+
+	l.lock.RLock()
+	if opts, ok := l.PtpProcessOpts[profileName]; ok {
+		l.lock.RUnlock()
+		return opts
+	}
+	cacheEmpty := len(l.PtpProcessOpts) == 0
+	l.lock.RUnlock()
+
+	if cacheEmpty {
+		l.EnsureProcessOptions(nodeName)
+	}
+
+	return l.LookupPtpProcessOpts(profileName)
 }
 
 // GetDefaultThreshold ... get default threshold
