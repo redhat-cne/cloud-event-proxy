@@ -55,7 +55,10 @@ const (
 	// restartCommand is the control command sent by linuxptp-daemon on the event
 	// socket to request a sidecar restart. The CMD prefix distinguishes it from
 	// process log lines (which always start with a process name like ptp4l, phc2sys).
-	restartCommand     = "CMD RESTART"
+	restartCommand = "CMD RESTART"
+	// liveStartCommand is sent by linuxptp-daemon on each ptp4l process connection
+	// after the replay gate opens, indicating that all subsequent data is live.
+	liveStartCommand   = "CMD LIVE_START"
 	phc2sysProcessName = "phc2sys"
 	ptp4lProcessName   = "ptp4l"
 	ts2PhcProcessName  = "ts2phc"
@@ -515,16 +518,24 @@ func listenToSocket(wg *sync.WaitGroup) {
 }
 
 func processMessages(c net.Conn) {
+	log.Tracef("processMessages: new connection accepted from %v", c.RemoteAddr())
 	<-aliasReady // wait until alias found and this is closed
-	log.Info("alias found, starting to process messages")
+	log.Info("processMessages: aliasReady unblocked, processing can begin")
 	// Request a full state re-emit in a separate goroutine so the scanner
-	// can start reading immediately. TriggerLogs writes emit data back through
-	// this same socket connection; if we block here waiting for the HTTP response,
-	// nobody reads the socket, the kernel buffer fills, and the emit handler blocks.
+	// can start reading immediately. The /emit-logs handler writes replay
+	// data back through the EventHandler's socket connection, which CEP
+	// accepts as a separate processMessages goroutine. If TriggerLogs blocks
+	// here, that goroutine's TriggerLogs creates a recursive write-back to
+	// a connection whose reader is stuck in TriggerLogs — deadlock once the
+	// kernel buffer fills. The daemon's liveGate independently ensures no
+	// live data flows until replay completes, so async is safe.
 	if eventManager != nil {
+		log.Trace("processMessages: firing async TriggerLogs")
 		go func() {
 			if err := eventManager.TriggerLogs(); err != nil {
 				log.Warnf("failed to trigger logs on new connection: %v", err)
+			} else {
+				log.Trace("processMessages: TriggerLogs completed successfully")
 			}
 		}()
 	}
@@ -532,14 +543,20 @@ func processMessages(c net.Conn) {
 	for {
 		ok := scanner.Scan()
 		if !ok {
-			log.Error("error reading socket input, retrying")
+			log.Errorf("processMessages: scanner returned false (conn closed or error), breaking")
 			break
 		}
 		msg := scanner.Text()
 		if msg == restartCommand {
+			log.Trace("processMessages: received CMD RESTART")
 			restartProcess("restart requested by daemon via socket")
 			return // unreachable after exec
 		}
+		if msg == liveStartCommand {
+			log.Trace("processMessages: received LIVE_START marker - live data follows")
+			continue
+		}
+		log.Tracef("processMessages: dispatching to ExtractMetrics: %.120s", msg)
 		eventManager.ExtractMetrics(msg)
 	}
 }
