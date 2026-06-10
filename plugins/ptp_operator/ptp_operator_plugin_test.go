@@ -560,8 +560,6 @@ func TestProcessMessages_MultipleLiveStartOnly(t *testing.T) {
 
 func TestLiveStartCommand_ConstantValue(t *testing.T) {
 	assert.Equal(t, "CMD LIVE_START", liveStartCommand)
-	assert.NotEqual(t, restartCommand, liveStartCommand,
-		"LIVE_START and RESTART must be distinct commands")
 	assert.True(t, strings.HasPrefix(liveStartCommand, "CMD "),
 		"control commands should use CMD prefix to distinguish from log lines")
 }

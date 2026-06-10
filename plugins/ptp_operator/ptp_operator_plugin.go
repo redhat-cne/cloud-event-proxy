@@ -50,13 +50,9 @@ import (
 const (
 	eventSocket  = "/cloud-native/events.sock"
 	ptpConfigDir = "/var/run/"
-	// restartCommand is the control command sent by linuxptp-daemon on the event
-	// socket to request a sidecar restart. The CMD prefix distinguishes it from
-	// process log lines (which always start with a process name like ptp4l, phc2sys).
-	restartCommand = "CMD RESTART"
 	// liveStartCommand is sent by linuxptp-daemon on each ptp4l process connection
 	// after the replay gate opens, indicating that all subsequent data is live.
-	liveStartCommand = "CMD LIVE_START"
+	liveStartCommand   = "CMD LIVE_START"
 	phc2sysProcessName = "phc2sys"
 	ptp4lProcessName   = "ptp4l"
 	ts2PhcProcessName  = "ts2phc"
