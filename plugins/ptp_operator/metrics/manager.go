@@ -430,6 +430,8 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 	}
 
 	lastClockState := oStats.LastSyncState()
+	log.Tracef("GenPTPEvent: profile=%s resource=%s offset=%d clockState=%s lastState=%s eventType=%s",
+		ptpProfileName, eventResourceName, ptpOffset, clockState, lastClockState, eventType)
 	threshold := p.PtpThreshold(ptpProfileName, false)
 	switch clockState {
 	case ptp.LOCKED:
@@ -805,12 +807,15 @@ func (p *PTPEventManager) SetInitalMetrics() {
 }
 
 func (p *PTPEventManager) TriggerLogs() error {
+	log.Tracef("TriggerLogs: calling %s", logsEndpoint)
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Get(logsEndpoint)
 	if err != nil {
+		log.Tracef("TriggerLogs: request failed: %v", err)
 		return err
 	}
 	defer resp.Body.Close()
+	log.Tracef("TriggerLogs: response status=%s", resp.Status)
 	return nil
 }
 

@@ -568,4 +568,125 @@ func Test_ExtractMetrics(t *testing.T) {
 			assert.Equal(tc.expectedEvent, ptpEventManager.GetMockEvent(), "Expected Event does not match\n%s", tc.String())
 		})
 	}
+
+	// OCPBUGS-85092 regression tests: prove that stale replay data (port role
+	// transition arriving after live offset) corrupts metrics and they do NOT
+	// self-recover. This documents WHY the live gate is essential — without it,
+	// a replayed FAULTY port role permanently poisons the clock state.
+	t.Run("ReplayThenLive_ClockStateCorruption", func(t *testing.T) {
+		assert := assert.New(t)
+		const lockedLine = "ptp4l[5000000.100]: [ptp4l.1.config] master offset 5 s2 freq -1000 path delay 100"
+		const stalePortRole = "ptp4l[4999999.000]: [ptp4l.1.config:4] port 1 (ens3f0): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)"
+		labels := map[string]string{"process": "ptp4l", "node": MYNODE, "iface": "ens3fx"}
+
+		// Reset shared config state from previous subtests
+		logPtp4lConfigDualFollower.Interfaces[0].UpdateRole(types.SLAVE)
+		s := ptpEventManager.GetStatsForInterface(types.ConfigName(logPtp4lConfigDualFollower.Name), types.IFace("master"))
+		s.SetRole(types.SLAVE)
+
+		// Step 1: Establish LOCKED state via live offset s2
+		metrics.SyncState.With(labels).Set(CLEANUP)
+		setLastSyncState("master", ptp.LOCKED, logPtp4lConfigDualFollower.Name)
+		ptpEventManager.ResetMockEvent()
+		ptpEventManager.ExtractMetrics(lockedLine)
+		assert.Equal(float64(types.LOCKED), testutil.ToFloat64(metrics.SyncState.With(labels)),
+			"step 1: live offset s2 should set SyncState to LOCKED")
+
+		// Step 2: Stale replay port role (SLAVE→FAULTY) corrupts the state
+		ptpEventManager.ResetMockEvent()
+		ptpEventManager.ExtractMetrics(stalePortRole)
+		assert.Equal(float64(types.HOLDOVER), testutil.ToFloat64(metrics.SyncState.With(labels)),
+			"step 2: stale SLAVE→FAULTY should corrupt SyncState to HOLDOVER")
+
+		// Step 3: Another live s2 offset does NOT recover to LOCKED because
+		// the port is now FAULTY — proving the corruption is permanent without
+		// the live gate preventing stale replay from arriving after live data.
+		ptpEventManager.ResetMockEvent()
+		ptpEventManager.ExtractMetrics(lockedLine)
+		assert.Equal(float64(types.HOLDOVER), testutil.ToFloat64(metrics.SyncState.With(labels)),
+			"step 3: HOLDOVER persists despite s2 offset — the bug: stale replay permanently poisons clock state")
+	})
+
+	t.Run("ReplayThenLive_PortRoleCorruption", func(t *testing.T) {
+		assert := assert.New(t)
+		const liveSlaveRole = "ptp4l[5000001.000]: [ptp4l.1.config:4] port 1 (ens3f0): UNCALIBRATED to SLAVE on MASTER_CLOCK_SELECTED"
+		const staleFaultyRole = "ptp4l[4999998.000]: [ptp4l.1.config:4] port 1 (ens3f0): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)"
+		roleLabels := map[string]string{"process": "ptp4l", "node": MYNODE, "iface": "ens3f0"}
+
+		// Reset: set to LISTENING so UNCALIBRATED→SLAVE triggers a role change
+		logPtp4lConfigDualFollower.Interfaces[0].UpdateRole(types.LISTENING)
+
+		// Step 1: Live port role → SLAVE
+		metrics.InterfaceRole.With(roleLabels).Set(CLEANUP)
+		ptpEventManager.ResetMockEvent()
+		ptpEventManager.ExtractMetrics(liveSlaveRole)
+		assert.Equal(float64(types.SLAVE), testutil.ToFloat64(metrics.InterfaceRole.With(roleLabels)),
+			"step 1: port role should be SLAVE")
+
+		// Step 2: Stale replay port role → FAULTY (corruption)
+		ptpEventManager.ResetMockEvent()
+		ptpEventManager.ExtractMetrics(staleFaultyRole)
+		assert.Equal(float64(types.FAULTY), testutil.ToFloat64(metrics.InterfaceRole.With(roleLabels)),
+			"step 2: stale replay SLAVE→FAULTY corrupts port role to FAULTY")
+
+		// Port roles only change on state-transition events — there is no
+		// continuous refresh like offset lines. The FAULTY role persists
+		// indefinitely until a real port state transition occurs. This is
+		// why the live gate is critical: it prevents this scenario entirely.
+	})
+
+	// With the live gate fix: replay arrives FIRST, then live data overwrites it.
+	// This is the correct ordering enforced by the gate, proving metrics end up
+	// in the correct LOCKED/SLAVE state.
+	t.Run("WithLiveGate_ReplayThenLive_MetricsCorrect", func(t *testing.T) {
+		assert := assert.New(t)
+		syncLabels := map[string]string{"process": "ptp4l", "node": MYNODE, "iface": "ens3fx"}
+		roleLabels := map[string]string{"process": "ptp4l", "node": MYNODE, "iface": "ens3f0"}
+
+		// Reset shared config state from previous subtests
+		logPtp4lConfigDualFollower.Interfaces[0].UpdateRole(types.SLAVE)
+		metrics.SyncState.With(syncLabels).Set(CLEANUP)
+		metrics.InterfaceRole.With(roleLabels).Set(CLEANUP)
+
+		// --- Replay phase (arrives first, gate blocks live data) ---
+
+		// Replay: stale FAULTY port role from before recovery
+		setLastSyncState("master", ptp.LOCKED, logPtp4lConfigDualFollower.Name)
+		ptpEventManager.ResetMockEvent()
+		ptpEventManager.ExtractMetrics(
+			"ptp4l[0.000]: [ptp4l.1.config:4] port 1 (ens3f0): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)")
+
+		// After replay, port is FAULTY and clock is HOLDOVER — stale state
+		assert.Equal(float64(types.FAULTY), testutil.ToFloat64(metrics.InterfaceRole.With(roleLabels)),
+			"after replay: port role is stale FAULTY")
+		assert.Equal(float64(types.HOLDOVER), testutil.ToFloat64(metrics.SyncState.With(syncLabels)),
+			"after replay: clock state is HOLDOVER")
+
+		// --- CMD LIVE_START (gate opens, live data follows) ---
+		// In real CEP, CMD LIVE_START is just skipped (continue) — no metric effect.
+
+		// --- Live phase: port recovers through standard ptp4l sequence ---
+		// FAULTY → LISTENING → UNCALIBRATED → SLAVE, then LOCKED offset
+
+		ptpEventManager.ResetMockEvent()
+		ptpEventManager.ExtractMetrics(
+			"ptp4l[10.000]: [ptp4l.1.config:4] port 1 (ens3f0): FAULTY to LISTENING on INIT_COMPLETE")
+
+		ptpEventManager.ResetMockEvent()
+		ptpEventManager.ExtractMetrics(
+			"ptp4l[10.100]: [ptp4l.1.config:4] port 1 (ens3f0): LISTENING to UNCALIBRATED on RS_SLAVE")
+
+		ptpEventManager.ResetMockEvent()
+		ptpEventManager.ExtractMetrics(
+			"ptp4l[10.200]: [ptp4l.1.config:4] port 1 (ens3f0): UNCALIBRATED to SLAVE on MASTER_CLOCK_SELECTED")
+		assert.Equal(float64(types.SLAVE), testutil.ToFloat64(metrics.InterfaceRole.With(roleLabels)),
+			"after live port recovery: port role is SLAVE")
+
+		// Live: first offset after SLAVE recovery triggers LOCKED
+		ptpEventManager.ResetMockEvent()
+		ptpEventManager.ExtractMetrics(
+			"ptp4l[11.000]: [ptp4l.1.config] master offset 3 s2 freq -998 path delay 99")
+		assert.Equal(float64(types.LOCKED), testutil.ToFloat64(metrics.SyncState.With(syncLabels)),
+			"after live offset s2: SyncState is LOCKED (correct final state)")
+	})
 }
