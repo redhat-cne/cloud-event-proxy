@@ -108,6 +108,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	}
 	processName := fields[processNameIndex]
 	configName := fields[configNameIndex]
+	log.Tracef("ExtractMetrics: process=%s config=%s msg=%.100s", processName, configName, msg)
 	// if log is having ts2phc then it will replace it with ptp4l
 	configName = strings.Replace(configName, ts2phcProcessName, ptp4lProcessName, 1)
 	ptp4lCfg := p.GetPTPConfig(types.ConfigName(configName))
@@ -121,6 +122,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	// Process status messages should always be processed regardless of profile configuration
 	if strings.Contains(output, ptpProcessStatusIdentifier) {
 		if status, err := p.parsePTPStatus(output, fields); err == nil {
+			log.Tracef("ExtractMetrics: process status detected: process=%s config=%s status=%d", processName, configName, status)
 			if status == PtpProcessDown {
 				p.processDownEvent(profileName, processName, ptpStats)
 			}
@@ -224,6 +226,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			if interfaceName == "" {
 				return // don't do if iface not known
 			}
+			log.Tracef("ExtractMetrics: offset parsed: process=%s iface=%s offset=%.0f syncState=%s", processName, interfaceName, ptpOffset, syncState)
 			//  only ts2phc process will return actual interface name- allow all ts2phcprocess or iface in (master or  clock realtime)
 			if processName != ts2phcProcessName && !(interfaceName == master || interfaceName == ClockRealTime) {
 				return // only master and clock_realtime are supported
