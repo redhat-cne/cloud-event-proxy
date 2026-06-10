@@ -123,7 +123,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		if status, err := p.parsePTPStatus(output, fields); err == nil {
 			log.Tracef("ExtractMetrics: process status detected: process=%s config=%s status=%d", processName, configName, status)
 			if status == PtpProcessDown {
-				p.processDownEvent(profileName, processName, ptpStats)
+				p.processDownEvent(profileName, processName, ptpStats, ptp4lCfg.ProfileType)
 			}
 		} else {
 			log.Errorf("error in process status %s: %v", output, err)
@@ -366,7 +366,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		ptpInterface, ptp4lCfg, ptpStats)
 }
 
-func (p *PTPEventManager) processDownEvent(profileName, processName string, ptpStats stats.PTPStats) {
+func (p *PTPEventManager) processDownEvent(profileName, processName string, ptpStats stats.PTPStats, profileType ptp4lconf.PtpProfileType) {
 	// if the process is responsible to set master offset
 	if processName == ts2phcProcessName {
 		//  update metrics for all interface defined by ts2phc
@@ -387,6 +387,17 @@ func (p *PTPEventManager) processDownEvent(profileName, processName string, ptpS
 			}
 		}
 	} else { // other profiles
+		// T-BC: when ptp4l dies, fire FREERUN for the T-BC aggregate resource.
+		// Without this, the T-BC stats key is never set to FREERUN (DPLL/ts2phc
+		// keep T-BC-STATUS at s2), so ParseTBCLogs never detects a state
+		// transition and the recovery LOCKED event is never published.
+		if profileType == ptp4lconf.TBC && processName == ptp4lProcessName {
+			tbcKey := types.IFace(stats.TBCMainClockName)
+			if tbcStat, ok := ptpStats[tbcKey]; ok && tbcStat.Alias() != "" {
+				masterResource := fmt.Sprintf("%s/%s", tbcStat.Alias(), MasterClockType)
+				p.GenPTPEvent(profileName, tbcStat, masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
+			}
+		}
 		if masterOffsetSource == processName {
 			if ptpStats[master].Alias() != "" {
 				masterResource := fmt.Sprintf("%s/%s", ptpStats[master].Alias(), MasterClockType)
