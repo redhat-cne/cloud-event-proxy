@@ -497,24 +497,16 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 	// when ptp4l updates it in the T-BC mode
 	UpdateSyncStateMetrics(ts2phcProcessName, alias, ptpSyncState)
 
-	// if there is phc2sys ooptions enabled then when the clock is FREERUN annouce OSCLOCK as FREERUN
-	if clockState.State == ptp.FREERUN {
-		// loop thourgh eventManager.PtpConfigMapUpdates.TBCProfiles
-		// message tag for ptp4l.1.config with T-BC-Profile but T-BC is reporting from ts2phc.0.conifg
-		// so clock_realtime is not assigned to same config ?
-		cStats, osStatsOK := ptpStats[ClockRealTime]
-		if !osStatsOK || cStats.LastSyncState() == ptp.FREERUN {
-			// ClockRealTime stats not available, nothing to publish or already  in FREERUN
-			return
-		}
-		if p.mock {
-			p.mockEvent = []ptp.EventType{ptp.OsClockSyncStateChange}
-			log.Infof("PublishEvent state=%s, ptpOffset=%d, source=%s, eventType=%s", ptp.FREERUN, FreeRunOffsetValue, ClockRealTime, ptp.OsClockSyncStateChange)
-			return
-		}
-		p.GenPTPEvent(configName, cStats, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
-		UpdateSyncStateMetrics(phc2sysProcessName, ClockRealTime, ptp.FREERUN)
-	}
+	// CLOCK_REALTIME state is managed exclusively by phc2sys log processing.
+	// When the T-BC chain loses its upstream source (FREERUN), the PHC will
+	// eventually drift, phc2sys will detect the growing offset, and
+	// CLOCK_REALTIME will transition to FREERUN naturally through the
+	// threshold-based mechanism in extractRegularMetrics.
+	//
+	// Forcing CLOCK_REALTIME to FREERUN here based on the T-BC state creates
+	// a dual-publisher conflict: ParseTBCLogs overrides CLOCK_REALTIME to
+	// FREERUN while phc2sys reports LOCKED, causing rapid oscillation and
+	// incorrect state visible to event consumers.
 }
 
 // ParseDPLLLogs ... parse logs for various events
