@@ -213,6 +213,62 @@ func handleHoldOverState(ptpManager *PTPEventManager,
 	}
 }
 
+// startTBCHoldoverTimer starts a holdover timer for the T-BC aggregate.
+// When the TR ptp4l dies, the DPLL keeps the PHC locked (holdover).
+// If ptp4l doesn't recover before the timeout, transition to FREERUN.
+func (p *PTPEventManager) startTBCHoldoverTimer(
+	ptpOpts *ptpConfig.PtpProcessOpts, configName, profileName, tbcAlias string) {
+	if p.mock {
+		log.Infof("T-BC holdover timer not started: mock mode (profile=%s config=%s)", profileName, configName)
+		return
+	}
+	threshold := p.PtpThreshold(profileName, true)
+	log.Infof("starting T-BC holdover timer: profile=%s config=%s alias=%s timeout=%ds",
+		profileName, configName, tbcAlias, threshold.HoldOverTimeout)
+	go handleTBCHoldOverState(p, ptpOpts, configName, profileName, threshold.HoldOverTimeout, tbcAlias, threshold.Close)
+}
+
+func handleTBCHoldOverState(ptpManager *PTPEventManager,
+	ptpOpts *ptpConfig.PtpProcessOpts, configName,
+	ptpProfileName string, holdoverTimeout int64,
+	tbcAlias string, c chan struct{}) {
+	defer func() {
+		log.Infof("exiting T-BC holdover for profile %s", ptpProfileName)
+		if r := recover(); r != nil {
+			fmt.Println("Recovered in f", r)
+		}
+	}()
+	tbcKey := types.IFace(stats.TBCMainClockName)
+	select {
+	case <-c:
+		log.Infof("T-BC holdover timer cancelled: profile=%s config=%s", ptpProfileName, configName)
+		return
+	case <-time.After(time.Duration(holdoverTimeout) * time.Second):
+		log.Infof("T-BC holdover timer expired: profile=%s config=%s timeout=%ds", ptpProfileName, configName, holdoverTimeout)
+		ptpStats := ptpManager.GetStats(types.ConfigName(configName))
+		tbcStat, found := ptpStats[tbcKey]
+		if !found {
+			log.Errorf("T-BC holdover expired but T-BC stats not found: config=%s profile=%s", configName, ptpProfileName)
+			return
+		}
+		if tbcStat.LastSyncState() != ptp.HOLDOVER {
+			log.Infof("T-BC holdover expired but state is %s (not HOLDOVER), no-op: profile=%s",
+				tbcStat.LastSyncState(), ptpProfileName)
+			return
+		}
+		alias := tbcStat.Alias()
+		if alias == "" {
+			log.Errorf("T-BC holdover expired but empty alias: config=%s profile=%s", configName, ptpProfileName)
+			return
+		}
+		log.Infof("T-BC holdover expired, transitioning to FREERUN: profile=%s alias=%s", ptpProfileName, alias)
+		masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
+		tbcStat.SetLastSyncState(ptp.FREERUN)
+		ptpManager.PublishEvent(ptp.FREERUN, tbcStat.LastOffset(), masterResource, ptp.PtpStateChange)
+		UpdateSyncStateMetrics(ptp4lProcessName, alias, ptp.FREERUN)
+	}
+}
+
 func (p *PTPEventManager) maybePublishOSClockSyncStateChangeEvent(
 	ptpOpts *ptpConfig.PtpProcessOpts, configName, ptpProfileName string) {
 	if ptpOpts == nil {

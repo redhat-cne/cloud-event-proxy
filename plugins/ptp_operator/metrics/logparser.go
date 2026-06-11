@@ -490,6 +490,20 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 
 	if clockState.State != lastClockState && clockState.State != "" { // publish directly here
 		log.Infof("%s sync state %s, last ptp state is : %s", masterResource, clockState.State, lastClockState)
+		// Cancel T-BC holdover timer on HOLDOVER → LOCKED transition.
+		// The timer was started under the TR profile (has phc2sys).
+		if lastClockState == ptp.HOLDOVER && clockState.State == ptp.LOCKED {
+			for _, tbcProfile := range p.PtpConfigMapUpdates.TBCProfiles {
+				ptpOpts := p.PtpConfigMapUpdates.LookupPtpProcessOpts(tbcProfile)
+				if ptpOpts != nil && ptpOpts.Phc2SysEnabled() {
+					if t := p.PtpConfigMapUpdates.LookupEventThreshold(tbcProfile); t != nil {
+						log.Infof("T-BC: cancelling holdover timer on LOCKED recovery: profile=%s", tbcProfile)
+						t.SafeClose()
+					}
+					break
+				}
+			}
+		}
 		ptpStats[tbcClockNameType].SetLastSyncState(clockState.State)
 		p.PublishEvent(clockState.State, lastOffset, masterResource, ptp.PtpStateChange)
 	}
