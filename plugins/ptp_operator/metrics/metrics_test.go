@@ -568,7 +568,6 @@ func Test_ExtractMetrics(t *testing.T) {
 	// forces non-ts2phc downstream sync to FREERUN only if last GM snapshot was FREERUN.
 	t.Run("lastOverallGMState_holdover_vs_freerun", func(t *testing.T) {
 		const logPhcLocked = "phc2sys[1000000900]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -62 s2 freq  -78368 delay   1100"
-		assert := assert.New(t)
 		t.Cleanup(func() {
 			ptpEventManager.SetLastOverallGMStateForTesting("")
 		})
