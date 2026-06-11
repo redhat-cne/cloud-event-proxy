@@ -301,9 +301,8 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			case MasterClockType: // this ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay
 				// Report events for master  by masking the index  number of the slave interface
 				if ptpInterface.Name != "" {
-					aliasValue := ptpStats[types.IFace(interfaceName)].Alias()
-					if aliasValue == "" {
-						aliasValue = alias.GetAlias(ptpInterface.Name)
+					aliasValue := alias.GetAlias(ptpInterface.Name)
+					if ptpStats[types.IFace(interfaceName)].Alias() != aliasValue {
 						ptpStats[types.IFace(interfaceName)].SetAlias(aliasValue)
 					}
 					// forT-BC only update metrics/ but we are missing maxAbs for T-BC, fro now it will use  T-BC offsets
@@ -324,9 +323,8 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				}
 			default: // for ts2phc the master stats are not updated at all, so rely on interface
 				if processName == ts2phcProcessName {
-					aliasValue := ptpStats[types.IFace(interfaceName)].Alias()
-					if aliasValue == "" {
-						aliasValue = alias.GetAlias(ptpInterface.Name)
+					aliasValue := alias.GetAlias(ptpInterface.Name)
+					if ptpStats[types.IFace(interfaceName)].Alias() != aliasValue {
 						ptpStats[types.IFace(interfaceName)].SetAlias(aliasValue)
 					}
 					// update ts2phc sync state to GM state if available,since GM State identifies PTP state
@@ -376,9 +374,9 @@ func (p *PTPEventManager) processDownEvent(profileName, processName string, ptpS
 			if iface != ClockRealTime && iface != master {
 				ptpStats[iface].SetLastOffset(FreeRunOffsetValue)
 				ptpStats[iface].SetLastSyncState(ptp.FREERUN)
-				aliasValue := ptpStats[iface].Alias()
-				if aliasValue == "" {
-					aliasValue = alias.GetAlias(string(iface))
+				aliasValue := alias.GetAlias(string(iface))
+				if ptpStats[iface].Alias() != aliasValue {
+					ptpStats[iface].SetAlias(aliasValue)
 				}
 				// update all ts2phc reported metrics as FREERUN
 				UpdateSyncStateMetrics(processName, aliasValue, ptpStats[iface].LastSyncState())
