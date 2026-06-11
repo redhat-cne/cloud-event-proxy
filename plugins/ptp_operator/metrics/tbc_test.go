@@ -345,6 +345,88 @@ func TestTBCFaultyPortSpuriousFreerun(t *testing.T) {
 			"because the TBC profile was not detected due to startup ordering")
 }
 
+// TestTBCFreerunDoesNotOverrideClockRealtime verifies that when T-BC-STATUS
+// reports FREERUN, ParseTBCLogs does NOT force CLOCK_REALTIME to FREERUN.
+// CLOCK_REALTIME state must be managed exclusively by phc2sys processing.
+func TestTBCFreerunDoesNotOverrideClockRealtime(t *testing.T) {
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	eventManager.MockTest(true)
+
+	configName = "ptp4l.0.config"
+	tbcProfile := "tbc-test-profile"
+
+	eventManager.PtpConfigMapUpdates.TBCProfiles = []string{tbcProfile}
+
+	ptp4lCfg := &ptp4lconf.PTP4lConfig{
+		Name:        configName,
+		Profile:     tbcProfile,
+		ProfileType: ptp4lconf.TBC,
+		Interfaces: []*ptp4lconf.PTPInterface{
+			{
+				Name:     "ens2f0",
+				PortID:   1,
+				PortName: "port 1",
+				Role:     types.SLAVE,
+			},
+		},
+	}
+	eventManager.AddPTPConfig(types.ConfigName(configName), ptp4lCfg)
+
+	ptpStats := eventManager.GetStats(types.ConfigName(configName))
+	ptpStats[metrics.MasterClockType] = &stats.Stats{}
+	ptpStats[metrics.MasterClockType].SetAlias("ens2f0")
+
+	// Step 1: T-BC-STATUS s2 (LOCKED) — establish TBC state
+	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
+	tbcLockedLog := fmt.Sprintf("T-BC[1743005894]:[%s] ens2f0 offset 5 T-BC-STATUS s2", configName)
+	output := replacer.Replace(tbcLockedLog)
+	fields := strings.Fields(output)
+	eventManager.ParseTBCLogs("T-BC", configName, output, fields, ptpStats)
+
+	// Step 2: phc2sys CLOCK_REALTIME s2 (LOCKED) — establish OS clock state
+	phc2sysLocked := fmt.Sprintf("phc2sys[3263.065]: [%s] CLOCK_REALTIME phc offset 3 s2 freq -20217 delay 536", configName)
+	eventManager.ExtractMetrics(phc2sysLocked)
+
+	cStat, ok := ptpStats[metrics.ClockRealTime]
+	assert.True(t, ok, "CLOCK_REALTIME stats should exist after phc2sys line")
+	assert.Equal(t, ptp.LOCKED, cStat.LastSyncState(), "CLOCK_REALTIME should be LOCKED from phc2sys")
+
+	// Step 3: T-BC-STATUS s0 (FREERUN) — upstream lost, but phc2sys still locked
+	eventManager.ResetMockEvent()
+	tbcFreerunLog := fmt.Sprintf("T-BC[1743005900]:[%s] ens2f0 offset 123 T-BC-STATUS s0", configName)
+	output = replacer.Replace(tbcFreerunLog)
+	fields = strings.Fields(output)
+	eventManager.ParseTBCLogs("T-BC", configName, output, fields, ptpStats)
+
+	// Verify T-BC master resource is FREERUN (the T-BC event itself should fire)
+	tbcKey := types.IFace(stats.TBCMainClockName)
+	assert.Equal(t, ptp.FREERUN, ptpStats[tbcKey].LastSyncState(),
+		"T-BC master resource should be FREERUN")
+
+	// Verify CLOCK_REALTIME was NOT overridden — it must stay LOCKED
+	assert.Equal(t, ptp.LOCKED, cStat.LastSyncState(),
+		"CLOCK_REALTIME must remain LOCKED; ParseTBCLogs should not override phc2sys")
+
+	// Verify no OsClockSyncStateChange was emitted
+	assert.NotContains(t, eventManager.GetMockEvent(), ptp.OsClockSyncStateChange,
+		"ParseTBCLogs must not emit OsClockSyncStateChange when T-BC goes FREERUN")
+
+	// Step 4: Next phc2sys sample must also remain LOCKED — verify the
+	// phc2sys processing path (extractRegularMetrics) does not rewrite
+	// CLOCK_REALTIME to FREERUN based on T-BC state.
+	eventManager.ResetMockEvent()
+	phc2sysStillLocked := fmt.Sprintf(
+		"phc2sys[3264.065]: [%s] CLOCK_REALTIME phc offset 3 s2 freq -20217 delay 536",
+		configName,
+	)
+	eventManager.ExtractMetrics(phc2sysStillLocked)
+
+	assert.Equal(t, ptp.LOCKED, cStat.LastSyncState(),
+		"CLOCK_REALTIME must remain LOCKED after the next phc2sys sample")
+	assert.NotContains(t, eventManager.GetMockEvent(), ptp.OsClockSyncStateChange,
+		"T-BC FREERUN must not rewrite the phc2sys CLOCK_REALTIME path")
+}
+
 // TestTBCOffsetMetricUpdatedEveryLog tests that T-BC offset metric is updated on every log
 func TestTBCOffsetMetricUpdatedEveryLog(t *testing.T) {
 	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
