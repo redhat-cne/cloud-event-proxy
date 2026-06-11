@@ -31,6 +31,7 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/event"
 
 	ptpConfig "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/config"
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/alias"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -73,8 +74,6 @@ const (
 	EventNotFound               = "event-not-found"
 	PTPNotSet                   = "ptp-not-set"
 	ptpConfigSyncInitialTimeout = 1 * time.Second
-	aliasRetryInterval          = 1 * time.Second
-	aliasRetryTimeout           = 30 * time.Second
 )
 
 var (
@@ -82,7 +81,6 @@ var (
 	publishers     = map[ptp.EventType]*ptpTypes.EventPublisherType{}
 	config         *common.SCConfiguration
 	eventManager   *ptpMetrics.PTPEventManager
-	aliasReady     chan struct{}
 )
 
 // restartProcess replaces the current process with a fresh copy of itself via
@@ -113,34 +111,11 @@ func restartProcess(reason string) {
 // from ptpConfigDir once at startup and registers them with the event manager.
 // If no files exist yet (daemon hasn't written them), the function returns
 // gracefully; the daemon will send CMD RESTART once configs are ready.
-func loadInitialPtp4lConfigs() int {
+func loadInitialPtp4lConfigs() {
 	configs := ptp4lconf.ReadAllConfig(ptpConfigDir)
 	log.Infof("loading %d initial ptp4l config(s) from %s", len(configs), ptpConfigDir)
 	for _, ptpConfigEvent := range configs {
 		processConfigCreate(ptpConfigEvent)
-	}
-	return len(configs)
-}
-
-// waitForAliases retries SyncAliasesFromDaemon until at least one alias is
-// returned or the timeout expires. This ensures linuxptp-daemon has finished
-// reading its ptp4l configs and can serve alias mappings before we start
-// processing events on the socket.
-func waitForAliases(timeout, interval time.Duration) {
-	deadline := time.After(timeout)
-	for {
-		n, err := ptpMetrics.SyncAliasesFromDaemon()
-		if err != nil {
-			log.Warnf("alias sync failed: %v, retrying...", err)
-		} else if n > 0 {
-			return
-		}
-		select {
-		case <-deadline:
-			log.Warnf("alias sync: no aliases available after %s, proceeding without aliases", timeout)
-			return
-		case <-time.After(interval):
-		}
 	}
 }
 
@@ -206,7 +181,7 @@ func processConfigCreate(ptpConfigEvent *ptp4lconf.PtpConfigUpdate) {
 	}
 	ptp4lConfig.ProfileType = eventManager.GetProfileType(ptp4lConfig.Profile)
 	eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
-	if _, err := ptpMetrics.SyncAliasesFromDaemon(); err != nil {
+	if _, err := alias.SyncFromDaemon(); err != nil {
 		log.Warnf("failed to sync aliases for config %s: %v", *ptpConfigEvent.Name, err)
 	}
 }
@@ -273,21 +248,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 		setThresholdMetrics(nodeName, thresholds)
 	}
 	startPtpConfigSync(ptpConfigSyncInitialTimeout, nodeName, configuration)
-	nConfigs := loadInitialPtp4lConfigs()
-
-	// Wait for port aliases from linuxptp-daemon in the background. The socket
-	// listener starts immediately so the daemon can connect, but processMessages
-	// blocks on aliasReady before processing events -- ensuring aliases are
-	// populated before any metrics/events use interface names.
-	aliasReady = make(chan struct{})
-	if nConfigs > 0 {
-		go func() {
-			waitForAliases(aliasRetryTimeout, aliasRetryInterval)
-			close(aliasReady)
-		}()
-	} else {
-		close(aliasReady)
-	}
+	loadInitialPtp4lConfigs()
 
 	wg.Add(1)
 	// Create socket listener; the daemon sends log lines and CMD RESTART commands here.
@@ -533,8 +494,7 @@ var triggerLogsOnce sync.Once
 
 func processMessages(c net.Conn) {
 	log.Tracef("processMessages: new connection accepted from %v", c.RemoteAddr())
-	<-aliasReady // wait until alias found and this is closed
-	log.Info("processMessages: aliasReady unblocked, processing can begin")
+
 	// Request a full state re-emit in a separate goroutine so the scanner
 	// can start reading immediately. The /emit-logs handler writes replay
 	// data back through the EventHandler's socket connection, which CEP
