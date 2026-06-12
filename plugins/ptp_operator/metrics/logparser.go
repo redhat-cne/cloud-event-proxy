@@ -384,9 +384,8 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 		Metric:      nil,
 		NodeName:    ptpNodeName,
 	}
-	aliasValue := ptpStats[masterType].Alias()
-	if aliasValue == "" {
-		aliasValue = alias.GetAlias(iface)
+	aliasValue := alias.GetAlias(iface)
+	if ptpStats[masterType].Alias() != aliasValue {
 		ptpStats[masterType].SetAlias(aliasValue)
 	}
 	SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": aliasValue}).Set(GetSyncStateID(syncState))
@@ -459,9 +458,8 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 
 	tbcClockNameType := types.IFace(stats.TBCMainClockName)
 
-	aliasValue := ptpStats[tbcClockNameType].Alias()
-	if aliasValue == "" {
-		aliasValue = alias.GetAlias(iface)
+	aliasValue := alias.GetAlias(iface)
+	if ptpStats[tbcClockNameType].Alias() != aliasValue {
 		ptpStats[tbcClockNameType].SetAlias(aliasValue)
 	}
 
@@ -574,9 +572,8 @@ logStatusLoop:
 	}
 
 	if err == nil {
-		aliasValue := ptpStats[ifaceType].Alias()
-		if aliasValue == "" {
-			aliasValue = alias.GetAlias(*iface)
+		aliasValue := alias.GetAlias(*iface)
+		if ptpStats[ifaceType].Alias() != aliasValue {
 			ptpStats[ifaceType].SetAlias(aliasValue)
 		}
 		ptpStats[ifaceType].SetPtpDependentEventState(event.ClockState{
@@ -635,9 +632,8 @@ func (p *PTPEventManager) ParseGNSSLogs(processName, configName, output string, 
 
 	//openshift_ptp_offset_ns{from="gnss",iface="ens2f1",node="cnfde21.ptp.lab.eng.bos.redhat.com",process="gnss"} 0
 	if err == nil {
-		aliasValue := ptpStats[ifaceType].Alias()
-		if aliasValue == "" {
-			aliasValue = alias.GetAlias(*iface)
+		aliasValue := alias.GetAlias(*iface)
+		if ptpStats[ifaceType].Alias() != aliasValue {
 			ptpStats[ifaceType].SetAlias(aliasValue)
 		}
 		// last state of GNSS

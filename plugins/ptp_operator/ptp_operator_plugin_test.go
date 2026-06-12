@@ -438,22 +438,16 @@ func startMockLogsServer(t *testing.T) func() {
 }
 
 // setupProcessMessages prepares the globals that processMessages depends on.
-// aliasReady is returned already closed so processMessages doesn't block.
 // eventManager is configured in mock-test mode.
 func setupProcessMessages(t *testing.T) func() {
 	t.Helper()
-	oldAliasReady := aliasReady
 	oldEventManager := eventManager
-
-	aliasReady = make(chan struct{})
-	close(aliasReady)
 
 	scCfg := &common.SCConfiguration{}
 	eventManager = metrics.NewPTPEventManager(resourcePrefix, pubsubTypes, nodeName, scCfg)
 	eventManager.MockTest(true)
 
 	return func() {
-		aliasReady = oldAliasReady
 		eventManager = oldEventManager
 	}
 }
@@ -573,52 +567,6 @@ func TestLiveStartCommand_ConstantValue(t *testing.T) {
 		"LIVE_START and RESTART must be distinct commands")
 	assert.True(t, strings.HasPrefix(liveStartCommand, "CMD "),
 		"control commands should use CMD prefix to distinguish from log lines")
-}
-
-func TestProcessMessages_AliasReadyGating(t *testing.T) {
-	cleanup := startMockLogsServer(t)
-	defer cleanup()
-
-	oldAliasReady := aliasReady
-	oldEventManager := eventManager
-	defer func() {
-		aliasReady = oldAliasReady
-		eventManager = oldEventManager
-	}()
-
-	aliasReady = make(chan struct{}) // NOT closed — processMessages should block
-	scCfg := &common.SCConfiguration{}
-	eventManager = metrics.NewPTPEventManager(resourcePrefix, pubsubTypes, nodeName, scCfg)
-	eventManager.MockTest(true)
-
-	serverConn, clientConn := net.Pipe()
-	defer func() { _ = clientConn.Close() }()
-
-	started := make(chan struct{})
-	done := make(chan struct{})
-	go func() {
-		close(started)
-		processMessages(serverConn)
-		close(done)
-	}()
-	<-started
-
-	select {
-	case <-done:
-		t.Fatal("processMessages should block while aliasReady is open")
-	case <-time.After(200 * time.Millisecond):
-	}
-
-	close(aliasReady)
-
-	_, _ = fmt.Fprintf(clientConn, "%s\n", liveStartCommand)
-	_ = clientConn.Close()
-
-	select {
-	case <-done:
-	case <-time.After(5 * time.Second):
-		t.Fatal("processMessages did not unblock after aliasReady closed")
-	}
 }
 
 func getMockOverrideFn() func(e v2.Event, d *channel.DataChan) error {
