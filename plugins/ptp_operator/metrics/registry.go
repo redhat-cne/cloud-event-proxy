@@ -242,7 +242,7 @@ func UpdateSyncStateMetrics(process, iface string, state ptp.SyncState) {
 		log.Errorf("wrong metrics are processed, ignoring interface %s with process %s", iface, process)
 		return
 	}
-	log.Debugf("UpdateSyncStateMetrics: process=%s iface=%s state=%s value=%.0f", process, iface, state, clockState)
+	log.Tracef("UpdateSyncStateMetrics: process=%s iface=%s state=%s value=%.0f", process, iface, state, clockState)
 	SyncState.With(prometheus.Labels{
 		"process": process, "node": ptpNodeName, "iface": iface}).Set(clockState)
 }
