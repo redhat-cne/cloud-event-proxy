@@ -22,6 +22,13 @@ func resetStore(ifaces ...string) {
 	}
 }
 
+// resetMissCache removes the given interfaces from the negative cache.
+func resetMissCache(ifaces ...string) {
+	for _, iface := range ifaces {
+		missCache.remove(iface)
+	}
+}
+
 // startMockDaemon starts an HTTP server that serves /port-aliases with the
 // given alias map. Returns a cleanup function that shuts down the server.
 func startMockDaemon(t *testing.T, aliases map[string]string) func() {
@@ -50,6 +57,7 @@ func TestSetAlias_And_GetAlias_CacheHit(t *testing.T) {
 func TestGetAlias_UnknownWithoutDaemon_ReturnRawName(t *testing.T) {
 	// No daemon running on :8081, so sync will fail and we fall back
 	// to the raw interface name.
+	defer resetMissCache("unknowniface99")
 	result := GetAlias("unknowniface99")
 	assert.Equal(t, "unknowniface99", result)
 }
@@ -146,6 +154,7 @@ func TestSyncFromDaemon_EmptyResponse(t *testing.T) {
 
 func TestGetAlias_AfterSyncFailure_ReturnsRawName(t *testing.T) {
 	// No daemon, no pre-populated alias — should fall back to raw name
+	defer resetMissCache("noexist0")
 	result := GetAlias("noexist0")
 	assert.Equal(t, "noexist0", result)
 }
@@ -204,4 +213,61 @@ func TestDebug_LogsAliases(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "expected ens9f0→ens9fx in debug output, got: %v", logged)
+}
+
+func TestNegativeCache_SkipsSyncForRecentMiss(t *testing.T) {
+	// First call triggers handleMiss (no daemon) and records the miss.
+	defer resetMissCache("negcache0")
+	result := GetAlias("negcache0")
+	assert.Equal(t, "negcache0", result)
+
+	// Start a daemon that serves the alias. If the negative cache works,
+	// the second GetAlias should NOT reach the daemon and should return
+	// the raw name.
+	aliases := map[string]string{"negcache0": "negcache0_alias"}
+	cleanup := startMockDaemon(t, aliases)
+	defer cleanup()
+	defer resetStore("negcache0")
+
+	result = GetAlias("negcache0")
+	assert.Equal(t, "negcache0", result, "negative cache should suppress daemon sync")
+}
+
+func TestNegativeCache_ExpiresAfterTTL(t *testing.T) {
+	origTTL := missTTL
+	missTTL = 50 * time.Millisecond
+	defer func() { missTTL = origTTL }()
+
+	defer resetMissCache("negttl0")
+
+	// First call: miss, no daemon — records in negative cache
+	result := GetAlias("negttl0")
+	assert.Equal(t, "negttl0", result)
+
+	// Wait for negative cache to expire
+	time.Sleep(60 * time.Millisecond)
+
+	// Start daemon with the alias — now the miss should retry and succeed
+	aliases := map[string]string{"negttl0": "negttl0_alias"}
+	cleanup := startMockDaemon(t, aliases)
+	defer cleanup()
+	defer resetStore("negttl0")
+
+	result = GetAlias("negttl0")
+	assert.Equal(t, "negttl0_alias", result, "negative cache should have expired, allowing re-sync")
+}
+
+func TestNegativeCache_ClearedBySetAlias(t *testing.T) {
+	defer resetMissCache("negset0")
+	defer resetStore("negset0")
+
+	// Trigger a miss to populate negative cache
+	result := GetAlias("negset0")
+	assert.Equal(t, "negset0", result)
+	assert.True(t, missCache.recentlyMissed("negset0"), "should be in negative cache after miss")
+
+	// SetAlias should clear the negative cache entry
+	SetAlias("negset0", "negset0_alias")
+	assert.False(t, missCache.recentlyMissed("negset0"), "SetAlias should clear negative cache")
+	assert.Equal(t, "negset0_alias", GetAlias("negset0"))
 }
