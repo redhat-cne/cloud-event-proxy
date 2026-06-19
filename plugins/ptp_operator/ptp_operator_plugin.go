@@ -116,6 +116,9 @@ func loadInitialPtp4lConfigs() {
 	for _, ptpConfigEvent := range configs {
 		processConfigCreate(ptpConfigEvent)
 	}
+	if _, err := alias.SyncFromDaemon(); err != nil {
+		log.Warnf("failed to sync aliases after loading initial configs: %v", err)
+	}
 }
 
 // processConfigCreate builds the PTP4lConfig from a PtpConfigUpdate (a parsed
@@ -180,9 +183,6 @@ func processConfigCreate(ptpConfigEvent *ptp4lconf.PtpConfigUpdate) {
 	}
 	ptp4lConfig.ProfileType = eventManager.GetProfileType(ptp4lConfig.Profile)
 	eventManager.AddPTPConfig(ptpConfigFileName, ptp4lConfig)
-	if _, err := alias.SyncFromDaemon(); err != nil {
-		log.Warnf("failed to sync aliases for config %s: %v", *ptpConfigEvent.Name, err)
-	}
 }
 
 // startPtpConfigSync starts the configmap watcher and blocks until the first
