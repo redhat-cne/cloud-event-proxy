@@ -205,6 +205,20 @@ func DeletedPTPMetrics(clockType, processName, eventResourceName string) {
 		"process": processName, "node": ptpNodeName, "iface": eventResourceName})
 }
 
+// DeleteClockClassMetricsForConfig removes clock class metrics for a deleted config.
+func DeleteClockClassMetricsForConfig(process, configName string) {
+	ClockClassMetrics.Delete(prometheus.Labels{
+		"process": process,
+		"config":  configName,
+		"node":    ptpNodeName,
+	})
+}
+
+// DeleteAllClockClassMetricsForNode removes all clock class metrics for the current node.
+func DeleteAllClockClassMetricsForNode() {
+	ClockClassMetrics.DeletePartialMatch(prometheus.Labels{"node": ptpNodeName})
+}
+
 // DeleteThresholdMetrics ... delete threshold metrics
 func DeleteThresholdMetrics(profile string) {
 	Threshold.Delete(prometheus.Labels{
@@ -218,11 +232,12 @@ func DeleteThresholdMetrics(profile string) {
 // UpdateSyncStateMetrics ... update sync state metrics
 func UpdateSyncStateMetrics(process, iface string, state ptp.SyncState) {
 	var clockState float64
-	if state == ptp.LOCKED {
+	switch state {
+	case ptp.LOCKED:
 		clockState = float64(types.LOCKED)
-	} else if state == ptp.FREERUN {
+	case ptp.FREERUN:
 		clockState = float64(types.FREERUN)
-	} else if state == ptp.HOLDOVER {
+	case ptp.HOLDOVER:
 		clockState = float64(types.HOLDOVER)
 	}
 	// prevent reporting wrong metrics
