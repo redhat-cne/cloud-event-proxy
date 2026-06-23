@@ -518,9 +518,9 @@ func listenToSocket(wg *sync.WaitGroup) {
 }
 
 func processMessages(c net.Conn) {
-	log.Debugf("processMessages: new connection accepted from %v", c.RemoteAddr())
+	log.Tracef("processMessages: new connection accepted from %v", c.RemoteAddr())
 	<-aliasReady // wait until alias found and this is closed
-	log.Debug("processMessages: aliasReady unblocked, processing can begin")
+	log.Info("processMessages: aliasReady unblocked, processing can begin")
 	// Request a full state re-emit in a separate goroutine so the scanner
 	// can start reading immediately. The /emit-logs handler writes replay
 	// data back through the EventHandler's socket connection, which CEP
@@ -530,12 +530,12 @@ func processMessages(c net.Conn) {
 	// kernel buffer fills. The daemon's liveGate independently ensures no
 	// live data flows until replay completes, so async is safe.
 	if eventManager != nil {
-		log.Debug("processMessages: firing async TriggerLogs")
+		log.Trace("processMessages: firing async TriggerLogs")
 		go func() {
 			if err := eventManager.TriggerLogs(); err != nil {
 				log.Warnf("failed to trigger logs on new connection: %v", err)
 			} else {
-				log.Debug("processMessages: TriggerLogs completed successfully")
+				log.Trace("processMessages: TriggerLogs completed successfully")
 			}
 		}()
 	}
@@ -543,20 +543,20 @@ func processMessages(c net.Conn) {
 	for {
 		ok := scanner.Scan()
 		if !ok {
-			log.Debugf("processMessages: scanner returned false (conn closed or error), breaking")
+			log.Errorf("processMessages: scanner returned false (conn closed or error), breaking")
 			break
 		}
 		msg := scanner.Text()
 		if msg == restartCommand {
-			log.Debug("processMessages: received CMD RESTART")
+			log.Trace("processMessages: received CMD RESTART")
 			restartProcess("restart requested by daemon via socket")
 			return // unreachable after exec
 		}
 		if msg == liveStartCommand {
-			log.Debug("processMessages: received LIVE_START marker - live data follows")
+			log.Trace("processMessages: received LIVE_START marker - live data follows")
 			continue
 		}
-		log.Debugf("processMessages: dispatching to ExtractMetrics: %.120s", msg)
+		log.Tracef("processMessages: dispatching to ExtractMetrics: %.120s", msg)
 		eventManager.ExtractMetrics(msg)
 	}
 }
