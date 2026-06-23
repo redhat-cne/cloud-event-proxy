@@ -261,13 +261,23 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			// TODO: understand if the config is GM /BC /OC
 			switch interfaceName { //note: this is not  interface type
 			case ClockRealTime: // CLOCK_REALTIME is active slave interface
-				// CLOCK_REALTIME state is determined solely by phc2sys offset vs
-				// threshold. Do not override syncState based on T-BC FSM state;
-				// doing so creates a dual-publisher conflict where phc2sys reports
-				// LOCKED while T-BC forces FREERUN, causing event oscillation.
+				// O-RAN O-Cloud API v04.00 Table 37: E3 = worst_of(phc2sys_state, E1_state).
+				// phc2sys is the single publisher — but if the upstream PHC is not
+				// traceable (E1 != LOCKED), E3 cannot be LOCKED even when
+				// phc2sys offset is within threshold.
+				// Skip for T-GM profiles (masterOffsetSource == ts2phc): T-GM uses
+				// the lastOverallGMState mechanism above instead.
+				if masterOffsetSource != ts2phcProcessName {
+					mainClockKey := ptpStats.GetMainClockName()
+					if e1Stat, ok := ptpStats[mainClockKey]; ok {
+						e1State := e1Stat.LastSyncState()
+						if e1State == ptp.FREERUN || e1State == ptp.HOLDOVER {
+							syncState = OverallState(syncState, e1State)
+						}
+					}
+				}
 				//  for HA we can not rely on master ;since there will be 2 or more leaders; this condition will be skipped
 				// ptpStats clock realtime has its own stats objects
-				//TODO: NEED TO VISIT THIS LOGIC FOR UNASSISTED BOUNDARY CLOCK
 				if r, ok := ptpStats[master]; ok && r.Role() == types.SLAVE { // publish event only if the master role is active
 					// when related slave is faulty the holdover will make clock clear time as FREERUN
 					p.GenPTPEvent(profileName, ptpStats[ClockRealTime], interfaceName, int64(ptpOffset), syncState, ptp.OsClockSyncStateChange)
