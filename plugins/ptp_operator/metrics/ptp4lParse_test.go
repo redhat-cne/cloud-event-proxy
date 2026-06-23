@@ -41,7 +41,7 @@ func TestHandleHoldOverStateExpiryTransitionsToFreerun(t *testing.T) {
 	ptpStats[master].SetLastSyncState(ptp.HOLDOVER)
 
 	closeCh := make(chan struct{})
-	go handleHoldOverState(mgr, nil, configName, profileName, 1, "ens5fx", closeCh)
+	go handleHoldOverState(mgr, configName, profileName, 1, "ens5fx", closeCh)
 	time.Sleep(1500 * time.Millisecond)
 
 	assert.Equal(t, ptp.FREERUN, ptpStats[master].LastSyncState())
@@ -69,7 +69,7 @@ func TestHandleHoldOverStateFaultHoldoverExpiry(t *testing.T) {
 	ptpStats[master].SetLastSyncState(ptp.HOLDOVER)
 
 	closeCh := make(chan struct{})
-	go handleHoldOverState(mgr, nil, configName, profileName, 1, "ens3fx", closeCh)
+	go handleHoldOverState(mgr, configName, profileName, 1, "ens3fx", closeCh)
 	time.Sleep(1500 * time.Millisecond)
 
 	assert.Equal(t, ptp.FREERUN, ptpStats[master].LastSyncState())
@@ -90,7 +90,7 @@ func TestHandleHoldOverStateCancelled(t *testing.T) {
 
 	closeCh := make(chan struct{})
 	close(closeCh)
-	go handleHoldOverState(mgr, nil, configName, testProfileName, 1, "ens5fx", closeCh)
+	go handleHoldOverState(mgr, configName, testProfileName, 1, "ens5fx", closeCh)
 	time.Sleep(200 * time.Millisecond)
 
 	assert.Equal(t, ptp.HOLDOVER, ptpStats[master].LastSyncState())
@@ -110,7 +110,7 @@ func TestHandleHoldOverStateExpiryNoOpWhenNotHoldover(t *testing.T) {
 	ptpStats[master].SetLastSyncState(ptp.LOCKED)
 
 	closeCh := make(chan struct{})
-	go handleHoldOverState(mgr, nil, configName, testProfileName, 1, "ens5fx", closeCh)
+	go handleHoldOverState(mgr, configName, testProfileName, 1, "ens5fx", closeCh)
 	time.Sleep(1500 * time.Millisecond)
 
 	assert.Equal(t, ptp.LOCKED, ptpStats[master].LastSyncState())
@@ -172,7 +172,7 @@ func TestSlaveToMasterHoldoverTimerRecovery(t *testing.T) {
 	assert.Equal(t, ptp.HOLDOVER, ptpStats[master].LastSyncState())
 
 	closeCh := make(chan struct{})
-	go handleHoldOverState(mgr, nil, configName, profileName, 1, "ens5fx", closeCh)
+	go handleHoldOverState(mgr, configName, profileName, 1, "ens5fx", closeCh)
 	time.Sleep(1500 * time.Millisecond)
 	assert.Equal(t, ptp.FREERUN, ptpStats[master].LastSyncState())
 }
@@ -247,7 +247,7 @@ func TestStartHoldoverTimerWithNilPtpOptsStillRecovers(t *testing.T) {
 	ptpStats[master].SetAlias("ens5fx")
 	ptpStats[master].SetLastSyncState(ptp.HOLDOVER)
 
-	mgr.startHoldoverTimer(nil, configName, profileName, "ens5fx")
+	mgr.startHoldoverTimer(configName, profileName, "ens5fx")
 	time.Sleep(1500 * time.Millisecond)
 
 	assert.Equal(t, ptp.FREERUN, ptpStats[master].LastSyncState())
