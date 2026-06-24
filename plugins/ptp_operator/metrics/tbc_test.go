@@ -309,7 +309,7 @@ func TestTBCFaultyPortSpuriousFreerun(t *testing.T) {
 	eventManager.ResetMockEvent()
 	t.Logf("--- STEP 3: SLAVE to FAULTY ---")
 
-	// Step 3: SLAVE to FAULTY — triggers the bug
+	// Step 3: SLAVE to FAULTY — would have triggered the bug before the fix
 	ptp4lFaulty := "ptp4l[3263.061]: [ptp4l.0.config:5] port 1 (ens3f2): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)"
 	t.Logf("Input: %s", ptp4lFaulty)
 	t.Logf("ProfileType at time of parsing: %v (should be TBC but is NONE due to race)",
