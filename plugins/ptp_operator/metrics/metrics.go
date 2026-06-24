@@ -380,7 +380,7 @@ func (p *PTPEventManager) processDownEvent(profileName, processName string, ptpS
 			}
 		}
 		if s, ok := ptpStats[ClockRealTime]; ok {
-			if t, ok2 := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok2 && t.Phc2SysEnabled() {
+			if t := p.PtpConfigMapUpdates.LookupPtpProcessOpts(profileName); t != nil && t.Phc2SysEnabled() {
 				p.GenPTPEvent(profileName, s, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
 			}
 		}

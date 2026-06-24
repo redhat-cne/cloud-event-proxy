@@ -139,6 +139,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 					}
 					// delete all metrics related to process
 					ptpMetrics.DeleteProcessStatusMetricsForConfig(nodeName, "", "")
+					ptpMetrics.DeleteAllClockClassMetricsForNode()
 					// delete all metrics related to ptp ha if haProfile is deleted
 					if _, haProfiles := eventManager.HAProfiles(); len(haProfiles) > 0 {
 						for _, p := range haProfiles {
@@ -528,6 +529,7 @@ func processPtp4lConfigFileUpdates() {
 				ptpConfigFileName := ptpTypes.ConfigName(*ptpConfigEvent.Name)
 				ptp4lConfig := eventManager.GetPTPConfig(ptpConfigFileName)
 				log.Infof("deleting config %s with profile %s\n", *ptpConfigEvent.Name, ptp4lConfig.Profile)
+				ptpMetrics.DeleteClockClassMetricsForConfig(ptp4lProcessName, string(ptpConfigFileName))
 				ptpStats := eventManager.GetStats(ptpConfigFileName)
 				// to avoid new one getting created , make a copy of this stats
 				ptpStats.SetConfigAsDeleted(true)
@@ -597,10 +599,6 @@ func processPtp4lConfigFileUpdates() {
 									masterResource := fmt.Sprintf("%s/%s", p.Alias(), MasterClockType)
 									eventManager.PublishEvent(ptp.FREERUN, ptpMetrics.FreeRunOffsetValue, masterResource, ptp.GnssStateChange)
 								}
-							}
-							if ptpMetrics.ClockClassMetrics != nil {
-								ptpMetrics.ClockClassMetrics.Delete(prometheus.Labels{
-									"process": ptp4lProcessName, "config": string(ptpConfigFileName), "node": eventManager.NodeName()})
 							}
 							ptpMetrics.DeletedPTPMetrics(MasterClockType, ts2PhcProcessName, p.Alias())
 							p.DeleteAllMetrics([]*prometheus.GaugeVec{ptpMetrics.PtpOffset, ptpMetrics.SyncState})

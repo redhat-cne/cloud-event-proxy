@@ -138,18 +138,32 @@ func (p *PTPEventManager) ParsePTP4l(processName, configName, profileName, outpu
 				ptpStats[master].SetLastSyncState(syncState)
 				p.PublishEvent(syncState, ptpStats[master].LastOffset(), masterResource, ptp.PtpStateChange)
 				UpdateSyncStateMetrics(ptpStats[master].ProcessName(), alias, syncState)
-				if ptpOpts, ok := p.PtpConfigMapUpdates.PtpProcessOpts[profileName]; ok && ptpOpts != nil {
-					p.maybePublishOSClockSyncStateChangeEvent(ptpOpts, configName, profileName)
-					threshold := p.PtpThreshold(profileName, true)
-					if p.mock {
-						log.Infof("mock holdover is set to %s", ptpStats[MasterClockType].Alias())
-					} else {
-						go handleHoldOverState(p, ptpOpts, configName, profileName, threshold.HoldOverTimeout, ptpStats[MasterClockType].Alias(), threshold.Close)
-					}
-				}
+				ptpOpts := p.GetPtpProcessOpts(profileName, configName)
+				p.startHoldoverTimer(ptpOpts, configName, profileName, alias)
+			} else {
+				log.Warnf("holdover timer not started: master ProcessName %s != masterOffsetSource %s (profile=%s config=%s)",
+					ptpStats[master].ProcessName(), masterOffsetSource, profileName, configName)
 			}
 		}
 	}
+}
+
+func (p *PTPEventManager) startHoldoverTimer(
+	ptpOpts *ptpConfig.PtpProcessOpts, configName, profileName, alias string) {
+	if ptpOpts != nil {
+		p.maybePublishOSClockSyncStateChangeEvent(ptpOpts, configName, profileName)
+	} else {
+		log.Warnf("holdover timer: PtpProcessOpts missing for profile=%s config=%s (available=%v), continuing with default threshold",
+			profileName, configName, p.PtpConfigMapUpdates.PtpProcessOpts)
+	}
+	if p.mock {
+		log.Infof("holdover timer not started: mock mode (profile=%s config=%s alias=%s)", profileName, configName, alias)
+		return
+	}
+	threshold := p.PtpThreshold(profileName, true)
+	log.Infof("starting holdover timer: profile=%s config=%s alias=%s timeout=%ds",
+		profileName, configName, alias, threshold.HoldOverTimeout)
+	go handleHoldOverState(p, ptpOpts, configName, profileName, threshold.HoldOverTimeout, alias, threshold.Close)
 }
 
 func handleHoldOverState(ptpManager *PTPEventManager,
@@ -164,25 +178,34 @@ func handleHoldOverState(ptpManager *PTPEventManager,
 	}()
 	select {
 	case <-c:
-		log.Infof("call received to close holderover timeout")
+		log.Infof("holdover timer cancelled: profile=%s config=%s alias=%s", ptpProfileName, configName, ptpIFace)
 		return
 	case <-time.After(time.Duration(holdoverTimeout) * time.Second):
-		log.Infof("holdover time expired for interface %s", ptpIFace)
+		log.Infof("holdover timer expired: profile=%s config=%s alias=%s timeout=%ds", ptpProfileName, configName, ptpIFace, holdoverTimeout)
 		ptpStats := ptpManager.GetStats(types.ConfigName(configName))
-		if mStats, found := ptpStats[master]; found {
-			if mStats.LastSyncState() == ptp.HOLDOVER { // if it was still in holdover while timing out then switch to FREERUN
-				log.Infof("HOLDOVER timeout after %d secs,setting clock state to FREERUN from HOLDOVER state for %s",
-					holdoverTimeout, master)
-				masterResource := fmt.Sprintf("%s/%s", mStats.Alias(), MasterClockType)
-				ptpStats[MasterClockType].SetLastSyncState(ptp.FREERUN)
-				ptpManager.PublishEvent(ptp.FREERUN, ptpStats[MasterClockType].LastOffset(), masterResource, ptp.PtpStateChange)
-				UpdateSyncStateMetrics(mStats.ProcessName(), mStats.Alias(), ptp.FREERUN)
-				// don't check of os clock sync state if phc2 not enabled
-				ptpManager.maybePublishOSClockSyncStateChangeEvent(ptpOpts, configName, ptpProfileName)
-			}
-		} else {
-			log.Errorf("failed to switch from holdover, could not find ptpStats for interface %s", ptpIFace)
+		mStats, found := ptpStats[master]
+		if !found {
+			log.Errorf("failed to switch from holdover, could not find ptpStats for config=%s profile=%s alias=%s", configName, ptpProfileName, ptpIFace)
+			return
 		}
+		if mStats.LastSyncState() != ptp.HOLDOVER {
+			log.Infof("holdover timer expired but state is %s (not HOLDOVER), no-op: profile=%s config=%s alias=%s",
+				mStats.LastSyncState(), ptpProfileName, configName, ptpIFace)
+			return
+		}
+		alias := mStats.Alias()
+		if alias == "" {
+			log.Errorf("failed to switch from holdover, empty alias for config=%s profile=%s", configName, ptpProfileName)
+			return
+		}
+		log.Infof("holdover expired, transitioning to FREERUN: profile=%s config=%s alias=%s timeout=%ds",
+			ptpProfileName, configName, alias, holdoverTimeout)
+		masterResource := fmt.Sprintf("%s/%s", alias, MasterClockType)
+		mStats.SetLastSyncState(ptp.FREERUN)
+		ptpManager.PublishEvent(ptp.FREERUN, mStats.LastOffset(), masterResource, ptp.PtpStateChange)
+		UpdateSyncStateMetrics(mStats.ProcessName(), alias, ptp.FREERUN)
+		// don't check of os clock sync state if phc2 not enabled
+		ptpManager.maybePublishOSClockSyncStateChangeEvent(ptpOpts, configName, ptpProfileName)
 	}
 }
 
