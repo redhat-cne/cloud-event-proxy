@@ -497,16 +497,12 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 	// when ptp4l updates it in the T-BC mode
 	UpdateSyncStateMetrics(ts2phcProcessName, alias, ptpSyncState)
 
-	// CLOCK_REALTIME state is managed exclusively by phc2sys log processing.
-	// When the T-BC chain loses its upstream source (FREERUN), the PHC will
-	// eventually drift, phc2sys will detect the growing offset, and
-	// CLOCK_REALTIME will transition to FREERUN naturally through the
-	// threshold-based mechanism in extractRegularMetrics.
-	//
-	// Forcing CLOCK_REALTIME to FREERUN here based on the T-BC state creates
-	// a dual-publisher conflict: ParseTBCLogs overrides CLOCK_REALTIME to
-	// FREERUN while phc2sys reports LOCKED, causing rapid oscillation and
-	// incorrect state visible to event consumers.
+	// Do not set CLOCK_REALTIME / emit E3 (OsClockSyncStateChange) here.
+	// E3 is published exclusively from the phc2sys log path in ExtractMetrics,
+	// where it is derived as worst_of(phc2sys_state, E1_state) per O-RAN
+	// O-Cloud API v04.00 Table 37. When T-BC enters FREERUN, the E1 state
+	// change is picked up on the next phc2sys sample and E3 is downgraded
+	// accordingly.
 }
 
 // ParseDPLLLogs ... parse logs for various events
