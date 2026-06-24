@@ -123,7 +123,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		if status, err := p.parsePTPStatus(output, fields); err == nil {
 			log.Debugf("ExtractMetrics: process status detected: process=%s config=%s status=%d", processName, configName, status)
 			if status == PtpProcessDown {
-				p.processDownEvent(profileName, processName, ptpStats, ptp4lCfg.ProfileType)
+				p.processDownEvent(profileName, processName, configName, ptpStats, ptp4lCfg.ProfileType)
 			}
 		} else {
 			log.Errorf("error in process status %s: %v", output, err)
@@ -364,7 +364,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		ptpInterface, ptp4lCfg, ptpStats)
 }
 
-func (p *PTPEventManager) processDownEvent(profileName, processName string, ptpStats stats.PTPStats, profileType ptp4lconf.PtpProfileType) {
+func (p *PTPEventManager) processDownEvent(profileName, processName, configName string, ptpStats stats.PTPStats, profileType ptp4lconf.PtpProfileType) {
 	// if the process is responsible to set master offset
 	if processName == ts2phcProcessName {
 		//  update metrics for all interface defined by ts2phc
@@ -385,21 +385,36 @@ func (p *PTPEventManager) processDownEvent(profileName, processName string, ptpS
 			}
 		}
 	} else { // other profiles
-		// T-BC: when ptp4l dies, fire FREERUN for the T-BC aggregate resource.
-		// Without this, the T-BC stats key is never set to FREERUN (DPLL/ts2phc
-		// keep T-BC-STATUS at s2), so ParseTBCLogs never detects a state
-		// transition and the recovery LOCKED event is never published.
+		// T-BC: when ptp4l dies, update the T-BC aggregate resource so
+		// ParseTBCLogs detects a state transition on recovery.
+		// TR ptp4l (has phc2sys): DPLL stays locked → fire HOLDOVER + start timer
+		// TT ptp4l (no phc2sys): downstream clients lose sync → fire FREERUN
 		if profileType == ptp4lconf.TBC && processName == ptp4lProcessName {
 			tbcKey := types.IFace(stats.TBCMainClockName)
 			if tbcStat, ok := ptpStats[tbcKey]; ok && tbcStat.Alias() != "" {
 				masterResource := fmt.Sprintf("%s/%s", tbcStat.Alias(), MasterClockType)
-				p.GenPTPEvent(profileName, tbcStat, masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
+				ptpOpts := p.PtpConfigMapUpdates.LookupPtpProcessOpts(profileName)
+				isTR := ptpOpts != nil && ptpOpts.Phc2SysEnabled()
+				if isTR {
+					p.GenPTPEvent(profileName, tbcStat, masterResource, FreeRunOffsetValue, ptp.HOLDOVER, ptp.PtpStateChange)
+					p.startTBCHoldoverTimer(ptpOpts, configName, profileName, tbcStat.Alias())
+				} else {
+					p.GenPTPEvent(profileName, tbcStat, masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
+				}
 			}
 		}
 		if masterOffsetSource == processName {
 			if ptpStats[master].Alias() != "" {
 				masterResource := fmt.Sprintf("%s/%s", ptpStats[master].Alias(), MasterClockType)
 				p.GenPTPEvent(profileName, ptpStats[master], masterResource, FreeRunOffsetValue, ptp.FREERUN, ptp.PtpStateChange)
+			}
+		}
+		// For T-BC TR ptp4l kill, do not fire OsClockSyncStateChange —
+		// DPLL keeps PHC locked, CLOCK_REALTIME stays synced.
+		if profileType == ptp4lconf.TBC {
+			ptpOpts := p.PtpConfigMapUpdates.LookupPtpProcessOpts(profileName)
+			if ptpOpts != nil && ptpOpts.Phc2SysEnabled() {
+				return
 			}
 		}
 		if s, ok := ptpStats[ClockRealTime]; ok {

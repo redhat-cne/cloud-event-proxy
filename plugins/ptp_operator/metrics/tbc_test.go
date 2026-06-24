@@ -397,19 +397,23 @@ func TestTBCOffsetMetricUpdatedEveryLog(t *testing.T) {
 	}
 }
 
-// TestTBCProcessDownEventFiresFreerun verifies that killing ptp4l on a T-BC
-// profile sets the T-BC stats key to FREERUN and publishes a ptp-state-change
-// event, and that subsequent T-BC-STATUS s2 publishes a LOCKED event.
-// Regression test for OCPBUGS-85330.
-func TestTBCProcessDownEventFiresFreerun(t *testing.T) {
+// TestTBCProcessDownEventTR verifies that killing TR ptp4l (has phc2sys) on
+// a T-BC profile sets the T-BC stats key to HOLDOVER (DPLL stays locked)
+// and publishes a ptp-state-change HOLDOVER event. Subsequent T-BC-STATUS s2
+// publishes a LOCKED event. No OsClockSyncStateChange should fire.
+// Regression test for OCPBUGS-85330 / CNF-24539.
+func TestTBCProcessDownEventTR(t *testing.T) {
 	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
 	eventManager.MockTest(true)
 
 	configName = "ptp4l.1.config"
 	tbcProfile := "tbc-tr"
 
+	phc2sysOpts := "-a -r -r -n 24"
 	eventManager.PtpConfigMapUpdates.TBCProfiles = []string{tbcProfile}
-	eventManager.PtpConfigMapUpdates.PtpProcessOpts = make(map[string]*ptpConfig.PtpProcessOpts)
+	eventManager.PtpConfigMapUpdates.PtpProcessOpts = map[string]*ptpConfig.PtpProcessOpts{
+		tbcProfile: {Phc2Opts: &phc2sysOpts},
+	}
 
 	ptp4lCfg := &ptp4lconf.PTP4lConfig{
 		Name:        configName,
@@ -434,21 +438,25 @@ func TestTBCProcessDownEventFiresFreerun(t *testing.T) {
 	ptpStats[tbcKey].SetAlias("enox")
 	ptpStats[tbcKey].SetLastSyncState(ptp.LOCKED)
 
-	// Step 1: Simulate ptp4l process down (PTP_PROCESS_STATUS:0)
+	// Step 1: Simulate TR ptp4l process down (PTP_PROCESS_STATUS:0)
 	downLog := "ptp4l[1780430740]:[ptp4l.1.config] PTP_PROCESS_STATUS:0"
 	eventManager.ResetMockEvent()
 	eventManager.ExtractMetrics(downLog)
 
-	// Verify T-BC stats key is now FREERUN
-	assert.Equal(t, ptp.FREERUN, ptpStats[tbcKey].LastSyncState(),
-		"T-BC stats should be FREERUN after ptp4l down")
+	// Verify T-BC stats key is now HOLDOVER (not FREERUN — DPLL stays locked)
+	assert.Equal(t, ptp.HOLDOVER, ptpStats[tbcKey].LastSyncState(),
+		"T-BC stats should be HOLDOVER after TR ptp4l down")
 
 	// Verify a PtpStateChange event was published
 	mockEvents := eventManager.GetMockEvent()
 	assert.Contains(t, mockEvents, ptp.PtpStateChange,
-		"PtpStateChange event should fire on ptp4l down for T-BC")
+		"PtpStateChange event should fire on TR ptp4l down for T-BC")
 
-	// Step 2: Simulate T-BC-STATUS s2 arriving (DPLL still locked)
+	// Verify no OsClockSyncStateChange was published (DPLL keeps CLOCK_REALTIME synced)
+	assert.NotContains(t, mockEvents, ptp.OsClockSyncStateChange,
+		"OsClockSyncStateChange should NOT fire for TR ptp4l kill on T-BC")
+
+	// Step 2: Simulate T-BC-STATUS s2 arriving (DPLL still locked, ptp4l recovered)
 	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
 	tbcLog := "T-BC[1780430800]:[ts2phc.1.config] ens2f0 offset 0 T-BC-STATUS s2"
 	output := replacer.Replace(tbcLog)
@@ -460,4 +468,55 @@ func TestTBCProcessDownEventFiresFreerun(t *testing.T) {
 	// Verify T-BC stats key transitions back to LOCKED
 	assert.Equal(t, ptp.LOCKED, ptpStats[tbcKey].LastSyncState(),
 		"T-BC stats should be LOCKED after T-BC-STATUS s2")
+}
+
+// TestTBCProcessDownEventTT verifies that killing TT ptp4l (no phc2sys) on
+// a T-BC profile fires FREERUN (downstream clients lose sync).
+func TestTBCProcessDownEventTT(t *testing.T) {
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	eventManager.MockTest(true)
+
+	configName = "ptp4l.0.config"
+	tbcProfile := "tbc-tt"
+
+	eventManager.PtpConfigMapUpdates.TBCProfiles = []string{tbcProfile}
+	eventManager.PtpConfigMapUpdates.PtpProcessOpts = map[string]*ptpConfig.PtpProcessOpts{
+		tbcProfile: {},
+	}
+
+	ptp4lCfg := &ptp4lconf.PTP4lConfig{
+		Name:        configName,
+		Profile:     tbcProfile,
+		ProfileType: ptp4lconf.TBC,
+		Interfaces: []*ptp4lconf.PTPInterface{
+			{
+				Name:     "ens2f1",
+				PortID:   1,
+				PortName: "port 1",
+				Role:     types.MASTER,
+			},
+		},
+	}
+	eventManager.AddPTPConfig(types.ConfigName(configName), ptp4lCfg)
+
+	ptpStats := eventManager.GetStats(types.ConfigName(configName))
+	ptpStats[metrics.MasterClockType] = &stats.Stats{}
+	ptpStats[metrics.MasterClockType].SetAlias("enox")
+	tbcKey := types.IFace(stats.TBCMainClockName)
+	ptpStats[tbcKey] = &stats.Stats{}
+	ptpStats[tbcKey].SetAlias("enox")
+	ptpStats[tbcKey].SetLastSyncState(ptp.LOCKED)
+
+	// Simulate TT ptp4l process down
+	downLog := "ptp4l[1780430740]:[ptp4l.0.config] PTP_PROCESS_STATUS:0"
+	eventManager.ResetMockEvent()
+	eventManager.ExtractMetrics(downLog)
+
+	// Verify T-BC stats key is FREERUN (TT has no DPLL protection for downstream)
+	assert.Equal(t, ptp.FREERUN, ptpStats[tbcKey].LastSyncState(),
+		"T-BC stats should be FREERUN after TT ptp4l down")
+
+	mockEvents := eventManager.GetMockEvent()
+	assert.Contains(t, mockEvents, ptp.PtpStateChange,
+		"PtpStateChange event should fire on TT ptp4l down for T-BC")
 }
