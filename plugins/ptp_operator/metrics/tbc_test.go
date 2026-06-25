@@ -232,10 +232,11 @@ func TestTBCProfileTypeSetBeforeTBCProfilesPopulated(t *testing.T) {
 		"BUG REPRODUCED: stored ProfileType remains NONE even after TBCProfiles is populated")
 }
 
-// TestTBCFaultyPortSpuriousFreerun reproduces the end-to-end bug: when a ptp4l port
-// goes SLAVE to FAULTY on a TBC profile that wasn't detected as TBC (due to the startup
-// race), a spurious FREERUN event is published for CLOCK_REALTIME even though phc2sys
-// is still locked.
+// TestTBCFaultyPortSpuriousFreerun verifies that when a ptp4l port goes
+// SLAVE to FAULTY on a TBC profile that wasn't detected as TBC (due to a
+// startup race), no spurious OsClockSyncStateChange FREERUN event is emitted.
+// This was a known bug when maybePublishOSClockSyncStateChangeEvent existed;
+// now that E3 is published exclusively from the phc2sys path, the bug is fixed.
 func TestTBCFaultyPortSpuriousFreerun(t *testing.T) {
 	profileName := "tsc-holdover"
 	cfgName := "ptp4l.0.config"
@@ -308,7 +309,7 @@ func TestTBCFaultyPortSpuriousFreerun(t *testing.T) {
 	eventManager.ResetMockEvent()
 	t.Logf("--- STEP 3: SLAVE to FAULTY ---")
 
-	// Step 3: SLAVE to FAULTY — triggers the bug
+	// Step 3: SLAVE to FAULTY — would have triggered the bug before the fix
 	ptp4lFaulty := "ptp4l[3263.061]: [ptp4l.0.config:5] port 1 (ens3f2): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)"
 	t.Logf("Input: %s", ptp4lFaulty)
 	t.Logf("ProfileType at time of parsing: %v (should be TBC but is NONE due to race)",
@@ -337,9 +338,203 @@ func TestTBCFaultyPortSpuriousFreerun(t *testing.T) {
 	t.Logf("--- RESULT ---")
 	t.Logf("Spurious OsClockSyncStateChange emitted: %v", hasOsClockFreerun)
 
-	assert.True(t, hasOsClockFreerun,
-		"BUG REPRODUCED: spurious OsClockSyncStateChange FREERUN event emitted on FAULTY "+
-			"because the TBC profile was not detected due to startup ordering")
+	assert.False(t, hasOsClockFreerun,
+		"No spurious OsClockSyncStateChange should be emitted: E3 is published "+
+			"exclusively from the phc2sys path, not from the holdover timer")
+}
+
+// TestE3IncorporatesE1State verifies that E3 (CLOCK_REALTIME) incorporates
+// E1 (PTP Lock State / upstream traceability) per O-RAN O-Cloud API v04.00
+// Table 37. ParseTBCLogs does NOT publish E3 directly; only the phc2sys path
+// publishes E3, applying worst_of(phc2sys_state, E1_state).
+func TestE3IncorporatesE1State(t *testing.T) {
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	eventManager.MockTest(true)
+
+	configName = "ptp4l.0.config"
+	tbcProfile := "tbc-test-profile"
+
+	eventManager.PtpConfigMapUpdates.TBCProfiles = []string{tbcProfile}
+
+	ptp4lCfg := &ptp4lconf.PTP4lConfig{
+		Name:        configName,
+		Profile:     tbcProfile,
+		ProfileType: ptp4lconf.TBC,
+		Interfaces: []*ptp4lconf.PTPInterface{
+			{
+				Name:     "ens2f0",
+				PortID:   1,
+				PortName: "port 1",
+				Role:     types.SLAVE,
+			},
+		},
+	}
+	eventManager.AddPTPConfig(types.ConfigName(configName), ptp4lCfg)
+
+	ptpStats := eventManager.GetStats(types.ConfigName(configName))
+	ptpStats[metrics.MasterClockType] = &stats.Stats{}
+	ptpStats[metrics.MasterClockType].SetAlias("ens2f0")
+
+	// Step 1: T-BC-STATUS s2 (LOCKED) — establish TBC state
+	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
+	tbcLockedLog := fmt.Sprintf("T-BC[1743005894]:[%s] ens2f0 offset 5 T-BC-STATUS s2", configName)
+	output := replacer.Replace(tbcLockedLog)
+	fields := strings.Fields(output)
+	eventManager.ParseTBCLogs("T-BC", configName, output, fields, ptpStats)
+
+	// Step 2: phc2sys CLOCK_REALTIME s2 (LOCKED) — establish OS clock state
+	phc2sysLocked := fmt.Sprintf("phc2sys[3263.065]: [%s] CLOCK_REALTIME phc offset 3 s2 freq -20217 delay 536", configName)
+	eventManager.ExtractMetrics(phc2sysLocked)
+
+	cStat, ok := ptpStats[metrics.ClockRealTime]
+	assert.True(t, ok, "CLOCK_REALTIME stats should exist after phc2sys line")
+	assert.Equal(t, ptp.LOCKED, cStat.LastSyncState(), "CLOCK_REALTIME should be LOCKED from phc2sys")
+
+	// Step 3: T-BC-STATUS s0 (FREERUN) — upstream lost, but phc2sys still locked
+	eventManager.ResetMockEvent()
+	tbcFreerunLog := fmt.Sprintf("T-BC[1743005900]:[%s] ens2f0 offset 123 T-BC-STATUS s0", configName)
+	output = replacer.Replace(tbcFreerunLog)
+	fields = strings.Fields(output)
+	eventManager.ParseTBCLogs("T-BC", configName, output, fields, ptpStats)
+
+	// Verify T-BC master resource is FREERUN (the T-BC event itself should fire)
+	tbcKey := types.IFace(stats.TBCMainClockName)
+	assert.Equal(t, ptp.FREERUN, ptpStats[tbcKey].LastSyncState(),
+		"T-BC master resource should be FREERUN")
+
+	// Verify CLOCK_REALTIME was NOT overridden — it must stay LOCKED
+	assert.Equal(t, ptp.LOCKED, cStat.LastSyncState(),
+		"CLOCK_REALTIME must remain LOCKED; ParseTBCLogs should not override phc2sys")
+
+	// Verify no OsClockSyncStateChange was emitted
+	assert.NotContains(t, eventManager.GetMockEvent(), ptp.OsClockSyncStateChange,
+		"ParseTBCLogs must not emit OsClockSyncStateChange when T-BC goes FREERUN")
+
+	// Step 4: Next phc2sys sample — E1 is FREERUN, phc2sys reports s2 with
+	// small offset. Per O-RAN Table 37 row 3, E3 = worst_of(LOCKED, FREERUN) = FREERUN.
+	eventManager.ResetMockEvent()
+	phc2sysAfterE1Freerun := fmt.Sprintf(
+		"phc2sys[3264.065]: [%s] CLOCK_REALTIME phc offset 3 s2 freq -20217 delay 536",
+		configName,
+	)
+	eventManager.ExtractMetrics(phc2sysAfterE1Freerun)
+
+	assert.Equal(t, ptp.FREERUN, cStat.LastSyncState(),
+		"CLOCK_REALTIME must be FREERUN because E1 is FREERUN (O-RAN Table 37 row 3)")
+	assert.Contains(t, eventManager.GetMockEvent(), ptp.OsClockSyncStateChange,
+		"phc2sys path must emit OsClockSyncStateChange when E3 transitions to FREERUN")
+}
+
+// TestE3DerivationORANTable37 is a table-driven test covering all 5 rows
+// of O-RAN O-Cloud Notification API v04.00 Table 37 for E3 (CLOCK_REALTIME).
+//
+// | Row | E1 (PTP Lock State) | phc2sys offset | phc2sys servo | Expected E3         |
+// |-----|---------------------|----------------|---------------|---------------------|
+// |  1  | LOCKED              | within range   | s2            | LOCKED              |
+// |  2  | HOLDOVER            | within range   | s2            | HOLDOVER            |
+// |  3  | FREERUN             | within range   | s2            | FREERUN             |
+// |  4  | LOCKED              | outside range  | s2            | FREERUN             |
+// |  5  | LOCKED              | n/a (phc2sys)  | s0            | FREERUN             |
+func TestE3DerivationORANTable37(t *testing.T) {
+	tests := []struct {
+		name        string
+		e1State     ptp.SyncState
+		phc2sys     string // phc2sys log line suffix: "offset <N> <servo> freq <F> delay <D>"
+		expectedE3  ptp.SyncState
+		expectEvent bool
+	}{
+		{
+			name:        "Row1: E1=LOCKED offset_in_range s2 → E3=LOCKED",
+			e1State:     ptp.LOCKED,
+			phc2sys:     "CLOCK_REALTIME phc offset 3 s2 freq -20217 delay 536",
+			expectedE3:  ptp.LOCKED,
+			expectEvent: true, // FREERUN→LOCKED transition
+		},
+		{
+			name:        "Row2: E1=HOLDOVER offset_in_range s2 → E3=HOLDOVER",
+			e1State:     ptp.HOLDOVER,
+			phc2sys:     "CLOCK_REALTIME phc offset 5 s2 freq -20217 delay 536",
+			expectedE3:  ptp.HOLDOVER,
+			expectEvent: true, // LOCKED→HOLDOVER transition
+		},
+		{
+			name:        "Row3: E1=FREERUN offset_in_range s2 → E3=FREERUN",
+			e1State:     ptp.FREERUN,
+			phc2sys:     "CLOCK_REALTIME phc offset 3 s2 freq -20217 delay 536",
+			expectedE3:  ptp.FREERUN,
+			expectEvent: true, // HOLDOVER→FREERUN transition
+		},
+		{
+			name:        "Row4: E1=LOCKED offset_out_of_range s2 → E3=FREERUN",
+			e1State:     ptp.LOCKED,
+			phc2sys:     "CLOCK_REALTIME phc offset 999999 s2 freq -20217 delay 536",
+			expectedE3:  ptp.FREERUN,
+			expectEvent: false, // FREERUN→FREERUN, no event
+		},
+		{
+			name:        "Row5: E1=LOCKED servo=s0 → E3=FREERUN",
+			e1State:     ptp.LOCKED,
+			phc2sys:     "CLOCK_REALTIME phc offset 3 s0 freq -20217 delay 536",
+			expectedE3:  ptp.FREERUN,
+			expectEvent: false, // FREERUN→FREERUN, no event
+		},
+	}
+
+	cfgName := "ptp4l.0.config"
+	tbcProfile := "tbc-e3-test"
+
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	eventManager.MockTest(true)
+
+	eventManager.PtpConfigMapUpdates.TBCProfiles = []string{tbcProfile}
+
+	ptp4lCfg := &ptp4lconf.PTP4lConfig{
+		Name:        cfgName,
+		Profile:     tbcProfile,
+		ProfileType: ptp4lconf.TBC,
+		Interfaces: []*ptp4lconf.PTPInterface{
+			{
+				Name:     "ens2f0",
+				PortID:   1,
+				PortName: "port 1",
+				Role:     types.SLAVE,
+			},
+		},
+	}
+	eventManager.AddPTPConfig(types.ConfigName(cfgName), ptp4lCfg)
+
+	ptpStats := eventManager.GetStats(types.ConfigName(cfgName))
+	ptpStats[metrics.MasterClockType] = &stats.Stats{}
+	ptpStats[metrics.MasterClockType].SetAlias("ens2f0")
+	ptpStats[metrics.MasterClockType].SetRole(types.SLAVE)
+
+	// Initialize T-BC key and CLOCK_REALTIME via a T-BC LOCKED + phc2sys LOCKED baseline.
+	// This ensures GetMainClockName() finds the T-BC key.
+	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
+	tbcInit := fmt.Sprintf("T-BC[1743005894]:[%s] ens2f0 offset 5 T-BC-STATUS s2", cfgName)
+	eventManager.ParseTBCLogs("T-BC", cfgName, replacer.Replace(tbcInit), strings.Fields(replacer.Replace(tbcInit)), ptpStats)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Set E1 state on the T-BC main clock key
+			tbcKey := types.IFace(stats.TBCMainClockName)
+			ptpStats[tbcKey].SetLastSyncState(tt.e1State)
+
+			eventManager.ResetMockEvent()
+			phc2sysLog := fmt.Sprintf("phc2sys[3263.065]: [%s] %s", cfgName, tt.phc2sys)
+			eventManager.ExtractMetrics(phc2sysLog)
+
+			cStat := ptpStats[metrics.ClockRealTime]
+			assert.Equal(t, tt.expectedE3, cStat.LastSyncState(),
+				"E3 (CLOCK_REALTIME) state mismatch")
+
+			mockEvents := eventManager.GetMockEvent()
+			if tt.expectEvent {
+				assert.Contains(t, mockEvents, ptp.OsClockSyncStateChange,
+					"expected OsClockSyncStateChange event")
+			}
+		})
+	}
 }
 
 // TestTBCOffsetMetricUpdatedEveryLog tests that T-BC offset metric is updated on every log
