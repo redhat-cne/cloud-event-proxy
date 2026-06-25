@@ -114,7 +114,13 @@ func main() {
 	flag.StringVar(&metricsAddr, "metrics-addr", ":9091", "The address the metric endpoint binds to.")
 	flag.StringVar(&storePath, "store-path", ".", "The path to store publisher and subscription info.")
 	// TODO: Rename transportHost to apiHost, which requires changes in PTP Operator.
-	flag.StringVar(&transportHost, "transport-host", "http://ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043", "The transport bus hostname or service name.")
+	defaultTransportNS := os.Getenv("NAME_SPACE")
+	if defaultTransportNS == "" {
+		defaultTransportNS = "openshift-ptp"
+	}
+	flag.StringVar(&transportHost, "transport-host",
+		"http://ptp-event-publisher-service-NODE_NAME."+defaultTransportNS+".svc.cluster.local:9043",
+		"The transport bus hostname or service name.")
 	flag.IntVar(&apiPort, "api-port", 9043, "The address the rest api endpoint binds to.")
 	flag.StringVar(&apiVersion, "api-version", "2.0", "The address the rest api endpoint binds to.")
 
