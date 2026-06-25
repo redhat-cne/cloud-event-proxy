@@ -123,7 +123,7 @@ func TestTBCPtp4lMasterOffsetNoHoldover(t *testing.T) {
 	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
 	eventManager.MockTest(true)
 
-	configName = "ptp4l.0.config"
+	configName = cfgName
 	tbcProfile := "tbc-test-profile"
 
 	// Setup TBC profile
@@ -185,7 +185,6 @@ func TestTBCPtp4lMasterOffsetNoHoldover(t *testing.T) {
 // has rh_external_pps in ts2phcOpts.
 func TestTBCProfileTypeSetBeforeTBCProfilesPopulated(t *testing.T) {
 	profileName := "tsc-holdover"
-	cfgName := "ptp4l.0.config"
 
 	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
 
@@ -354,7 +353,7 @@ func TestE3IncorporatesE1State(t *testing.T) {
 	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
 	eventManager.MockTest(true)
 
-	configName = "ptp4l.0.config"
+	configName = cfgName
 	tbcProfile := "tbc-test-profile"
 
 	eventManager.PtpConfigMapUpdates.TBCProfiles = []string{tbcProfile}
@@ -483,7 +482,6 @@ func TestE3DerivationORANTable37(t *testing.T) {
 		},
 	}
 
-	cfgName := "ptp4l.0.config"
 	tbcProfile := "tbc-e3-test"
 
 	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
