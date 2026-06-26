@@ -501,24 +501,12 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 	// when ptp4l updates it in the T-BC mode
 	UpdateSyncStateMetrics(ts2phcProcessName, aliasValue, ptpSyncState)
 
-	// if there is phc2sys ooptions enabled then when the clock is FREERUN annouce OSCLOCK as FREERUN
-	if clockState.State == ptp.FREERUN {
-		// loop thourgh eventManager.PtpConfigMapUpdates.TBCProfiles
-		// message tag for ptp4l.1.config with T-BC-Profile but T-BC is reporting from ts2phc.0.conifg
-		// so clock_realtime is not assigned to same config ?
-		cStats, osStatsOK := ptpStats[ClockRealTime]
-		if !osStatsOK || cStats.LastSyncState() == ptp.FREERUN {
-			// ClockRealTime stats not available, nothing to publish or already  in FREERUN
-			return
-		}
-		if p.mock {
-			p.mockEvent = []ptp.EventType{ptp.OsClockSyncStateChange}
-			log.Infof("PublishEvent state=%s, ptpOffset=%d, source=%s, eventType=%s", ptp.FREERUN, FreeRunOffsetValue, ClockRealTime, ptp.OsClockSyncStateChange)
-			return
-		}
-		p.GenPTPEvent(configName, cStats, ClockRealTime, FreeRunOffsetValue, ptp.FREERUN, ptp.OsClockSyncStateChange)
-		UpdateSyncStateMetrics(phc2sysProcessName, ClockRealTime, ptp.FREERUN)
-	}
+	// Do not set CLOCK_REALTIME / emit E3 (OsClockSyncStateChange) here.
+	// E3 is published exclusively from the phc2sys log path in ExtractMetrics,
+	// where it is derived as worst_of(phc2sys_state, E1_state) per O-RAN
+	// O-Cloud API v04.00 Table 37. When T-BC enters FREERUN, the E1 state
+	// change is picked up on the next phc2sys sample and E3 is downgraded
+	// accordingly.
 }
 
 // ParseDPLLLogs ... parse logs for various events
