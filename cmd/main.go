@@ -107,6 +107,16 @@ func isV1Api(version string) bool {
 	return true
 }
 
+// defaultTransportHost returns the default transport host URL using the
+// NAME_SPACE env var for the namespace, falling back to "openshift-ptp".
+func defaultTransportHost() string {
+	ns := os.Getenv("NAME_SPACE")
+	if ns == "" {
+		ns = "openshift-ptp"
+	}
+	return "http://ptp-event-publisher-service-NODE_NAME." + ns + ".svc.cluster.local:9043"
+}
+
 func main() {
 	fmt.Printf("Git commit: %s\n", GitCommit)
 	// init
@@ -114,7 +124,9 @@ func main() {
 	flag.StringVar(&metricsAddr, "metrics-addr", ":9091", "The address the metric endpoint binds to.")
 	flag.StringVar(&storePath, "store-path", ".", "The path to store publisher and subscription info.")
 	// TODO: Rename transportHost to apiHost, which requires changes in PTP Operator.
-	flag.StringVar(&transportHost, "transport-host", "http://ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043", "The transport bus hostname or service name.")
+	flag.StringVar(&transportHost, "transport-host",
+		defaultTransportHost(),
+		"The transport bus hostname or service name.")
 	flag.IntVar(&apiPort, "api-port", 9043, "The address the rest api endpoint binds to.")
 	flag.StringVar(&apiVersion, "api-version", "2.0", "The address the rest api endpoint binds to.")
 
