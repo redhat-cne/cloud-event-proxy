@@ -730,4 +730,23 @@ func Test_ExtractMetrics(t *testing.T) {
 				"when last GM state is HOLDOVER, phc2sys must keep LOCKED from the s2 log line")
 		})
 	})
+	// ts2phc reports s2 (LOCKED) but offset exceeds threshold → must be FREERUN.
+	t.Run("ts2phc_high_offset_s2_forces_FREERUN", func(t *testing.T) {
+		assert := assert.New(t)
+
+		// Enable GM process on master stats so ts2phc enters the threshold-check branch
+		setLastSyncState("ens2fx", ptp.FREERUN, logPtp4lConfig.Name)
+		metrics.SyncState.With(map[string]string{"process": "GM", "node": MYNODE, "iface": "ens2fx"}).Set(CLEANUP)
+		ptpEventManager.ResetMockEvent()
+		ptpEventManager.ExtractMetrics("GM[2000000100]:[ts2phc.0.config] ens2f0 T-GM-STATUS s2")
+
+		// ts2phc reports s2 but offset 5000 exceeds default threshold (100/-100)
+		labels := map[string]string{"process": "ts2phc", "node": MYNODE, "iface": "ens2fx"}
+		metrics.SyncState.With(labels).Set(CLEANUP)
+		ptpEventManager.ResetMockEvent()
+		ptpEventManager.ExtractMetrics("ts2phc[2000000200]: [ts2phc.0.config] ens2f0 master offset 5000 s2 freq -0")
+
+		assert.Equal(float64(types.FREERUN), testutil.ToFloat64(metrics.SyncState.With(labels)),
+			"ts2phc s2 with offset exceeding threshold must report FREERUN")
+	})
 }
