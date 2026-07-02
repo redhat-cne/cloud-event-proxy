@@ -271,15 +271,13 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				// phc2sys is the single publisher — but if the upstream PHC is not
 				// traceable (E1 != LOCKED), E3 cannot be LOCKED even when
 				// phc2sys offset is within threshold.
-				// Skip for T-GM profiles (masterOffsetSource == ts2phc): T-GM uses
-				// the lastOverallGMState mechanism above instead.
-				if masterOffsetSource != ts2phcProcessName {
-					mainClockKey := ptpStats.GetMainClockName()
-					if e1Stat, ok := ptpStats[mainClockKey]; ok {
-						e1State := e1Stat.LastSyncState()
-						if e1State == ptp.FREERUN || e1State == ptp.HOLDOVER {
-							syncState = OverallState(syncState, e1State)
-						}
+				// GetMainClockName() returns the correct key per profile type:
+				//   T-BC → "T-BC", T-GM → "GM", OC/BC → "master"
+				mainClockKey := ptpStats.GetMainClockName()
+				if e1Stat, ok := ptpStats[mainClockKey]; ok {
+					e1State := e1Stat.LastSyncState()
+					if e1State == ptp.FREERUN || e1State == ptp.HOLDOVER {
+						syncState = OverallState(syncState, e1State)
 					}
 				}
 				//  for HA we can not rely on master ;since there will be 2 or more leaders; this condition will be skipped

@@ -537,6 +537,64 @@ func TestE3DerivationORANTable37(t *testing.T) {
 	}
 }
 
+// TestE1CheckFiresRegardlessOfMasterOffsetSource verifies that the E1-aware E3
+// derivation works even when masterOffsetSource is "ts2phc". In T-BC profiles,
+// both ptp4l and ts2phc write to ptpStats["master"].ProcessName, causing
+// masterOffsetSource to toggle. The E1 check must fire regardless of this value.
+func TestE1CheckFiresRegardlessOfMasterOffsetSource(t *testing.T) {
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	eventManager.MockTest(true)
+
+	cfgName := "ptp4l.0.config"
+	tbcProfile := "tbc-race-test"
+
+	eventManager.PtpConfigMapUpdates.TBCProfiles = []string{tbcProfile}
+
+	ptp4lCfg := &ptp4lconf.PTP4lConfig{
+		Name:        cfgName,
+		Profile:     tbcProfile,
+		ProfileType: ptp4lconf.TBC,
+		Interfaces: []*ptp4lconf.PTPInterface{
+			{
+				Name:     "ens2f0",
+				PortID:   1,
+				PortName: "port 1",
+				Role:     types.SLAVE,
+			},
+		},
+	}
+	eventManager.AddPTPConfig(types.ConfigName(cfgName), ptp4lCfg)
+
+	ptpStats := eventManager.GetStats(types.ConfigName(cfgName))
+	ptpStats[metrics.MasterClockType] = &stats.Stats{}
+	ptpStats[metrics.MasterClockType].SetAlias("ens2f0")
+	ptpStats[metrics.MasterClockType].SetRole(types.SLAVE)
+
+	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
+	tbcInit := fmt.Sprintf("T-BC[1743005894]:[%s] ens2f0 offset 5 T-BC-STATUS s2", cfgName)
+	eventManager.ParseTBCLogs("T-BC", cfgName, replacer.Replace(tbcInit), strings.Fields(replacer.Replace(tbcInit)), ptpStats)
+
+	// Baseline: phc2sys LOCKED
+	phc2sysBaseline := fmt.Sprintf("phc2sys[3263.065]: [%s] CLOCK_REALTIME phc offset 3 s2 freq -20217 delay 536", cfgName)
+	eventManager.ExtractMetrics(phc2sysBaseline)
+
+	// Set T-BC to HOLDOVER (upstream lost)
+	tbcKey := types.IFace(stats.TBCMainClockName)
+	ptpStats[tbcKey].SetLastSyncState(ptp.HOLDOVER)
+
+	// Simulate the race: force masterOffsetSource to "ts2phc" (as ts2phc would)
+	metrics.SetMasterOffsetSource("ts2phc")
+
+	eventManager.ResetMockEvent()
+	phc2sysAfter := fmt.Sprintf("phc2sys[3264.065]: [%s] CLOCK_REALTIME phc offset 5 s2 freq -20217 delay 536", cfgName)
+	eventManager.ExtractMetrics(phc2sysAfter)
+
+	cStat := ptpStats[metrics.ClockRealTime]
+	assert.Equal(t, ptp.HOLDOVER, cStat.LastSyncState(),
+		"E3 must be HOLDOVER even when masterOffsetSource is ts2phc — "+
+			"the E1 check must not be gated by masterOffsetSource")
+}
+
 // TestTBCOffsetMetricUpdatedEveryLog tests that T-BC offset metric is updated on every log
 func TestTBCOffsetMetricUpdatedEveryLog(t *testing.T) {
 	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
