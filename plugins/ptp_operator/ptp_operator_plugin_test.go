@@ -32,8 +32,10 @@ import (
 
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"github.com/google/uuid"
+	ptpConfig "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/config"
 	event2 "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/event"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
+	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/stats"
 	"github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/types"
@@ -567,6 +569,125 @@ func TestLiveStartCommand_ConstantValue(t *testing.T) {
 		"LIVE_START and RESTART must be distinct commands")
 	assert.True(t, strings.HasPrefix(liveStartCommand, "CMD "),
 		"control commands should use CMD prefix to distinguish from log lines")
+}
+
+// TestCurrentState_ChronydSkipsStalePhc2sysClockRealtime verifies that
+// the CurrentState handler only returns the chronyd-managed CLOCK_REALTIME
+// when chronyd is enabled, ignoring the stale phc2sys FREERUN entry.
+func TestCurrentState_ChronydSkipsStalePhc2sysClockRealtime(t *testing.T) {
+	profileName := "ntp-failover"
+	ptp4lCfgName := "ptp4l.0.config"
+	chronydCfgName := "chronyd.0.config"
+
+	eventManager = metrics.NewPTPEventManager("/cluster/node", pubsubTypes, nodeName, scConfig)
+	eventManager.MockTest(true)
+
+	// Register ptp4l config with the profile
+	eventManager.AddPTPConfig(ptpTypes.ConfigName(ptp4lCfgName), &ptp4lconf.PTP4lConfig{
+		Name:    ptp4lCfgName,
+		Profile: profileName,
+		Interfaces: []*ptp4lconf.PTPInterface{
+			{Name: "ens3f0", PortID: 1, PortName: "port 1", Role: ptpTypes.SLAVE},
+		},
+	})
+
+	// Register chronyd config with the same profile
+	eventManager.AddPTPConfig(ptpTypes.ConfigName(chronydCfgName), &ptp4lconf.PTP4lConfig{
+		Name:    chronydCfgName,
+		Profile: profileName,
+	})
+
+	// Set up PtpProcessOpts with chronyd enabled (simulating the production path)
+	phc2sysOpts := "-a -r -r -n 24"
+	chronydOpts := "-f /etc/chrony.conf"
+	eventManager.PtpConfigMapUpdates.PtpProcessOpts = map[string]*ptpConfig.PtpProcessOpts{
+		profileName: {
+			Phc2Opts:    &phc2sysOpts,
+			ChronydOpts: &chronydOpts,
+		},
+	}
+
+	// Set up stats: ptp4l config has stale phc2sys FREERUN for CLOCK_REALTIME
+	ptp4lStats := eventManager.GetStats(ptpTypes.ConfigName(ptp4lCfgName))
+	ptp4lStats.CheckSource(metrics.ClockRealTime, ptp4lCfgName, "phc2sys")
+	ptp4lStats[metrics.ClockRealTime].SetLastSyncState(ptpEvent.FREERUN)
+	ptp4lStats[metrics.ClockRealTime].SetProcessName("phc2sys")
+
+	// Set up stats: chronyd config has authoritative LOCKED for CLOCK_REALTIME
+	chronydStats := eventManager.GetStats(ptpTypes.ConfigName(chronydCfgName))
+	chronydStats.CheckSource(metrics.ClockRealTime, chronydCfgName, "chronyd")
+	chronydStats[metrics.ClockRealTime].SetLastSyncState(ptpEvent.LOCKED)
+	chronydStats[metrics.ClockRealTime].SetProcessName("chronyd")
+
+	// Request OsClockSyncState CurrentState
+	ev := buildEvent(nodeName, ptpEvent.OsClockSyncState, ptpEvent.OsClockSyncStateChange)
+	mockDataChan := &channel.DataChan{
+		ClientID: uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
+	}
+	overrideFn := getCurrentStatOverrideFn()
+	err := overrideFn(ev, mockDataChan)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, mockDataChan.Data)
+
+	eventReceived, err2 := v1event.GetCloudNativeEvents(*mockDataChan.Data)
+	assert.Nil(t, err2)
+
+	// Should have values from only ONE CLOCK_REALTIME source (chronyd, LOCKED).
+	// GetPTPEventsData adds 2 DataValues per source (NOTIFICATION + METRIC).
+	assert.Equal(t, 2, len(eventReceived.Data.Values),
+		"Should have exactly 2 DataValues (one source: chronyd only)")
+	assert.Equal(t, string(ptpEvent.LOCKED), eventReceived.Data.Values[0].Value,
+		"CLOCK_REALTIME state should be LOCKED (from chronyd, not stale phc2sys FREERUN)")
+}
+
+// TestCurrentState_NoChronydIncludesPhc2sysClockRealtime verifies that
+// when chronyd is NOT enabled, the standard phc2sys CLOCK_REALTIME is returned.
+func TestCurrentState_NoChronydIncludesPhc2sysClockRealtime(t *testing.T) {
+	profileName := "ptp-oc"
+	ptp4lCfgName := "ptp4l.0.config"
+
+	eventManager = metrics.NewPTPEventManager("/cluster/node", pubsubTypes, nodeName, scConfig)
+	eventManager.MockTest(true)
+
+	eventManager.AddPTPConfig(ptpTypes.ConfigName(ptp4lCfgName), &ptp4lconf.PTP4lConfig{
+		Name:    ptp4lCfgName,
+		Profile: profileName,
+		Interfaces: []*ptp4lconf.PTPInterface{
+			{Name: "ens3f0", PortID: 1, PortName: "port 1", Role: ptpTypes.SLAVE},
+		},
+	})
+
+	phc2sysOpts := "-a -r -r -n 24"
+	eventManager.PtpConfigMapUpdates.PtpProcessOpts = map[string]*ptpConfig.PtpProcessOpts{
+		profileName: {
+			Phc2Opts: &phc2sysOpts,
+		},
+	}
+
+	ptp4lStats := eventManager.GetStats(ptpTypes.ConfigName(ptp4lCfgName))
+	ptp4lStats.CheckSource(metrics.ClockRealTime, ptp4lCfgName, "phc2sys")
+	ptp4lStats[metrics.ClockRealTime].SetLastSyncState(ptpEvent.LOCKED)
+	ptp4lStats[metrics.ClockRealTime].SetProcessName("phc2sys")
+
+	ev := buildEvent(nodeName, ptpEvent.OsClockSyncState, ptpEvent.OsClockSyncStateChange)
+	mockDataChan := &channel.DataChan{
+		ClientID: uuid.MustParse("123e4567-e89b-12d3-a456-426614174000"),
+	}
+	overrideFn := getCurrentStatOverrideFn()
+	err := overrideFn(ev, mockDataChan)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, mockDataChan.Data)
+
+	eventReceived, err2 := v1event.GetCloudNativeEvents(*mockDataChan.Data)
+	assert.Nil(t, err2)
+
+	// GetPTPEventsData adds 2 DataValues per source (NOTIFICATION + METRIC).
+	assert.Equal(t, 2, len(eventReceived.Data.Values),
+		"Should have exactly 2 DataValues (one source: phc2sys)")
+	assert.Equal(t, string(ptpEvent.LOCKED), eventReceived.Data.Values[0].Value,
+		"CLOCK_REALTIME state should be LOCKED from phc2sys")
 }
 
 func getMockOverrideFn() func(e v2.Event, d *channel.DataChan) error {

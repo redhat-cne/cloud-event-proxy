@@ -328,6 +328,7 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 		}
 
 		var overallSyncState ptp.SyncState
+		chronydIsE3 := chronydActiveAsE3(eventManager)
 		for config := range eventManager.Stats { // configname->PTPStats
 			mainClockName := eventManager.Stats[config].GetMainClockName()
 			for ptpInterface, s := range eventManager.GetStats(config) { // iface->stats
@@ -352,6 +353,11 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 						overallSyncState = getOverallState(overallSyncState, s.SyncState())
 					}
 				case ptpMetrics.ClockRealTime:
+					if s.ProcessName() != chronydProcessName {
+						if chronydIsE3 {
+							break
+						}
+					}
 					switch eventType {
 					case ptp.OsClockSyncStateChange:
 						data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType))
@@ -446,6 +452,12 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 // return worst of FREERUN, HOLDOVER or LOCKED
 func getOverallState(current, updated ptp.SyncState) ptp.SyncState {
 	return ptpMetrics.OverallState(current, updated)
+}
+
+// chronydActiveAsE3 delegates to the PTPEventManager method that checks
+// whether chronyd has reported a valid CLOCK_REALTIME state.
+func chronydActiveAsE3(em *ptpMetrics.PTPEventManager) bool {
+	return em.ChronydActiveAsE3()
 }
 
 func createPublisher(address string) (pub pubsub.PubSub, err error) {
