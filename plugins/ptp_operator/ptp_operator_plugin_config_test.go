@@ -118,8 +118,8 @@ func TestProcessConfigCreate_InterfaceRoles(t *testing.T) {
 			},
 		},
 		{
-			name:    "no global section defaults to SLAVE",
-			profile: "oc-minimal",
+			name:      "no global section defaults to SLAVE",
+			profile:   "oc-minimal",
 			ptp4lConf: "[ens1f0]\n",
 			expectedIfaces: []struct {
 				name string
