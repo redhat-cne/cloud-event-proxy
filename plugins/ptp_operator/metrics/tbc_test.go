@@ -16,6 +16,10 @@ import (
 	"k8s.io/utils/pointer"
 )
 
+const (
+	cfgName = "ptp4l.0.config"
+)
+
 // TestTBCProfileDetection tests that TBC profiles are correctly identified
 func TestTBCProfileDetection(t *testing.T) {
 	tests := []struct {
@@ -173,6 +177,172 @@ func TestTBCPtp4lMasterOffsetNoHoldover(t *testing.T) {
 			assert.NotEqual(t, ptp.HOLDOVER, lastState, "TBC ptp4l should never be in HOLDOVER")
 		})
 	}
+}
+
+// TestTBCProfileTypeSetBeforeTBCProfilesPopulated reproduces the startup race where
+// loadInitialPtp4lConfigs calls GetProfileType before UpdatePTPSetting has populated
+// TBCProfiles. This causes the profile to be classified as NONE even when the config
+// has rh_external_pps in ts2phcOpts.
+func TestTBCProfileTypeSetBeforeTBCProfilesPopulated(t *testing.T) {
+	profileName := "tsc-holdover"
+	cfgName := "ptp4l.0.config"
+
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+
+	eventManager.PtpConfigMapUpdates.NodeProfiles = []ptpConfig.PtpProfile{
+		{
+			Name:        pointer.String(profileName),
+			Phc2sysOpts: pointer.String("-r -n 24 -N 8 -R 16 -u 0 -m -s ens3f2"),
+			TS2PhcOpts:  pointer.String("-s generic -a --ts2phc.rh_external_pps 1"),
+			PtpSettings: map[string]string{"logReduce": "false"},
+		},
+	}
+	t.Logf("NodeProfiles configured: name=%s, ts2phcOpts=%q", profileName,
+		*eventManager.PtpConfigMapUpdates.NodeProfiles[0].TS2PhcOpts)
+	t.Logf("TBCProfiles before UpdatePTPSetting: %v", eventManager.PtpConfigMapUpdates.TBCProfiles)
+
+	// Step 1: Simulate loadInitialPtp4lConfigs — register the ptp4l config and set
+	// ProfileType BEFORE UpdatePTPSetting has run (TBCProfiles is still nil).
+	ptp4lCfg := &ptp4lconf.PTP4lConfig{
+		Name:    cfgName,
+		Profile: profileName,
+		Interfaces: []*ptp4lconf.PTPInterface{
+			{Name: "ens3f2", PortID: 1, PortName: "port 1", Role: types.SLAVE},
+		},
+	}
+	ptp4lCfg.ProfileType = eventManager.GetProfileType(ptp4lCfg.Profile)
+	t.Logf("GetProfileType(%q) returned: %v (TBCProfiles is %v)",
+		profileName, ptp4lCfg.ProfileType, eventManager.PtpConfigMapUpdates.TBCProfiles)
+	eventManager.AddPTPConfig(types.ConfigName(cfgName), ptp4lCfg)
+
+	storedCfg := eventManager.GetPTPConfig(types.ConfigName(cfgName))
+	t.Logf("Stored ProfileType after loadInitialPtp4lConfigs: %v", storedCfg.ProfileType)
+	assert.Equal(t, ptp4lconf.NONE, storedCfg.ProfileType,
+		"BUG REPRODUCED: ProfileType is NONE because GetProfileType ran before UpdatePTPSetting")
+
+	// Step 2: Now simulate the configmap handler goroutine — runs AFTER loadInitialPtp4lConfigs
+	eventManager.PtpConfigMapUpdates.UpdatePTPProcessOptions()
+	eventManager.PtpConfigMapUpdates.UpdatePTPSetting()
+	t.Logf("TBCProfiles after UpdatePTPSetting: %v", eventManager.PtpConfigMapUpdates.TBCProfiles)
+
+	profileType := eventManager.GetProfileType(profileName)
+	t.Logf("GetProfileType(%q) now returns: %v", profileName, profileType)
+	assert.Equal(t, ptp4lconf.TBC, profileType,
+		"GetProfileType should return TBC after UpdatePTPSetting runs")
+
+	storedCfg = eventManager.GetPTPConfig(types.ConfigName(cfgName))
+	t.Logf("Stored ProfileType after UpdatePTPSetting: %v (never re-evaluated)", storedCfg.ProfileType)
+	assert.Equal(t, ptp4lconf.NONE, storedCfg.ProfileType,
+		"BUG REPRODUCED: stored ProfileType remains NONE even after TBCProfiles is populated")
+}
+
+// TestTBCFaultyPortSpuriousFreerun reproduces the end-to-end bug: when a ptp4l port
+// goes SLAVE to FAULTY on a TBC profile that wasn't detected as TBC (due to the startup
+// race), a spurious FREERUN event is published for CLOCK_REALTIME even though phc2sys
+// is still locked.
+func TestTBCFaultyPortSpuriousFreerun(t *testing.T) {
+	profileName := "tsc-holdover"
+
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	eventManager.MockTest(true)
+
+	eventManager.PtpConfigMapUpdates.NodeProfiles = []ptpConfig.PtpProfile{
+		{
+			Name:        pointer.String(profileName),
+			Phc2sysOpts: pointer.String("-r -n 24 -N 8 -R 16 -u 0 -m -s ens3f2"),
+			TS2PhcOpts:  pointer.String("-s generic -a --ts2phc.rh_external_pps 1"),
+			PtpSettings: map[string]string{"logReduce": "false"},
+		},
+	}
+
+	// Reproduce startup race: register config before UpdatePTPSetting
+	ptp4lCfg := &ptp4lconf.PTP4lConfig{
+		Name:    cfgName,
+		Profile: profileName,
+		Interfaces: []*ptp4lconf.PTPInterface{
+			{Name: "ens3f2", PortID: 1, PortName: "port 1", Role: types.SLAVE},
+		},
+	}
+	ptp4lCfg.ProfileType = eventManager.GetProfileType(ptp4lCfg.Profile)
+	t.Logf("--- SETUP ---")
+	t.Logf("ProfileType after GetProfileType (before UpdatePTPSetting): %v", ptp4lCfg.ProfileType)
+	eventManager.AddPTPConfig(types.ConfigName(cfgName), ptp4lCfg)
+
+	eventManager.PtpConfigMapUpdates.UpdatePTPProcessOptions()
+	eventManager.PtpConfigMapUpdates.UpdatePTPThreshold()
+	eventManager.PtpConfigMapUpdates.UpdatePTPSetting()
+	t.Logf("TBCProfiles after UpdatePTPSetting: %v", eventManager.PtpConfigMapUpdates.TBCProfiles)
+	t.Logf("Stored ProfileType (never refreshed): %v",
+		eventManager.GetPTPConfig(types.ConfigName(cfgName)).ProfileType)
+
+	// Step 1: ptp4l master offset — establishes master stats + masterOffsetSource
+	ptp4lMasterLocked := "ptp4l[5196819.100]: [ptp4l.0.config] master offset -5 s2 freq +500 path delay 89"
+	t.Logf("--- STEP 1: ptp4l master offset (s2) ---")
+	t.Logf("Input: %s", ptp4lMasterLocked)
+	eventManager.ExtractMetrics(ptp4lMasterLocked)
+	ptpStats := eventManager.GetStats(types.ConfigName(cfgName))
+	if mStat, ok := ptpStats[metrics.MasterClockType]; ok {
+		t.Logf("master stats: LastSyncState=%v, LastOffset=%d, ProcessName=%s",
+			mStat.LastSyncState(), mStat.LastOffset(), mStat.ProcessName())
+	} else {
+		t.Logf("master stats: NOT CREATED")
+	}
+	if cStat, ok := ptpStats[metrics.ClockRealTime]; ok {
+		t.Logf("CLOCK_REALTIME stats: LastSyncState=%v, LastOffset=%d",
+			cStat.LastSyncState(), cStat.LastOffset())
+	} else {
+		t.Logf("CLOCK_REALTIME stats: NOT YET CREATED")
+	}
+	t.Logf("Mock events after step 1: %v", eventManager.GetMockEvent())
+
+	// Step 2: phc2sys CLOCK_REALTIME s2 — establishes OS clock stats in LOCKED state
+	phc2sysLocked := "phc2sys[3263.065]: [ptp4l.0.config] CLOCK_REALTIME phc offset 3 s2 freq -20217 delay 536"
+	t.Logf("--- STEP 2: phc2sys CLOCK_REALTIME (s2) ---")
+	t.Logf("Input: %s", phc2sysLocked)
+	eventManager.ExtractMetrics(phc2sysLocked)
+	if cStat, ok := ptpStats[metrics.ClockRealTime]; ok {
+		t.Logf("CLOCK_REALTIME stats: LastSyncState=%v, LastOffset=%d, ProcessName=%s",
+			cStat.LastSyncState(), cStat.LastOffset(), cStat.ProcessName())
+	} else {
+		t.Logf("CLOCK_REALTIME stats: STILL NOT CREATED (parsing failed?)")
+	}
+	t.Logf("Mock events after step 2: %v", eventManager.GetMockEvent())
+
+	eventManager.ResetMockEvent()
+	t.Logf("--- STEP 3: SLAVE to FAULTY ---")
+
+	// Step 3: SLAVE to FAULTY — triggers the bug
+	ptp4lFaulty := "ptp4l[3263.061]: [ptp4l.0.config:5] port 1 (ens3f2): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)"
+	t.Logf("Input: %s", ptp4lFaulty)
+	t.Logf("ProfileType at time of parsing: %v (should be TBC but is NONE due to race)",
+		eventManager.GetPTPConfig(types.ConfigName(cfgName)).ProfileType)
+	eventManager.ExtractMetrics(ptp4lFaulty)
+
+	if mStat, ok := ptpStats[metrics.MasterClockType]; ok {
+		t.Logf("master stats after FAULTY: LastSyncState=%v, LastOffset=%d",
+			mStat.LastSyncState(), mStat.LastOffset())
+	}
+	if cStat, ok := ptpStats[metrics.ClockRealTime]; ok {
+		t.Logf("CLOCK_REALTIME stats after FAULTY: LastSyncState=%v, LastOffset=%d",
+			cStat.LastSyncState(), cStat.LastOffset())
+	}
+
+	mockEvents := eventManager.GetMockEvent()
+	t.Logf("Mock events after FAULTY: %v", mockEvents)
+
+	hasOsClockFreerun := false
+	for _, evt := range mockEvents {
+		if evt == ptp.OsClockSyncStateChange {
+			hasOsClockFreerun = true
+			break
+		}
+	}
+	t.Logf("--- RESULT ---")
+	t.Logf("Spurious OsClockSyncStateChange emitted: %v", hasOsClockFreerun)
+
+	assert.True(t, hasOsClockFreerun,
+		"BUG REPRODUCED: spurious OsClockSyncStateChange FREERUN event emitted on FAULTY "+
+			"because the TBC profile was not detected due to startup ordering")
 }
 
 // TestTBCOffsetMetricUpdatedEveryLog tests that T-BC offset metric is updated on every log

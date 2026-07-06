@@ -658,6 +658,7 @@ func (p *PTPEventManager) ListHAProfilesWith(currentProfile string) (profile str
 
 // GetNodeSyncState evaluates the node-level sync state based on FREERUN, HOLDOVER, and LOCKED.
 // It returns the worst state among the available MasterClock and ClockRealTime stats.
+// For T-BC profiles, ptp4l master offset (iface master) is excluded since T-BC-STATUS is authoritative.
 func (p *PTPEventManager) GetNodeSyncState(currentState ptp.SyncState) ptp.SyncState {
 	if currentState == "" {
 		currentState = ptp.FREERUN
@@ -672,8 +673,10 @@ func (p *PTPEventManager) GetNodeSyncState(currentState ptp.SyncState) ptp.SyncS
 	for _, ptpStats := range p.Stats {
 		mainClockName := ptpStats.GetMainClockName()
 		for iface, stat := range ptpStats {
-			if iface != MasterClockType && iface != ClockRealTime && iface != mainClockName {
-				continue
+			if iface != ClockRealTime && iface != mainClockName {
+				if iface != MasterClockType || mainClockName == types.IFace(stats.TBCMainClockName) {
+					continue
+				}
 			}
 			s := stat.LastSyncState()
 			if s != ptp.FREERUN && s != ptp.HOLDOVER && s != ptp.LOCKED {
