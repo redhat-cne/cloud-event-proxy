@@ -272,9 +272,11 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPProcessOptions() {
 	l.PtpProcessOpts = make(map[string]*PtpProcessOpts)
 	for _, profile := range l.NodeProfiles {
 		l.PtpProcessOpts[*profile.Name] = &PtpProcessOpts{
-			Ptp4lOpts:  profile.Ptp4lOpts,
-			Phc2Opts:   profile.Phc2sysOpts,
-			TS2PhcOpts: profile.TS2PhcOpts}
+			Ptp4lOpts:   profile.Ptp4lOpts,
+			Phc2Opts:    profile.Phc2sysOpts,
+			TS2PhcOpts:  profile.TS2PhcOpts,
+			ChronydOpts: profile.ChronydOpts,
+		}
 		// ts2phcOpts are empty by default
 		if profile.TS2PhcConf != nil && (profile.TS2PhcOpts == nil || *profile.TS2PhcOpts == "") {
 			l.PtpProcessOpts[*profile.Name].TS2PhcOpts = pointer.String("-m")

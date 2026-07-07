@@ -167,3 +167,86 @@ func Test_Config(t *testing.T) {
 	}
 	closeCh <- struct{}{}
 }
+
+func TestUpdatePTPProcessOptions_PopulatesChronydOpts(t *testing.T) {
+	chronydOpts := "-f /etc/chrony.conf"
+	phc2sysOpts := "-a -r -r -n 24"
+	ptp4lOpts := "-2 -s"
+	ts2phcOpts := "-m"
+	profileName := "ntp-failover"
+
+	l := &ptpConfig.LinuxPTPConfigMapUpdate{
+		NodeProfiles: []ptpConfig.PtpProfile{
+			{
+				Name:        &profileName,
+				Ptp4lOpts:   &ptp4lOpts,
+				Phc2sysOpts: &phc2sysOpts,
+				TS2PhcOpts:  &ts2phcOpts,
+				ChronydOpts: &chronydOpts,
+			},
+		},
+		PtpProcessOpts: make(map[string]*ptpConfig.PtpProcessOpts),
+		PtpSettings:    make(map[string]map[string]string),
+	}
+
+	l.UpdatePTPProcessOptions()
+
+	opts, ok := l.PtpProcessOpts[profileName]
+	assert.True(t, ok, "profile must be present in PtpProcessOpts")
+	assert.True(t, opts.ChronydEnabled(), "ChronydEnabled() must return true when profile has chronydOpts")
+	assert.Equal(t, chronydOpts, *opts.ChronydOpts)
+	assert.True(t, opts.Ptp4lEnabled())
+	assert.True(t, opts.Phc2SysEnabled())
+	assert.True(t, opts.TS2PhcEnabled())
+}
+
+func TestUpdatePTPProcessOptions_NilChronydOpts(t *testing.T) {
+	phc2sysOpts := "-a -r -r -n 24"
+	ptp4lOpts := "-2 -s"
+	profileName := "ptp-oc"
+
+	l := &ptpConfig.LinuxPTPConfigMapUpdate{
+		NodeProfiles: []ptpConfig.PtpProfile{
+			{
+				Name:        &profileName,
+				Ptp4lOpts:   &ptp4lOpts,
+				Phc2sysOpts: &phc2sysOpts,
+				ChronydOpts: nil,
+			},
+		},
+		PtpProcessOpts: make(map[string]*ptpConfig.PtpProcessOpts),
+		PtpSettings:    make(map[string]map[string]string),
+	}
+
+	l.UpdatePTPProcessOptions()
+
+	opts, ok := l.PtpProcessOpts[profileName]
+	assert.True(t, ok, "profile must be present in PtpProcessOpts")
+	assert.False(t, opts.ChronydEnabled(), "ChronydEnabled() must return false when profile has no chronydOpts")
+	assert.True(t, opts.Ptp4lEnabled())
+	assert.True(t, opts.Phc2SysEnabled())
+}
+
+func TestUpdatePTPProcessOptions_TS2PhcConfSetsDefaultOpts(t *testing.T) {
+	ptp4lOpts := "-2 -s"
+	profileName := "ts2phc-profile"
+	ts2phcConf := "[global]\n"
+
+	l := &ptpConfig.LinuxPTPConfigMapUpdate{
+		NodeProfiles: []ptpConfig.PtpProfile{
+			{
+				Name:       &profileName,
+				Ptp4lOpts:  &ptp4lOpts,
+				TS2PhcConf: &ts2phcConf,
+			},
+		},
+		PtpProcessOpts: make(map[string]*ptpConfig.PtpProcessOpts),
+		PtpSettings:    make(map[string]map[string]string),
+	}
+
+	l.UpdatePTPProcessOptions()
+
+	opts := l.PtpProcessOpts[profileName]
+	assert.True(t, opts.TS2PhcEnabled(), "TS2PhcOpts should default to '-m' when TS2PhcConf is set but TS2PhcOpts is nil")
+	assert.Equal(t, "-m", *opts.TS2PhcOpts)
+}
