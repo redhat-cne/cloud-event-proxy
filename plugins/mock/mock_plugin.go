@@ -46,7 +46,7 @@ var (
 )
 
 // Start mock plugin to process events,metrics and status, expects rest api available to create publisher and subscriptions
-func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e interface{}) error) error { //nolint:deadcode,unused
+func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e interface{}) error) error { //nolint:unused
 	config = configuration
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
