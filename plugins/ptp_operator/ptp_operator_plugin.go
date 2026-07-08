@@ -48,8 +48,11 @@ import (
 )
 
 const (
-	eventSocket        = "/cloud-native/events.sock"
-	ptpConfigDir       = "/var/run/"
+	eventSocket      = "/cloud-native/events.sock"
+	ptpConfigDir     = "/var/run/"
+	restartCommand   = "CMD RESTART"
+	liveStartCommand = "CMD LIVE_START"
+
 	phc2sysProcessName = "phc2sys"
 	ptp4lProcessName   = "ptp4l"
 	ts2PhcProcessName  = "ts2phc"
@@ -242,6 +245,7 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 		}
 
 		var overallSyncState ptp.SyncState
+		chronydIsE3 := chronydActiveAsE3(eventManager)
 		for config := range eventManager.Stats { // configname->PTPStats
 			mainClockName := eventManager.Stats[config].GetMainClockName()
 			for ptpInterface, s := range eventManager.GetStats(config) { // iface->stats
@@ -266,6 +270,11 @@ func getCurrentStatOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 						overallSyncState = getOverallState(overallSyncState, s.SyncState())
 					}
 				case ptpMetrics.ClockRealTime:
+					if s.ProcessName() != chronydProcessName {
+						if chronydIsE3 {
+							break
+						}
+					}
 					switch eventType {
 					case ptp.OsClockSyncStateChange:
 						data = processDataFn(data, eventManager.GetPTPEventsData(s.SyncState(), s.LastOffset(), string(ptpInterface), eventType))
@@ -632,6 +641,13 @@ func processPtp4lConfigFileUpdates() {
 		}
 	}
 }
+
+// chronydActiveAsE3 delegates to the PTPEventManager method that checks
+// whether chronyd has reported a valid CLOCK_REALTIME state.
+func chronydActiveAsE3(em *ptpMetrics.PTPEventManager) bool {
+	return em.ChronydActiveAsE3()
+}
+
 func createPublisher(address string) (pub pubsub.PubSub, err error) {
 	// this is loop back on server itself. Since current pod does not create any server
 	returnURL := fmt.Sprintf("%s%s", config.BaseURL, "dummy")
@@ -678,10 +694,18 @@ func processMessages(c net.Conn) {
 	for {
 		ok := scanner.Scan()
 		if !ok {
-			log.Error("error reading socket input, retrying")
+			log.Debugf("processMessages: scanner returned false (conn closed or error), breaking")
 			break
 		}
 		msg := scanner.Text()
+		if msg == restartCommand {
+			log.Debug("processMessages: received CMD RESTART")
+			return
+		}
+		if msg == liveStartCommand {
+			log.Debug("processMessages: received LIVE_START marker - live data follows")
+			continue
+		}
 		eventManager.ExtractMetrics(msg)
 	}
 }
