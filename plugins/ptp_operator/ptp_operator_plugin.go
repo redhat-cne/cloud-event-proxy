@@ -48,8 +48,11 @@ import (
 )
 
 const (
-	eventSocket        = "/cloud-native/events.sock"
-	ptpConfigDir       = "/var/run/"
+	eventSocket      = "/cloud-native/events.sock"
+	ptpConfigDir     = "/var/run/"
+	restartCommand   = "CMD RESTART"
+	liveStartCommand = "CMD LIVE_START"
+
 	phc2sysProcessName = "phc2sys"
 	ptp4lProcessName   = "ptp4l"
 	ts2PhcProcessName  = "ts2phc"
@@ -691,10 +694,18 @@ func processMessages(c net.Conn) {
 	for {
 		ok := scanner.Scan()
 		if !ok {
-			log.Error("error reading socket input, retrying")
+			log.Debugf("processMessages: scanner returned false (conn closed or error), breaking")
 			break
 		}
 		msg := scanner.Text()
+		if msg == restartCommand {
+			log.Debug("processMessages: received CMD RESTART")
+			return
+		}
+		if msg == liveStartCommand {
+			log.Debug("processMessages: received LIVE_START marker - live data follows")
+			continue
+		}
 		eventManager.ExtractMetrics(msg)
 	}
 }
