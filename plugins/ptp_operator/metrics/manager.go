@@ -639,6 +639,7 @@ func (p *PTPEventManager) ListHAProfilesWith(currentProfile string) (profile str
 
 // GetNodeSyncState evaluates the node-level sync state based on FREERUN, HOLDOVER, and LOCKED.
 // It returns the worst state among the available MasterClock and ClockRealTime stats.
+// When chronyd is actively reporting CLOCK_REALTIME, stale phc2sys CLOCK_REALTIME entries are excluded.
 func (p *PTPEventManager) GetNodeSyncState(currentState ptp.SyncState) ptp.SyncState {
 	if currentState == "" {
 		currentState = ptp.FREERUN
@@ -646,6 +647,7 @@ func (p *PTPEventManager) GetNodeSyncState(currentState ptp.SyncState) ptp.SyncS
 
 	var finalState ptp.SyncState = ""
 	found := false
+	chronydActive := p.ChronydActiveAsE3()
 
 	p.lock.RLock()
 	defer p.lock.RUnlock()
@@ -654,6 +656,9 @@ func (p *PTPEventManager) GetNodeSyncState(currentState ptp.SyncState) ptp.SyncS
 		mainClockName := ptpStats.GetMainClockName()
 		for iface, stat := range ptpStats {
 			if iface != MasterClockType && iface != ClockRealTime && iface != mainClockName {
+				continue
+			}
+			if iface == ClockRealTime && chronydActive && stat.ProcessName() != chronydProcessName {
 				continue
 			}
 			s := stat.LastSyncState()
@@ -694,6 +699,23 @@ func OverallState(current, updated ptp.SyncState) ptp.SyncState {
 		log.Warnf("last sync state is unknown: %s", updated)
 	}
 	return ""
+}
+
+// ChronydActiveAsE3 returns true if chronyd is currently the active E3
+// publisher — i.e., it has reported a CLOCK_REALTIME state. When chronyd
+// has not reported (e.g. GNSS mode, chronyd is offline), phc2sys remains
+// the E3 authority even if chronyd is configured in the profile.
+func (p *PTPEventManager) ChronydActiveAsE3() bool {
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	for _, ptpStats := range p.Stats {
+		if cr, ok := ptpStats[ClockRealTime]; ok {
+			if cr.ProcessName() == chronydProcessName && cr.LastSyncState() != "" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 const logsEndpoint = "http://localhost:8081/emit-logs"
