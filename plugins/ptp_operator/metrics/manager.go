@@ -40,6 +40,7 @@ type PTPEventManager struct {
 	// Ptp4lConfigInterfaces holds interfaces and its roles, after reading from ptp4l config files
 	Ptp4lConfigInterfaces map[types.ConfigName]*ptp4lconf.PTP4lConfig
 	lastOverallSyncState  ptp.SyncState
+	lastOverallGMState    ptp.SyncState
 	processStates         map[types.ConfigName]map[string]bool
 }
 
@@ -496,7 +497,12 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 		return
 	case ptp.FREERUN:
 		oStats.SetLastSyncState(clockState)
-		if lastClockState != ptp.HOLDOVER {
+		// For E1 (PtpStateChange), HOLDOVER→FREERUN is handled by the holdover
+		// timer's direct PublishEvent call, so skip here to avoid double-publish.
+		// For E3 (OsClockSyncStateChange), the holdover timer no longer publishes
+		// E3 directly — the phc2sys path is the single E3 publisher — so allow
+		// the HOLDOVER→FREERUN transition through.
+		if lastClockState != ptp.HOLDOVER || eventType == ptp.OsClockSyncStateChange {
 			if lastClockState != ptp.FREERUN { // don't send event if last event was freerun
 				log.Infof("publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
 					ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
@@ -517,6 +523,12 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 		p.PublishEvent(clockState, ptpOffset, eventResourceName, ptp.PtpStateChange) // change to unknown state
 		oStats.SetLastOffset(ptpOffset)
 	}
+}
+
+// SetLastOverallGMStateForTesting sets the cached GM sync state used by ExtractMetrics when
+// deciding whether to force downstream (non-ts2phc) sync state to FREERUN. For unit tests only.
+func (p *PTPEventManager) SetLastOverallGMStateForTesting(state ptp.SyncState) {
+	p.lastOverallGMState = state
 }
 
 // NodeName ...

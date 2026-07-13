@@ -228,6 +228,10 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			if processName != ts2phcProcessName && !(interfaceName == master || interfaceName == ClockRealTime) {
 				return // only master and clock_realtime are supported
 			}
+			// Force FREERUN if gnss is FREERUN and ts2phc is the source
+			if processName != ts2phcProcessName && masterOffsetSource == ts2phcProcessName && p.lastOverallGMState == ptp.FREERUN {
+				syncState = ptp.FREERUN
+			}
 			offsetSource := master
 			if strings.Contains(output, "sys offset") {
 				offsetSource = sys
@@ -261,9 +265,21 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			// TODO: understand if the config is GM /BC /OC
 			switch interfaceName { //note: this is not  interface type
 			case ClockRealTime: // CLOCK_REALTIME is active slave interface
+				// O-RAN O-Cloud API v04.00 Table 37: E3 = worst_of(phc2sys_state, E1_state).
+				// phc2sys is the single publisher — but if the upstream PHC is not
+				// traceable (E1 != LOCKED), E3 cannot be LOCKED even when
+				// phc2sys offset is within threshold.
+				// GetMainClockName() returns the correct key per profile type:
+				//   T-BC → "T-BC", T-GM → "GM", OC/BC → "master"
+				mainClockKey := ptpStats.GetMainClockName()
+				if e1Stat, ok := ptpStats[mainClockKey]; ok {
+					e1State := e1Stat.LastSyncState()
+					if e1State == ptp.FREERUN || e1State == ptp.HOLDOVER {
+						syncState = OverallState(syncState, e1State)
+					}
+				}
 				//  for HA we can not rely on master ;since there will be 2 or more leaders; this condition will be skipped
 				// ptpStats clock realtime has its own stats objects
-				//TODO: NEED TO VISIT THIS LOGIC FOR UNASSISTED BOUNDARY CLOCK
 				if r, ok := ptpStats[master]; ok && r.Role() == types.SLAVE { // publish event only if the master role is active
 					// when related slave is faulty the holdover will make clock clear time as FREERUN
 					p.GenPTPEvent(profileName, ptpStats[ClockRealTime], interfaceName, int64(ptpOffset), syncState, ptp.OsClockSyncStateChange)
