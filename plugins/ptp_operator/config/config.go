@@ -28,6 +28,8 @@ import (
 
 	"k8s.io/utils/pointer"
 
+	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/filesystem"
 	log "github.com/sirupsen/logrus"
@@ -54,17 +56,18 @@ const (
 
 // PtpProfile ... ptp profile
 type PtpProfile struct {
-	Name              *string            `json:"name"`
-	Interface         *string            `json:"interface"`
-	PtpClockThreshold *PtpClockThreshold `json:"ptpClockThreshold,omitempty"`
-	Ptp4lOpts         *string            `json:"ptp4lOpts,omitempty"`
-	Phc2sysOpts       *string            `json:"phc2sysOpts,omitempty"`
-	TS2PhcOpts        *string            `json:"ts2PhcOpts,omitempty"`
-	ChronydOpts       *string            `json:"chronydOpts,omitempty"`
-	Ptp4lConf         *string            `json:"ptp4lConf,omitempty"`
-	TS2PhcConf        *string            `json:"ts2PhcConf,omitempty"`
-	ChronydConf       *string            `json:"chronydConf,omitempty"`
-	PtpSettings       map[string]string  `json:"ptpSettings,omitempty"`
+	Name              *string                        `json:"name"`
+	Interface         *string                        `json:"interface"`
+	PtpClockThreshold *PtpClockThreshold             `json:"ptpClockThreshold,omitempty"`
+	Ptp4lOpts         *string                        `json:"ptp4lOpts,omitempty"`
+	Phc2sysOpts       *string                        `json:"phc2sysOpts,omitempty"`
+	TS2PhcOpts        *string                        `json:"ts2PhcOpts,omitempty"`
+	ChronydOpts       *string                        `json:"chronydOpts,omitempty"`
+	Ptp4lConf         *string                        `json:"ptp4lConf,omitempty"`
+	TS2PhcConf        *string                        `json:"ts2PhcConf,omitempty"`
+	ChronydConf       *string                        `json:"chronydConf,omitempty"`
+	PtpSettings       map[string]string              `json:"ptpSettings,omitempty"`
+	Plugins           map[string]*apiextensions.JSON `json:"plugins,omitempty"`
 	Interfaces        []*string
 }
 
@@ -290,10 +293,9 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPProcessOptions() {
 func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 	var maxOffsetTh, minOffsetTh, holdOverTh int64
 	for _, profile := range l.NodeProfiles {
-		holdOverTh = holdoverTimeout
-		maxOffsetTh = maxOffsetThreshold
-		minOffsetTh = minOffsetThreshold
 		if profile.PtpClockThreshold != nil {
+			holdOverTh = holdoverTimeout
+			maxOffsetTh = maxOffsetThreshold
 			if profile.PtpClockThreshold.MaxOffsetThreshold > 0 { // has to be greater than 0 nano secs
 				maxOffsetTh = profile.PtpClockThreshold.MaxOffsetThreshold
 			} else {
@@ -311,6 +313,14 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 			} else {
 				log.Infof("invalid holdOverTimeout %d in secs, setting to default %d holdOverTimeout", profile.PtpClockThreshold.HoldOverTimeout, holdOverTh)
 			}
+		} else if isNtpFailoverEnabled(&profile) {
+			holdOverTh = holdoverTimeout
+			maxOffsetTh = 1000
+			minOffsetTh = -1000
+		} else {
+			holdOverTh = holdoverTimeout
+			maxOffsetTh = maxOffsetThreshold
+			minOffsetTh = minOffsetThreshold
 		}
 
 		l.EventThreshold[*profile.Name] = &PtpClockThreshold{
@@ -323,6 +333,21 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 		log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
 			*profile.Name, holdOverTh, maxOffsetTh, minOffsetTh)
 	}
+}
+
+func isNtpFailoverEnabled(profile *PtpProfile) bool {
+	pluginOpts, ok := profile.Plugins["ntpfailover"]
+	if !ok || pluginOpts == nil {
+		return false
+	}
+	var opts struct {
+		GnssFailover bool `json:"gnssFailover"`
+	}
+	if err := json.Unmarshal(pluginOpts.Raw, &opts); err != nil {
+		log.Errorf("failed to unmarshal ntpfailover plugin options: %v", err)
+		return false
+	}
+	return opts.GnssFailover
 }
 
 // UpdatePTPSetting ... ptp settings

@@ -1,0 +1,1 @@
+[{"name":"profile0","interface":"ens5f1","ptp4lOpts":"-2 -s --summary_interval -4","phc2sysOpts":"-a -r -m -n 24 -N 8 -R 16","plugins":{"ntpfailover":{"gnssFailover":true}}}]

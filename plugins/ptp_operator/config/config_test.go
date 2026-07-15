@@ -6,7 +6,10 @@ import (
 
 	ptpConfig "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/config"
 	"github.com/stretchr/testify/assert"
+	apiextensions "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
+
+const ntpFailoverPlugin = "ntpfailover"
 
 var (
 	profile0  = "profile0"
@@ -122,6 +125,21 @@ func Test_Config(t *testing.T) {
 			nodeName:    "ptpha",
 			len:         1,
 		},
+		ntpFailoverPlugin: {
+			wantProfile: []*ptpConfig.PtpProfile{{
+				Name:      &profile0,
+				Interface: &inface1,
+				PtpClockThreshold: &ptpConfig.PtpClockThreshold{
+					HoldOverTimeout:    5,
+					MaxOffsetThreshold: 1000,
+					MinOffsetThreshold: -1000,
+					Close:              make(chan struct{}),
+				},
+			}},
+			profilePath: "../_testprofile",
+			nodeName:    "ntpfailover",
+			len:         1,
+		},
 	}
 
 	closeCh := make(chan struct{})
@@ -156,8 +174,10 @@ func Test_Config(t *testing.T) {
 				}
 			} else {
 				for i, p := range ptpUpdate.NodeProfiles {
-					tc.wantProfile[i].PtpClockThreshold.Close = p.PtpClockThreshold.Close
-					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, p.PtpClockThreshold)
+					if p.PtpClockThreshold != nil {
+						tc.wantProfile[i].PtpClockThreshold.Close = p.PtpClockThreshold.Close
+						assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, p.PtpClockThreshold)
+					}
 					tc.wantProfile[i].PtpClockThreshold.Close = ptpUpdate.EventThreshold[*p.Name].Close
 					assert.Equal(t, tc.wantProfile[i].PtpClockThreshold, ptpUpdate.EventThreshold[*p.Name])
 					assert.Equal(t, *tc.wantProfile[i].Name, *p.Name)
@@ -225,6 +245,78 @@ func TestUpdatePTPProcessOptions_NilChronydOpts(t *testing.T) {
 	assert.False(t, opts.ChronydEnabled(), "ChronydEnabled() must return false when profile has no chronydOpts")
 	assert.True(t, opts.Ptp4lEnabled())
 	assert.True(t, opts.Phc2SysEnabled())
+}
+
+func TestUpdatePTPThreshold_NtpFailover(t *testing.T) {
+	profileName := "test-profile"
+
+	tests := []struct {
+		name        string
+		profile     ptpConfig.PtpProfile
+		expectedMax int64
+		expectedMin int64
+	}{
+		{
+			name: "default threshold without ntpfailover",
+			profile: ptpConfig.PtpProfile{
+				Name: &profileName,
+			},
+			expectedMax: 100,
+			expectedMin: -100,
+		},
+		{
+			name: "ntpfailover with gnssFailover enabled uses looser threshold",
+			profile: ptpConfig.PtpProfile{
+				Name: &profileName,
+				Plugins: map[string]*apiextensions.JSON{
+					ntpFailoverPlugin: {Raw: []byte(`{"gnssFailover": true}`)},
+				},
+			},
+			expectedMax: 1000,
+			expectedMin: -1000,
+		},
+		{
+			name: "ntpfailover with gnssFailover disabled uses standard threshold",
+			profile: ptpConfig.PtpProfile{
+				Name: &profileName,
+				Plugins: map[string]*apiextensions.JSON{
+					ntpFailoverPlugin: {Raw: []byte(`{"gnssFailover": false}`)},
+				},
+			},
+			expectedMax: 100,
+			expectedMin: -100,
+		},
+		{
+			name: "explicit PtpClockThreshold takes precedence over ntpfailover",
+			profile: ptpConfig.PtpProfile{
+				Name: &profileName,
+				PtpClockThreshold: &ptpConfig.PtpClockThreshold{
+					HoldOverTimeout:    10,
+					MaxOffsetThreshold: 500,
+					MinOffsetThreshold: -500,
+				},
+				Plugins: map[string]*apiextensions.JSON{
+					ntpFailoverPlugin: {Raw: []byte(`{"gnssFailover": true}`)},
+				},
+			},
+			expectedMax: 500,
+			expectedMin: -500,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := &ptpConfig.LinuxPTPConfigMapUpdate{
+				NodeProfiles:   []ptpConfig.PtpProfile{tt.profile},
+				EventThreshold: make(map[string]*ptpConfig.PtpClockThreshold),
+			}
+			l.UpdatePTPThreshold()
+			th := l.EventThreshold[profileName]
+			assert.NotNil(t, th)
+			assert.Equal(t, tt.expectedMax, th.MaxOffsetThreshold)
+			assert.Equal(t, tt.expectedMin, th.MinOffsetThreshold)
+		})
+	}
 }
 
 func TestUpdatePTPProcessOptions_TS2PhcConfSetsDefaultOpts(t *testing.T) {
