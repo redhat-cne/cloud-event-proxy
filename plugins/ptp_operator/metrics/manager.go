@@ -651,6 +651,23 @@ func (p *PTPEventManager) GetProfileType(name string) ptp4lconf.PtpProfileType {
 	return ptp4lconf.NONE
 }
 
+// GetProfileTypeByConfigName returns the cached ProfileType for a ptp4l config
+// name (e.g. "ptp4l.0.config"). Returns NONE if the config is unknown.
+func (p *PTPEventManager) GetProfileTypeByConfigName(configName types.ConfigName) ptp4lconf.PtpProfileType {
+	p.lock.RLock()
+	cfg, ok := p.Ptp4lConfigInterfaces[configName]
+	p.lock.RUnlock()
+	if !ok || cfg == nil {
+		return ptp4lconf.NONE
+	}
+	if cfg.ProfileType != ptp4lconf.NONE {
+		return cfg.ProfileType
+	}
+	// ProfileType may still be NONE if the config was registered before
+	// TBCProfiles was populated; resolve from the profile name.
+	return p.GetProfileType(cfg.Profile)
+}
+
 // RefreshProfileTypes re-evaluates the cached ProfileType on all registered
 // PTP4lConfigs from the current TBCProfiles list. Call this after
 // UpdatePTPSetting() has populated TBCProfiles so that configs registered

@@ -273,13 +273,19 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				// phc2sys offset is within threshold.
 				// GetMainClockName() returns the correct key per profile type:
 				//   T-BC → "T-BC", T-GM → "GM", OC/BC → "master"
+				// Prefer the profile-type key for T-BC/T-GM so a missing T-BC
+				// entry after reconfig is not mistaken for OC "master".
 				mainClockKey := ptpStats.GetMainClockName()
-				if e1Stat, ok := ptpStats[mainClockKey]; ok {
-					e1State := e1Stat.LastSyncState()
-					if e1State == ptp.FREERUN || e1State == ptp.HOLDOVER {
-						syncState = OverallState(syncState, e1State)
-					}
+				if ptp4lCfg.ProfileType == ptp4lconf.TBC {
+					mainClockKey = types.IFace(stats.TBCMainClockName)
 				}
+				// Missing or unset E1 defaults to FREERUN so a lone OS-clock
+				// LOCKED sample cannot make E3 LOCKED early after reconfig.
+				e1State := ptp.FREERUN
+				if e1Stat, ok := ptpStats[mainClockKey]; ok && e1Stat.LastSyncState() != "" {
+					e1State = e1Stat.LastSyncState()
+				}
+				syncState = OverallState(syncState, e1State)
 				//  for HA we can not rely on master ;since there will be 2 or more leaders; this condition will be skipped
 				// ptpStats clock realtime has its own stats objects
 				if r, ok := ptpStats[master]; ok && r.Role() == types.SLAVE { // publish event only if the master role is active

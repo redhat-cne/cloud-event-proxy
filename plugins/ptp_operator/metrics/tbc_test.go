@@ -114,6 +114,31 @@ func TestGetProfileType(t *testing.T) {
 	}
 }
 
+func TestGetProfileTypeByConfigName(t *testing.T) {
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	eventManager.PtpConfigMapUpdates.TBCProfiles = []string{"tbc-profile-1"}
+
+	tbcCfg := "ptp4l.0.config"
+	ocCfg := "ptp4l.1.config"
+	staleCfg := "ptp4l.2.config"
+
+	eventManager.AddPTPConfig(types.ConfigName(tbcCfg), &ptp4lconf.PTP4lConfig{
+		Name: tbcCfg, Profile: "tbc-profile-1", ProfileType: ptp4lconf.TBC,
+	})
+	eventManager.AddPTPConfig(types.ConfigName(ocCfg), &ptp4lconf.PTP4lConfig{
+		Name: ocCfg, Profile: "oc-profile", ProfileType: ptp4lconf.NONE,
+	})
+	// Cached as NONE, but profile is in TBCProfiles — live fallback should resolve TBC.
+	eventManager.AddPTPConfig(types.ConfigName(staleCfg), &ptp4lconf.PTP4lConfig{
+		Name: staleCfg, Profile: "tbc-profile-1", ProfileType: ptp4lconf.NONE,
+	})
+
+	assert.Equal(t, ptp4lconf.TBC, eventManager.GetProfileTypeByConfigName(types.ConfigName(tbcCfg)))
+	assert.Equal(t, ptp4lconf.NONE, eventManager.GetProfileTypeByConfigName(types.ConfigName(ocCfg)))
+	assert.Equal(t, ptp4lconf.TBC, eventManager.GetProfileTypeByConfigName(types.ConfigName(staleCfg)))
+	assert.Equal(t, ptp4lconf.NONE, eventManager.GetProfileTypeByConfigName(types.ConfigName("ptp4l.99.config")))
+}
+
 // TestTBCPtp4lMasterOffsetNoHoldover tests that TBC profiles don't enter HOLDOVER from ptp4l master offset
 func TestTBCPtp4lMasterOffsetNoHoldover(t *testing.T) {
 	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
@@ -713,4 +738,45 @@ func TestTBCProcessDownEventFiresFreerun(t *testing.T) {
 	// Verify T-BC stats key transitions back to LOCKED
 	assert.Equal(t, ptp.LOCKED, ptpStats[tbcKey].LastSyncState(),
 		"T-BC stats should be LOCKED after T-BC-STATUS s2")
+}
+
+// TestE3DefaultsMissingE1ToFreerun ensures that after reconfig, when only
+// phc2sys has reported LOCKED and T-BC/E1 has not reported yet, E3 stays
+// FREERUN instead of locking early from OS clock alone.
+func TestE3DefaultsMissingE1ToFreerun(t *testing.T) {
+	cfgName := "ptp4l.1.config"
+	tbcProfile := "t-bc_tbc-tr"
+
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	eventManager.MockTest(true)
+	eventManager.PtpConfigMapUpdates.TBCProfiles = []string{tbcProfile}
+
+	ptp4lCfg := &ptp4lconf.PTP4lConfig{
+		Name:        cfgName,
+		Profile:     tbcProfile,
+		ProfileType: ptp4lconf.TBC,
+		Interfaces: []*ptp4lconf.PTPInterface{
+			{Name: "ens2f0", PortID: 1, PortName: "port 1", Role: types.SLAVE},
+		},
+	}
+	eventManager.AddPTPConfig(types.ConfigName(cfgName), ptp4lCfg)
+
+	ptpStats := eventManager.GetStats(types.ConfigName(cfgName))
+	ptpStats[metrics.MasterClockType] = stats.NewStats(cfgName)
+	ptpStats[metrics.MasterClockType].SetAlias("ens2fx")
+	ptpStats[metrics.MasterClockType].SetRole(types.SLAVE)
+
+	eventManager.ResetMockEvent()
+	phc2sysLocked := fmt.Sprintf(
+		"phc2sys[600840.357]: [%s] CLOCK_REALTIME phc offset -34 s2 freq -4040 delay 529",
+		cfgName,
+	)
+	eventManager.ExtractMetrics(phc2sysLocked)
+
+	cStat, ok := ptpStats[metrics.ClockRealTime]
+	assert.True(t, ok, "CLOCK_REALTIME stats should exist")
+	assert.Equal(t, ptp.FREERUN, cStat.LastSyncState(),
+		"E3 must stay FREERUN when E1/T-BC has not reported yet")
+	assert.Contains(t, eventManager.GetMockEvent(), ptp.OsClockSyncStateChange,
+		"should publish OS-clock FREERUN (not LOCKED) when E1 is unset")
 }
