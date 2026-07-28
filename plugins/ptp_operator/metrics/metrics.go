@@ -276,7 +276,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				// Prefer the profile-type key for T-BC/T-GM so a missing T-BC
 				// entry after reconfig is not mistaken for OC "master".
 				mainClockKey := ptpStats.GetMainClockName()
-				if ptp4lCfg.ProfileType == ptp4lconf.TBC {
+				if p.GetProfileTypeByConfigName(types.ConfigName(configName)) == ptp4lconf.TBC {
 					mainClockKey = types.IFace(stats.TBCMainClockName)
 				}
 				// Missing or unset E1 defaults to FREERUN so a lone OS-clock
