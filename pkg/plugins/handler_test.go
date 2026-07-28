@@ -19,10 +19,10 @@ package plugins
 
 import (
 	"fmt"
+	"net"
+	"os"
 	"sync"
 	"testing"
-
-	"os"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
@@ -38,17 +38,41 @@ var (
 	channelBufferSize int = 10
 )
 
-func init() {
-	var storePath = "."
+func freeTCPPort() (int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	_ = l.Close()
+	return port, nil
+}
+
+func uniqueStorePath(prefix string) (string, error) {
+	base := os.TempDir()
 	if sPath, ok := os.LookupEnv("STORE_PATH"); ok && sPath != "" {
-		storePath = sPath
+		base = sPath
+	}
+	return os.MkdirTemp(base, prefix)
+}
+
+func TestMain(m *testing.M) {
+	storePath, err := uniqueStorePath("plugins-handler-*")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "unique store path: %v\n", err)
+		os.Exit(1)
+	}
+	apiPort, err := freeTCPPort()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "free tcp port: %v\n", err)
+		os.Exit(1)
 	}
 
 	scConfig = &common.SCConfiguration{
 		EventInCh:     make(chan *channel.DataChan, channelBufferSize),
 		EventOutCh:    make(chan *channel.DataChan, channelBufferSize),
 		CloseCh:       make(chan struct{}),
-		APIPort:       8989,
+		APIPort:       apiPort,
 		APIPath:       "/api/cne/",
 		PubSubAPI:     v1pubsub.GetAPIInstance(storePath),
 		SubscriberAPI: subscriberApi.GetAPIInstance(storePath),
@@ -62,6 +86,9 @@ func init() {
 			Err:  nil,
 		},
 	}
+	code := m.Run()
+	_ = os.RemoveAll(storePath)
+	os.Exit(code)
 }
 
 func TestLoadPTPPlugin(t *testing.T) {

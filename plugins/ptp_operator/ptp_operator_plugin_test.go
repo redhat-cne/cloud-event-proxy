@@ -65,10 +65,36 @@ var (
 	nodeName          = "test_node"
 )
 
+func freeTCPPort() (int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	_ = l.Close()
+	return port, nil
+}
+
+func uniqueStorePath(prefix string) (string, error) {
+	base := os.TempDir()
+	if sPath, ok := os.LookupEnv("STORE_PATH"); ok && sPath != "" {
+		base = sPath
+	}
+	return os.MkdirTemp(base, prefix)
+}
+
 func TestMain(m *testing.M) {
 	defer cleanUP()
-	if sPath, ok := os.LookupEnv("STORE_PATH"); ok && sPath != "" {
-		storePath = sPath
+	var err error
+	storePath, err = uniqueStorePath("ptp-operator-plugin-*")
+	if err != nil {
+		log.Fatalf("unique store path: %v", err)
+	}
+	defer os.RemoveAll(storePath)
+
+	apiPort, err = freeTCPPort()
+	if err != nil {
+		log.Fatalf("free tcp port: %v", err)
 	}
 	scConfig = &common.SCConfiguration{
 		EventInCh:     make(chan *channel.DataChan, channelBufferSize),
@@ -81,9 +107,9 @@ func TestMain(m *testing.M) {
 		StorePath:     storePath,
 		TransportHost: &common.TransportHost{
 			Type: common.HTTP,
-			URL:  "localhost:8990",
+			URL:  fmt.Sprintf("localhost:%d", apiPort),
 			Host: "localhost",
-			Port: 8990,
+			Port: apiPort,
 			Err:  nil,
 		},
 		BaseURL: nil,
@@ -97,8 +123,15 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 func cleanUP() {
-	_, _ = scConfig.SubscriberAPI.DeleteAllSubscriptions()
-	_ = scConfig.PubSubAPI.DeleteAllPublishers()
+	if scConfig == nil {
+		return
+	}
+	if scConfig.SubscriberAPI != nil {
+		_, _ = scConfig.SubscriberAPI.DeleteAllSubscriptions()
+	}
+	if scConfig.PubSubAPI != nil {
+		_ = scConfig.PubSubAPI.DeleteAllPublishers()
+	}
 }
 
 // ProcessInChannel will be  called if Transport is disabled
