@@ -247,6 +247,12 @@ func UpdateSyncStateMetrics(process, iface string, state ptp.SyncState) {
 		"process": process, "node": ptpNodeName, "iface": iface}).Set(clockState)
 }
 
+// DeleteSyncStateMetrics ... delete a single sync state series for a process/iface pair
+func DeleteSyncStateMetrics(process, iface string) {
+	SyncState.Delete(prometheus.Labels{
+		"process": process, "node": ptpNodeName, "iface": iface})
+}
+
 // UpdateNmeaStatusMetrics ... update nmea status metrics
 func UpdateNmeaStatusMetrics(process, iface string, status float64) {
 	if !CheckMetricSanity("NmeaStatusMetrics", process, iface) {

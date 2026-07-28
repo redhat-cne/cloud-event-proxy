@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptpConfig "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/config"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
@@ -15,6 +17,36 @@ import (
 	"github.com/stretchr/testify/assert"
 	"k8s.io/utils/pointer"
 )
+
+// syncStateSeriesExists reports whether the openshift_ptp_clock_state gauge
+// currently has a series for the given process/iface label pair, WITHOUT
+// creating one as a side effect (unlike SyncState.With(...)).
+func syncStateSeriesExists(process, iface string) bool {
+	ch := make(chan prometheus.Metric, 64)
+	go func() {
+		metrics.SyncState.Collect(ch)
+		close(ch)
+	}()
+	for m := range ch {
+		var d dto.Metric
+		if err := m.Write(&d); err != nil {
+			continue
+		}
+		var p, i string
+		for _, lp := range d.Label {
+			switch lp.GetName() {
+			case "process":
+				p = lp.GetValue()
+			case "iface":
+				i = lp.GetValue()
+			}
+		}
+		if p == process && i == iface {
+			return true
+		}
+	}
+	return false
+}
 
 const (
 	ntpFailoverProfile = "ntp-failover"
@@ -337,6 +369,75 @@ func TestNTPNodeSyncStateDuringHoldover(t *testing.T) {
 	nodeState := eventManager.GetNodeSyncState(ptp.LOCKED)
 	assert.Equal(t, ptp.HOLDOVER, nodeState,
 		"LOST GNSS (HOLDOVER): sync-state must be HOLDOVER even though os-clock is LOCKED")
+}
+
+// TestNTPFailoverClockRealTimeMetricSwapsOwner reproduces the reported bug:
+// after ntpfailover switches CLOCK_REALTIME ownership between phc2sys and
+// chronyd, exactly one openshift_ptp_clock_state{iface="CLOCK_REALTIME"}
+// series must be exposed at a time — the previous owner's stale series must
+// be removed rather than lingering forever.
+func TestNTPFailoverClockRealTimeMetricSwapsOwner(t *testing.T) {
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	eventManager.MockTest(true)
+
+	ptp4lCfg := &ptp4lconf.PTP4lConfig{
+		Name:    ntpPtp4lCfgName,
+		Profile: ntpFailoverProfile,
+		Interfaces: []*ptp4lconf.PTPInterface{
+			{
+				Name:     "ens3f0",
+				PortID:   1,
+				PortName: "port 1",
+				Role:     types.SLAVE,
+			},
+		},
+	}
+	eventManager.AddPTPConfig(types.ConfigName(ntpPtp4lCfgName), ptp4lCfg)
+
+	chronydCfg := &ptp4lconf.PTP4lConfig{
+		Name:    ntpChronydCfgName,
+		Profile: ntpFailoverProfile,
+	}
+	eventManager.AddPTPConfig(types.ConfigName(ntpChronydCfgName), chronydCfg)
+
+	phc2sysOpts := ntpPhc2sysOpts
+	chronydOpts := ntpChronydOpts
+	eventManager.PtpConfigMapUpdates.PtpProcessOpts = map[string]*ptpConfig.PtpProcessOpts{
+		ntpFailoverProfile: {
+			Phc2Opts:    &phc2sysOpts,
+			ChronydOpts: &chronydOpts,
+		},
+	}
+
+	// SyncState is a package-level singleton shared across tests in this
+	// binary; reset both series to establish a clean baseline for this test.
+	metrics.DeleteSyncStateMetrics("phc2sys", metrics.ClockRealTime)
+	metrics.DeleteSyncStateMetrics("chronyd", metrics.ClockRealTime)
+
+	// Initial stable GNSS: phc2sys owns CLOCK_REALTIME.
+	metrics.UpdateSyncStateMetrics("phc2sys", metrics.ClockRealTime, ptp.LOCKED)
+	assert.True(t, syncStateSeriesExists("phc2sys", metrics.ClockRealTime),
+		"phc2sys CLOCK_REALTIME series must exist during stable GNSS")
+	assert.False(t, syncStateSeriesExists("chronyd", metrics.ClockRealTime),
+		"chronyd CLOCK_REALTIME series must not exist yet during stable GNSS")
+
+	// GNSS loss -> NTP failover: chronyd takes over CLOCK_REALTIME.
+	chronydSelected := fmt.Sprintf("chronyd[1000.000]: [%s] Selected source 192.168.1.1 (ntp.example.com)", ntpChronydCfgName)
+	eventManager.ExtractMetrics(chronydSelected)
+
+	assert.True(t, syncStateSeriesExists("chronyd", metrics.ClockRealTime),
+		"chronyd CLOCK_REALTIME series must exist during stable NTP")
+	assert.False(t, syncStateSeriesExists("phc2sys", metrics.ClockRealTime),
+		"phc2sys stale CLOCK_REALTIME series must be removed once chronyd takes over")
+
+	// GNSS recovery: phc2sys reports CLOCK_REALTIME offset again and reclaims ownership.
+	phc2sysOffset := fmt.Sprintf("phc2sys[1001.000]: [%s] CLOCK_REALTIME phc offset       -10 s2 freq  -100 delay   100", ntpPtp4lCfgName)
+	eventManager.ExtractMetrics(phc2sysOffset)
+
+	assert.True(t, syncStateSeriesExists("phc2sys", metrics.ClockRealTime),
+		"phc2sys CLOCK_REALTIME series must exist again after GNSS recovery")
+	assert.False(t, syncStateSeriesExists("chronyd", metrics.ClockRealTime),
+		"chronyd stale CLOCK_REALTIME series must be removed once phc2sys reclaims ownership")
 }
 
 // Silence unused-import warnings for packages referenced indirectly.
