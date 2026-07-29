@@ -162,9 +162,11 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 		ptpStats[ClockRealTime].SetProcessName(processName)
 		if chronydValidSource.MatchString(output) {
 			UpdateSyncStateMetrics(chronydProcessName, ClockRealTime, ptp.LOCKED)
+			p.clearStaleClockRealTimeMetric(profileName, chronydProcessName)
 			p.GenPTPEvent(profileName, ptpStats[ClockRealTime], ClockRealTime, int64(0), ptp.LOCKED, ptp.OsClockSyncStateChange)
 		} else if chronydNoValidSource.MatchString(output) {
 			UpdateSyncStateMetrics(chronydProcessName, ClockRealTime, ptp.FREERUN)
+			p.clearStaleClockRealTimeMetric(profileName, chronydProcessName)
 			p.GenPTPEvent(profileName, ptpStats[ClockRealTime], ClockRealTime, int64(0), ptp.FREERUN, ptp.OsClockSyncStateChange)
 		}
 	default:
@@ -227,7 +229,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			}
 			log.Tracef("ExtractMetrics: offset parsed: process=%s iface=%s offset=%.0f syncState=%s", processName, interfaceName, ptpOffset, syncState)
 			//  only ts2phc process will return actual interface name- allow all ts2phcprocess or iface in (master or  clock realtime)
-			if processName != ts2phcProcessName && !(interfaceName == master || interfaceName == ClockRealTime) {
+			if processName != ts2phcProcessName && interfaceName != master && interfaceName != ClockRealTime {
 				return // only master and clock_realtime are supported
 			}
 			// Force FREERUN if gnss is FREERUN and ts2phc is the source
@@ -301,6 +303,9 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				}
 				// continue to update metrics regardless and stick to last sync state
 				UpdateSyncStateMetrics(processName, interfaceName, ptpStats[ClockRealTime].LastSyncState())
+				if processName == phc2sysProcessName {
+					p.clearStaleClockRealTimeMetric(profileName, phc2sysProcessName)
+				}
 				UpdatePTPMetrics(offsetSource, processName, interfaceName, ptpOffset, float64(ptpStats[ClockRealTime].MaxAbs()), frequencyAdjustment, delay)
 			case MasterClockType: // this ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay
 				// Report events for master  by masking the index  number of the slave interface
@@ -368,6 +373,27 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 	}
 	p.ParsePTP4l(processName, configName, profileName, output, fields,
 		ptpInterface, ptp4lCfg, ptpStats)
+}
+
+// clearStaleClockRealTimeMetric removes the openshift_ptp_clock_state
+// CLOCK_REALTIME series belonging to the counterpart process (phc2sys <->
+// chronyd) once activeProcessName actively reports its own CLOCK_REALTIME
+// state. This only applies to NTP/GNSS-failover profiles where both phc2sys
+// and chronyd are configured, since in that scenario exactly one of the two
+// processes owns CLOCK_REALTIME at any given time. Without this cleanup, the
+// previously active process' last-known state lingers forever, resulting in
+// two (potentially conflicting) CLOCK_REALTIME time series being exposed at
+// once.
+func (p *PTPEventManager) clearStaleClockRealTimeMetric(profileName, activeProcessName string) {
+	opts := p.PtpConfigMapUpdates.LookupPtpProcessOpts(profileName)
+	if opts == nil || !opts.Phc2SysEnabled() || !opts.ChronydEnabled() {
+		return
+	}
+	counterpart := chronydProcessName
+	if activeProcessName == chronydProcessName {
+		counterpart = phc2sysProcessName
+	}
+	DeleteSyncStateMetrics(counterpart, ClockRealTime)
 }
 
 func (p *PTPEventManager) processDownEvent(profileName, processName string, ptpStats stats.PTPStats, profileType ptp4lconf.PtpProfileType) {
