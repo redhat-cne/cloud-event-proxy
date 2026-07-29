@@ -120,7 +120,11 @@ func TestMain(m *testing.M) {
 	common.StartPubSubService(scConfig)
 	pubsubTypes = InitPubSubTypes()
 	scConfig.RestAPI.SetOnStatusReceiveOverrideFn(getMockOverrideFn())
-	os.Exit(m.Run())
+	code := m.Run()
+	// os exit skips defer
+	cleanUP()
+	_ = os.RemoveAll(storePath)
+	os.Exit(code)
 }
 func cleanUP() {
 	if scConfig == nil {
