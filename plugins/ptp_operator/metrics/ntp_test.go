@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptpConfig "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/config"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
@@ -22,14 +24,48 @@ const (
 	ntpChronydCfgName  = "chronyd.0.config"
 	ntpPhc2sysOpts     = "-a -r -r -n 24"
 	ntpChronydOpts     = "-f /etc/chrony.conf"
+	ntpStorePath       = "/tmp/store"
+	ntpSlaveIface      = "ens3f0"
+	labelProcess       = "process"
+	labelIface         = "iface"
 )
+
+// syncStateSeriesExists reports whether the openshift_ptp_clock_state gauge
+// currently has a CLOCK_REALTIME series for the given process, WITHOUT
+// creating one as a side effect (unlike SyncState.With(...)).
+func syncStateSeriesExists(process string) bool {
+	ch := make(chan prometheus.Metric, 64)
+	go func() {
+		metrics.SyncState.Collect(ch)
+		close(ch)
+	}()
+	for m := range ch {
+		var d dto.Metric
+		if err := m.Write(&d); err != nil {
+			continue
+		}
+		var p, i string
+		for _, lp := range d.Label {
+			switch lp.GetName() {
+			case labelProcess:
+				p = lp.GetValue()
+			case labelIface:
+				i = lp.GetValue()
+			}
+		}
+		if p == process && i == metrics.ClockRealTime {
+			return true
+		}
+	}
+	return false
+}
 
 // TestNTPProcessDownDoesNotEmitOsClockSyncStateChange verifies that when
 // phc2sys reports process_status 0 in an NTP-failover configuration (chronyd
 // enabled), no OsClockSyncStateChange event is emitted for CLOCK_REALTIME.
 // Chronyd is the sole E3 publisher in NTP mode.
 func TestNTPProcessDownDoesNotEmitOsClockSyncStateChange(t *testing.T) {
-	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: ntpStorePath})
 	eventManager.MockTest(true)
 
 	ptp4lCfg := &ptp4lconf.PTP4lConfig{
@@ -37,7 +73,7 @@ func TestNTPProcessDownDoesNotEmitOsClockSyncStateChange(t *testing.T) {
 		Profile: ntpFailoverProfile,
 		Interfaces: []*ptp4lconf.PTPInterface{
 			{
-				Name:     "ens3f0",
+				Name:     ntpSlaveIface,
 				PortID:   1,
 				PortName: "port 1",
 				Role:     types.SLAVE,
@@ -80,7 +116,7 @@ func TestNTPProcessDownDoesNotEmitOsClockSyncStateChange(t *testing.T) {
 func TestNTPProcessDownEmitsOsClockWhenNoChronyd(t *testing.T) {
 	profileName := "ptp-oc"
 
-	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: ntpStorePath})
 	eventManager.MockTest(true)
 
 	ptp4lCfg := &ptp4lconf.PTP4lConfig{
@@ -88,7 +124,7 @@ func TestNTPProcessDownEmitsOsClockWhenNoChronyd(t *testing.T) {
 		Profile: profileName,
 		Interfaces: []*ptp4lconf.PTPInterface{
 			{
-				Name:     "ens3f0",
+				Name:     ntpSlaveIface,
 				PortID:   1,
 				PortName: "port 1",
 				Role:     types.SLAVE,
@@ -130,7 +166,7 @@ func TestNTPProcessDownEmitsOsClockWhenNoChronyd(t *testing.T) {
 // TestNTPChronydSelectedSourceSetsLocked verifies that chronyd "Selected source"
 // correctly sets CLOCK_REALTIME to LOCKED and is the sole E3 publisher.
 func TestNTPChronydSelectedSourceSetsLocked(t *testing.T) {
-	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: ntpStorePath})
 	eventManager.MockTest(true)
 
 	ptp4lCfg := &ptp4lconf.PTP4lConfig{
@@ -173,7 +209,7 @@ func TestNTPChronydSelectedSourceSetsLocked(t *testing.T) {
 // absent) is in FREERUN. Per the state chart, sync-state = worst(os-clock=LOCKED,
 // ptp-lock=FREERUN) = FREERUN.
 func TestNTPNodeSyncStateIncludesMasterFreerun(t *testing.T) {
-	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: ntpStorePath})
 	eventManager.MockTest(true)
 
 	ptp4lCfg := &ptp4lconf.PTP4lConfig{
@@ -181,7 +217,7 @@ func TestNTPNodeSyncStateIncludesMasterFreerun(t *testing.T) {
 		Profile: ntpFailoverProfile,
 		Interfaces: []*ptp4lconf.PTPInterface{
 			{
-				Name:     "ens3f0",
+				Name:     ntpSlaveIface,
 				PortID:   1,
 				PortName: "port 1",
 				Role:     types.SLAVE,
@@ -208,7 +244,7 @@ func TestNTPNodeSyncStateIncludesMasterFreerun(t *testing.T) {
 	ptp4lStats := eventManager.GetStats(types.ConfigName(ntpPtp4lCfgName))
 	ptp4lStats.CheckSource(metrics.MasterClockType, ntpPtp4lCfgName, "ptp4l")
 	ptp4lStats[metrics.MasterClockType].SetLastSyncState(ptp.FREERUN)
-	ptp4lStats[metrics.MasterClockType].SetAlias("ens3f0")
+	ptp4lStats[metrics.MasterClockType].SetAlias(ntpSlaveIface)
 
 	chronydStats := eventManager.GetStats(types.ConfigName(ntpChronydCfgName))
 	chronydStats.CheckSource(metrics.ClockRealTime, ntpChronydCfgName, "chronyd")
@@ -223,7 +259,7 @@ func TestNTPNodeSyncStateIncludesMasterFreerun(t *testing.T) {
 // phc2sys goes down but chronyd maintains CLOCK_REALTIME, resulting in a
 // single consistent CLOCK_REALTIME state (LOCKED) without conflicting events.
 func TestNTPNoDoubleClockRealtime(t *testing.T) {
-	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: ntpStorePath})
 	eventManager.MockTest(true)
 
 	ptp4lCfg := &ptp4lconf.PTP4lConfig{
@@ -231,7 +267,7 @@ func TestNTPNoDoubleClockRealtime(t *testing.T) {
 		Profile: ntpFailoverProfile,
 		Interfaces: []*ptp4lconf.PTPInterface{
 			{
-				Name:     "ens3f0",
+				Name:     ntpSlaveIface,
 				PortID:   1,
 				PortName: "port 1",
 				Role:     types.SLAVE,
@@ -261,7 +297,7 @@ func TestNTPNoDoubleClockRealtime(t *testing.T) {
 	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
 	_ = replacer
 
-	ptp4lSlave := fmt.Sprintf("ptp4l[1000.000]: [%s] port 1 (ens3f0): LISTENING to SLAVE on RS_SLAVE", ntpPtp4lCfgName)
+	ptp4lSlave := fmt.Sprintf("ptp4l[1000.000]: [%s] port 1 (%s): LISTENING to SLAVE on RS_SLAVE", ntpPtp4lCfgName, ntpSlaveIface)
 	eventManager.ExtractMetrics(ptp4lSlave)
 	t.Log("Step 1: ptp4l port goes SLAVE")
 
@@ -302,7 +338,7 @@ func TestNTPNoDoubleClockRealtime(t *testing.T) {
 func TestNTPNodeSyncStateDuringHoldover(t *testing.T) {
 	profileName := "gnss-failover"
 
-	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: ntpStorePath})
 	eventManager.MockTest(true)
 
 	ptp4lCfg := &ptp4lconf.PTP4lConfig{
@@ -310,7 +346,7 @@ func TestNTPNodeSyncStateDuringHoldover(t *testing.T) {
 		Profile: profileName,
 		Interfaces: []*ptp4lconf.PTPInterface{
 			{
-				Name:     "ens3f0",
+				Name:     ntpSlaveIface,
 				PortID:   1,
 				PortName: "port 1",
 				Role:     types.SLAVE,
@@ -329,7 +365,7 @@ func TestNTPNodeSyncStateDuringHoldover(t *testing.T) {
 	ptpStats := eventManager.GetStats(types.ConfigName(ntpPtp4lCfgName))
 	ptpStats.CheckSource(metrics.MasterClockType, ntpPtp4lCfgName, "ptp4l")
 	ptpStats[metrics.MasterClockType].SetLastSyncState(ptp.HOLDOVER)
-	ptpStats[metrics.MasterClockType].SetAlias("ens3f0")
+	ptpStats[metrics.MasterClockType].SetAlias(ntpSlaveIface)
 
 	ptpStats.CheckSource(metrics.ClockRealTime, ntpPtp4lCfgName, "phc2sys")
 	ptpStats[metrics.ClockRealTime].SetLastSyncState(ptp.LOCKED)
@@ -337,6 +373,75 @@ func TestNTPNodeSyncStateDuringHoldover(t *testing.T) {
 	nodeState := eventManager.GetNodeSyncState(ptp.LOCKED)
 	assert.Equal(t, ptp.HOLDOVER, nodeState,
 		"LOST GNSS (HOLDOVER): sync-state must be HOLDOVER even though os-clock is LOCKED")
+}
+
+// TestNTPFailoverClockRealTimeMetricSwapsOwner reproduces the reported bug:
+// after ntpfailover switches CLOCK_REALTIME ownership between phc2sys and
+// chronyd, exactly one openshift_ptp_clock_state{iface="CLOCK_REALTIME"}
+// series must be exposed at a time — the previous owner's stale series must
+// be removed rather than lingering forever.
+func TestNTPFailoverClockRealTimeMetricSwapsOwner(t *testing.T) {
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: ntpStorePath})
+	eventManager.MockTest(true)
+
+	ptp4lCfg := &ptp4lconf.PTP4lConfig{
+		Name:    ntpPtp4lCfgName,
+		Profile: ntpFailoverProfile,
+		Interfaces: []*ptp4lconf.PTPInterface{
+			{
+				Name:     ntpSlaveIface,
+				PortID:   1,
+				PortName: "port 1",
+				Role:     types.SLAVE,
+			},
+		},
+	}
+	eventManager.AddPTPConfig(types.ConfigName(ntpPtp4lCfgName), ptp4lCfg)
+
+	chronydCfg := &ptp4lconf.PTP4lConfig{
+		Name:    ntpChronydCfgName,
+		Profile: ntpFailoverProfile,
+	}
+	eventManager.AddPTPConfig(types.ConfigName(ntpChronydCfgName), chronydCfg)
+
+	phc2sysOpts := ntpPhc2sysOpts
+	chronydOpts := ntpChronydOpts
+	eventManager.PtpConfigMapUpdates.PtpProcessOpts = map[string]*ptpConfig.PtpProcessOpts{
+		ntpFailoverProfile: {
+			Phc2Opts:    &phc2sysOpts,
+			ChronydOpts: &chronydOpts,
+		},
+	}
+
+	// SyncState is a package-level singleton shared across tests in this
+	// binary; reset both series to establish a clean baseline for this test.
+	metrics.DeleteSyncStateMetrics("phc2sys", metrics.ClockRealTime)
+	metrics.DeleteSyncStateMetrics("chronyd", metrics.ClockRealTime)
+
+	// Initial stable GNSS: phc2sys owns CLOCK_REALTIME.
+	metrics.UpdateSyncStateMetrics("phc2sys", metrics.ClockRealTime, ptp.LOCKED)
+	assert.True(t, syncStateSeriesExists("phc2sys"),
+		"phc2sys CLOCK_REALTIME series must exist during stable GNSS")
+	assert.False(t, syncStateSeriesExists("chronyd"),
+		"chronyd CLOCK_REALTIME series must not exist yet during stable GNSS")
+
+	// GNSS loss -> NTP failover: chronyd takes over CLOCK_REALTIME.
+	chronydSelected := fmt.Sprintf("chronyd[1000.000]: [%s] Selected source 192.168.1.1 (ntp.example.com)", ntpChronydCfgName)
+	eventManager.ExtractMetrics(chronydSelected)
+
+	assert.True(t, syncStateSeriesExists("chronyd"),
+		"chronyd CLOCK_REALTIME series must exist during stable NTP")
+	assert.False(t, syncStateSeriesExists("phc2sys"),
+		"phc2sys stale CLOCK_REALTIME series must be removed once chronyd takes over")
+
+	// GNSS recovery: phc2sys reports CLOCK_REALTIME offset again and reclaims ownership.
+	phc2sysOffset := fmt.Sprintf("phc2sys[1001.000]: [%s] CLOCK_REALTIME phc offset       -10 s2 freq  -100 delay   100", ntpPtp4lCfgName)
+	eventManager.ExtractMetrics(phc2sysOffset)
+
+	assert.True(t, syncStateSeriesExists("phc2sys"),
+		"phc2sys CLOCK_REALTIME series must exist again after GNSS recovery")
+	assert.False(t, syncStateSeriesExists("chronyd"),
+		"chronyd stale CLOCK_REALTIME series must be removed once phc2sys reclaims ownership")
 }
 
 // Silence unused-import warnings for packages referenced indirectly.
