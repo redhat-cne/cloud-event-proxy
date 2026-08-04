@@ -5,17 +5,18 @@ package main
 
 import (
 	"fmt"
+	"net"
+	"os"
+	"sync"
+	"testing"
+
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"k8s.io/utils/pointer"
-	"os"
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ceEvent "github.com/redhat-cne/sdk-go/pkg/event"
 	"github.com/redhat-cne/sdk-go/pkg/event/ptp"
 	"github.com/redhat-cne/sdk-go/pkg/types"
-
-	"sync"
-	"testing"
 
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	log "github.com/sirupsen/logrus"
@@ -40,11 +41,27 @@ func storeCleanUp() {
 	}
 }
 
-func TestSidecar_Main(t *testing.T) {
-	apiPort = 8990
+func freeTCPPort() (int, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+	port := l.Addr().(*net.TCPAddr).Port
+	_ = l.Close()
+	return port, nil
+}
 
-	// Create a unique temporary directory for this test run to avoid conflicts
-	tempDir, err := os.MkdirTemp("", "sidecar-test-*")
+func TestSidecar_Main(t *testing.T) {
+	port, err := freeTCPPort()
+	assert.NoError(t, err)
+	apiPort = port
+
+	// Unique store under STORE_PATH (if set) so parallel packages do not share pub.json.
+	base := os.TempDir()
+	if sPath, ok := os.LookupEnv("STORE_PATH"); ok && sPath != "" {
+		base = sPath
+	}
+	tempDir, err := os.MkdirTemp(base, "sidecar-test-*")
 	assert.NoError(t, err)
 	defer func() {
 		storeCleanUp()
@@ -52,10 +69,7 @@ func TestSidecar_Main(t *testing.T) {
 	}()
 
 	wg := &sync.WaitGroup{}
-	var storePath = tempDir
-	if sPath, ok := os.LookupEnv("STORE_PATH"); ok && sPath != "" {
-		storePath = sPath
-	}
+	storePath := tempDir
 	scConfig = &common.SCConfiguration{
 		EventInCh:     make(chan *channel.DataChan, channelBufferSize),
 		EventOutCh:    make(chan *channel.DataChan, channelBufferSize),

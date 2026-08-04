@@ -270,18 +270,27 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			switch interfaceName { //note: this is not  interface type
 			case ClockRealTime: // CLOCK_REALTIME is active slave interface
 				// O-RAN O-Cloud API v04.00 Table 37: E3 = worst_of(phc2sys_state, E1_state).
-				// phc2sys is the single publisher — but if the upstream PHC is not
-				// traceable (E1 != LOCKED), E3 cannot be LOCKED even when
-				// phc2sys offset is within threshold.
-				// GetMainClockName() returns the correct key per profile type:
-				//   T-BC → "T-BC", T-GM → "GM", OC/BC → "master"
+				// phc2sys publishes E3, but E3 cannot be LOCKED unless E1 is also LOCKED.
+
+				// E1 lookup key: T-BC → "T-BC"; T-GM/OC/BC → "master".
+				// T-BC/T-GM set E1 from delayed X-STATUS lines (T-BC-STATUS / T-GM-STATUS),
+				// so missing E1 defaults to FREERUN. OC/BC set E1 from ptp4l, so leave it unset.
+				var e1State ptp.SyncState
 				mainClockKey := ptpStats.GetMainClockName()
-				if e1Stat, ok := ptpStats[mainClockKey]; ok {
-					e1State := e1Stat.LastSyncState()
-					if e1State == ptp.FREERUN || e1State == ptp.HOLDOVER {
-						syncState = OverallState(syncState, e1State)
-					}
+				switch p.GetProfileTypeByConfigName(types.ConfigName(configName)) {
+				case ptp4lconf.TBC:
+					mainClockKey = types.IFace(stats.TBCMainClockName)
+					e1State = ptp.FREERUN
+				case ptp4lconf.TGM:
+					e1State = ptp.FREERUN
 				}
+				if e1Stat, ok := ptpStats[mainClockKey]; ok && e1Stat.LastSyncState() != "" {
+					e1State = e1Stat.LastSyncState()
+				}
+				if e1State != "" {
+					syncState = OverallState(syncState, e1State)
+				}
+
 				//  for HA we can not rely on master ;since there will be 2 or more leaders; this condition will be skipped
 				// ptpStats clock realtime has its own stats objects
 				if r, ok := ptpStats[master]; ok && r.Role() == types.SLAVE { // publish event only if the master role is active
