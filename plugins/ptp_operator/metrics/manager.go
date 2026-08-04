@@ -655,8 +655,8 @@ func (p *PTPEventManager) GetProfileType(name string) ptp4lconf.PtpProfileType {
 // name (e.g. "ptp4l.0.config"). Returns NONE if the config is unknown.
 func (p *PTPEventManager) GetProfileTypeByConfigName(configName types.ConfigName) ptp4lconf.PtpProfileType {
 	p.lock.RLock()
+	defer p.lock.RUnlock()
 	cfg, ok := p.Ptp4lConfigInterfaces[configName]
-	p.lock.RUnlock()
 	if !ok || cfg == nil {
 		return ptp4lconf.NONE
 	}

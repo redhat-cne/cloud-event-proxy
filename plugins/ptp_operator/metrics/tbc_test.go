@@ -860,37 +860,67 @@ func TestIsTBCProfile(t *testing.T) {
 	assert.False(t, eventManager.IsTBCProfile(""))
 }
 
-// TestE3NonTBCUsesMasterE1 ensures OC/BC profiles still derive E3 from master
-// when the config is not a T-BC profile (GetProfileTypeByConfigName → NONE).
+// TestE3NonTBCUsesMasterE1 ensures OC/BC profiles do not default missing E1
+// to FREERUN (unlike T-BC/T-GM). E3 follows master when set, else phc2sys alone.
 func TestE3NonTBCUsesMasterE1(t *testing.T) {
 	cfgName := tbcPtp4l1CfgName
-	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
-	eventManager.MockTest(true)
-
-	ptp4lCfg := &ptp4lconf.PTP4lConfig{
-		Name:        cfgName,
-		Profile:     "oc-profile",
-		ProfileType: ptp4lconf.NONE,
-		Interfaces: []*ptp4lconf.PTPInterface{
-			{Name: "ens2f0", PortID: 1, PortName: "port 1", Role: types.SLAVE},
+	tests := []struct {
+		name        string
+		setupMaster bool
+		masterE1    ptp.SyncState
+		expectedE3  ptp.SyncState
+	}{
+		{
+			name:        "master LOCKED allows E3 LOCKED",
+			setupMaster: true,
+			masterE1:    ptp.LOCKED,
+			expectedE3:  ptp.LOCKED,
+		},
+		{
+			name:        "missing master E1 does not default FREERUN",
+			setupMaster: false,
+			expectedE3:  ptp.LOCKED,
+		},
+		{
+			name:        "empty master LastSyncState does not default FREERUN",
+			setupMaster: true,
+			masterE1:    "",
+			expectedE3:  ptp.LOCKED,
 		},
 	}
-	eventManager.AddPTPConfig(types.ConfigName(cfgName), ptp4lCfg)
 
-	ptpStats := eventManager.GetStats(types.ConfigName(cfgName))
-	ptpStats[metrics.MasterClockType] = stats.NewStats(cfgName)
-	ptpStats[metrics.MasterClockType].SetAlias("ens2fx")
-	ptpStats[metrics.MasterClockType].SetRole(types.SLAVE)
-	ptpStats[metrics.MasterClockType].SetLastSyncState(ptp.LOCKED)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+			eventManager.MockTest(true)
 
-	eventManager.ResetMockEvent()
-	phc2sysLocked := fmt.Sprintf(
-		"phc2sys[600840.357]: [%s] CLOCK_REALTIME phc offset -34 s2 freq -4040 delay 529",
-		cfgName,
-	)
-	eventManager.ExtractMetrics(phc2sysLocked)
+			ptp4lCfg := &ptp4lconf.PTP4lConfig{
+				Name:        cfgName,
+				Profile:     "oc-profile",
+				ProfileType: ptp4lconf.NONE,
+				Interfaces: []*ptp4lconf.PTPInterface{
+					{Name: "ens2f0", PortID: 1, PortName: "port 1", Role: types.SLAVE},
+				},
+			}
+			eventManager.AddPTPConfig(types.ConfigName(cfgName), ptp4lCfg)
 
-	cStat := ptpStats[metrics.ClockRealTime]
-	assert.Equal(t, ptp.LOCKED, cStat.LastSyncState(),
-		"non-T-BC E3 may LOCKED when master E1 is LOCKED")
+			ptpStats := eventManager.GetStats(types.ConfigName(cfgName))
+			if tt.setupMaster {
+				ptpStats[metrics.MasterClockType] = stats.NewStats(cfgName)
+				ptpStats[metrics.MasterClockType].SetAlias("ens2fx")
+				ptpStats[metrics.MasterClockType].SetRole(types.SLAVE)
+				ptpStats[metrics.MasterClockType].SetLastSyncState(tt.masterE1)
+			}
+
+			eventManager.ResetMockEvent()
+			phc2sysLocked := fmt.Sprintf(
+				"phc2sys[600840.357]: [%s] CLOCK_REALTIME phc offset -34 s2 freq -4040 delay 529",
+				cfgName,
+			)
+			eventManager.ExtractMetrics(phc2sysLocked)
+
+			cStat := ptpStats[metrics.ClockRealTime]
+			assert.Equal(t, tt.expectedE3, cStat.LastSyncState())
+		})
+	}
 }
