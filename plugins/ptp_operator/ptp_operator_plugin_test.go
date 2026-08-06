@@ -454,6 +454,7 @@ func setupProcessMessages(t *testing.T) func() {
 	return func() {
 		aliasReady = oldAliasReady
 		eventManager = oldEventManager
+		triggerLogsOnce = sync.Once{}
 	}
 }
 

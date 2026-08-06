@@ -529,6 +529,12 @@ func listenToSocket(wg *sync.WaitGroup) {
 	}
 }
 
+// triggerLogsOnce ensures TriggerLogs is called exactly once across all
+// accepted connections. Each daemon-side process opens its own connection,
+// but only the first one needs to request a state replay. The Once resets
+// naturally when CEP restarts via syscall.Exec.
+var triggerLogsOnce sync.Once
+
 func processMessages(c net.Conn) {
 	log.Tracef("processMessages: new connection accepted from %v", c.RemoteAddr())
 	<-aliasReady // wait until alias found and this is closed
@@ -542,14 +548,16 @@ func processMessages(c net.Conn) {
 	// kernel buffer fills. The daemon's liveGate independently ensures no
 	// live data flows until replay completes, so async is safe.
 	if eventManager != nil {
-		log.Trace("processMessages: firing async TriggerLogs")
-		go func() {
-			if err := eventManager.TriggerLogs(); err != nil {
-				log.Warnf("failed to trigger logs on new connection: %v", err)
-			} else {
-				log.Trace("processMessages: TriggerLogs completed successfully")
-			}
-		}()
+		triggerLogsOnce.Do(func() {
+			log.Debug("processMessages: firing async TriggerLogs (first connection)")
+			go func() {
+				if err := eventManager.TriggerLogs(); err != nil {
+					log.Warnf("failed to trigger logs on new connection: %v", err)
+				} else {
+					log.Debug("processMessages: TriggerLogs completed successfully")
+				}
+			}()
+		})
 	}
 	scanner := bufio.NewScanner(c)
 	for {
