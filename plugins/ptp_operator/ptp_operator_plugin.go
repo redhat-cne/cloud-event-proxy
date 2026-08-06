@@ -547,11 +547,11 @@ func processMessages(c net.Conn) {
 	// a connection whose reader is stuck in TriggerLogs — deadlock once the
 	// kernel buffer fills. The daemon's liveGate independently ensures no
 	// live data flows until replay completes, so async is safe.
-	if eventManager != nil {
+	if em := eventManager; em != nil {
 		triggerLogsOnce.Do(func() {
 			log.Debug("processMessages: firing async TriggerLogs (first connection)")
 			go func() {
-				if err := eventManager.TriggerLogs(); err != nil {
+				if err := em.TriggerLogs(); err != nil {
 					log.Warnf("failed to trigger logs on new connection: %v", err)
 				} else {
 					log.Debug("processMessages: TriggerLogs completed successfully")
