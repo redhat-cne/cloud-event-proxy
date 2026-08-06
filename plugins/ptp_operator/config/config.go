@@ -163,6 +163,7 @@ type LinuxPTPConfigMapUpdate struct {
 	PtpSettings            map[string]map[string]string
 	HAProfile              string
 	TBCProfiles            []string // list of TBC profiles
+	OnThresholdUpdate      func(thresholds map[string]*PtpClockThreshold)
 }
 
 // AppliedNodeProfileJSON ....
@@ -322,6 +323,9 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 
 		log.Infof("update ptp threshold values for %s\n holdoverTimeout: %d\n maxThreshold: %d\n minThreshold: %d\n",
 			*profile.Name, holdOverTh, maxOffsetTh, minOffsetTh)
+	}
+	if l.OnThresholdUpdate != nil {
+		l.OnThresholdUpdate(l.EventThreshold)
 	}
 }
 
