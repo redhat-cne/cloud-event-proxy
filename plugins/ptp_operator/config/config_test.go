@@ -319,6 +319,48 @@ func TestUpdatePTPThreshold_NtpFailover(t *testing.T) {
 	}
 }
 
+func TestUpdatePTPThreshold_OnThresholdUpdateCallback(t *testing.T) {
+	profileName := "callback-profile"
+	l := &ptpConfig.LinuxPTPConfigMapUpdate{
+		NodeProfiles: []ptpConfig.PtpProfile{
+			{
+				Name: &profileName,
+				PtpClockThreshold: &ptpConfig.PtpClockThreshold{
+					HoldOverTimeout:    30,
+					MaxOffsetThreshold: 200,
+					MinOffsetThreshold: -200,
+				},
+			},
+		},
+		EventThreshold: make(map[string]*ptpConfig.PtpClockThreshold),
+	}
+
+	callbackCount := 0
+	l.OnThresholdUpdate = func(thresholds map[string]*ptpConfig.PtpClockThreshold) {
+		callbackCount++
+		th := thresholds[profileName]
+		assert.NotNil(t, th, "threshold for profile must exist in callback")
+		assert.Equal(t, int64(200), th.MaxOffsetThreshold)
+		assert.Equal(t, int64(-200), th.MinOffsetThreshold)
+		assert.Equal(t, int64(30), th.HoldOverTimeout)
+	}
+
+	l.UpdatePTPThreshold()
+
+	assert.Equal(t, 1, callbackCount, "OnThresholdUpdate callback must be invoked exactly once")
+}
+
+func TestUpdatePTPThreshold_NilCallbackDoesNotPanic(t *testing.T) {
+	profileName := "nil-callback"
+	l := &ptpConfig.LinuxPTPConfigMapUpdate{
+		NodeProfiles: []ptpConfig.PtpProfile{
+			{Name: &profileName},
+		},
+		EventThreshold: make(map[string]*ptpConfig.PtpClockThreshold),
+	}
+	assert.NotPanics(t, func() { l.UpdatePTPThreshold() })
+}
+
 func TestUpdatePTPProcessOptions_TS2PhcConfSetsDefaultOpts(t *testing.T) {
 	ptp4lOpts := "-2 -s"
 	profileName := "ts2phc-profile"
