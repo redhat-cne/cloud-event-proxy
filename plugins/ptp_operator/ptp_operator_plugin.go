@@ -497,11 +497,11 @@ func listenToSocket(wg *sync.WaitGroup) {
 var triggerLogsOnce sync.Once
 
 func processMessages(c net.Conn) {
-	if eventManager != nil {
+	if em := eventManager; em != nil {
 		triggerLogsOnce.Do(func() {
 			log.Debug("processMessages: firing async TriggerLogs (first connection)")
 			go func() {
-				if err := eventManager.TriggerLogs(); err != nil {
+				if err := em.TriggerLogs(); err != nil {
 					log.Warnf("failed to trigger logs on new connection: %v", err)
 				} else {
 					log.Debug("processMessages: TriggerLogs completed successfully")
