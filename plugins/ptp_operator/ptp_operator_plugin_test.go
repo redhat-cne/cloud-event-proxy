@@ -488,6 +488,7 @@ func setupProcessMessages(t *testing.T) func() {
 
 	return func() {
 		eventManager = oldEventManager
+		triggerLogsOnce = sync.Once{}
 	}
 }
 
