@@ -490,24 +490,24 @@ func listenToSocket(wg *sync.WaitGroup) {
 	}
 }
 
+// triggerLogsOnce ensures TriggerLogs is called exactly once across all
+// accepted connections. Each daemon-side process opens its own connection,
+// but only the first one needs to request a state replay. The Once resets
+// naturally when CEP restarts via syscall.Exec.
+var triggerLogsOnce sync.Once
+
 func processMessages(c net.Conn) {
-	// Request a full state re-emit in a separate goroutine so the scanner
-	// can start reading immediately. The /emit-logs handler writes replay
-	// data back through the EventHandler's socket connection, which CEP
-	// accepts as a separate processMessages goroutine. If TriggerLogs blocks
-	// here, that goroutine's TriggerLogs creates a recursive write-back to
-	// a connection whose reader is stuck in TriggerLogs — deadlock once the
-	// kernel buffer fills. The daemon's liveGate independently ensures no
-	// live data flows until replay completes, so async is safe.
-	if eventManager != nil {
-		log.Debug("processMessages: firing async TriggerLogs")
-		go func() {
-			if err := eventManager.TriggerLogs(); err != nil {
-				log.Warnf("failed to trigger logs on new connection: %v", err)
-			} else {
-				log.Debug("processMessages: TriggerLogs completed successfully")
-			}
-		}()
+	if em := eventManager; em != nil {
+		triggerLogsOnce.Do(func() {
+			log.Debug("processMessages: firing async TriggerLogs (first connection)")
+			go func() {
+				if err := em.TriggerLogs(); err != nil {
+					log.Warnf("failed to trigger logs on new connection: %v", err)
+				} else {
+					log.Debug("processMessages: TriggerLogs completed successfully")
+				}
+			}()
+		})
 	}
 	scanner := bufio.NewScanner(c)
 	for {
