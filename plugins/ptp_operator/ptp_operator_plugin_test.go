@@ -32,6 +32,7 @@ import (
 
 	v2 "github.com/cloudevents/sdk-go/v2"
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	ptpConfig "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/config"
 	event2 "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/event"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
@@ -827,6 +828,6 @@ func TestSetThresholdMetrics(t *testing.T) {
 		})
 		assert.NoError(t, err)
 		assert.NotNil(t, g)
+		assert.Equal(t, tc.expected, testutil.ToFloat64(g), "metric value for %s", tc.threshold)
 	}
-	_ = testCases
 }
