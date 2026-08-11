@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/alias"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
@@ -84,8 +85,15 @@ const (
 	ppsStatus       = "pps_status"
 )
 
+// phc2sysSelectionSettleDelay waits for the rest of a reconfigure burst
+// (e.g. "selecting CLOCK_REALTIME for synchronization") before treating a
+// NIC-only sink selection as OS-clock undisciplined (finalised by silence).
+var phc2sysSelectionSettleDelay = 200 * time.Millisecond
+
 // ExtractMetrics ... extract metrics from ptp logs.
 func (p *PTPEventManager) ExtractMetrics(msg string) {
+	p.extractMu.Lock()
+	defer p.extractMu.Unlock()
 	defer func() {
 		if err := recover(); err != nil {
 			log.Errorf("restored from extract metrics and events: %s", err)
@@ -205,6 +213,9 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 			// do nothing processDown identifier will update  metrics and stats
 			// but prevent further from reading offsets
 			return
+		} else if processName == phc2sysProcessName &&
+			p.handlePhc2sysSyncDirection(profileName, configName, output, fields, ptpStats) {
+			return
 		} else if strings.Contains(output, " offset ") { //  DPLL has Offset too
 			// ptp4l[5196819.100]: [ptp4l.0.config] master offset   -2162130 s2 freq +22451884 path delay    374976
 			// phc2sys[4268818.286]: [ptp4l.0.config] CLOCK_REALTIME phc offset       -62 s0 freq  -78368 delay   1100
@@ -226,6 +237,9 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 				return // don't do if iface not known
 			}
 			log.Tracef("ExtractMetrics: offset parsed: process=%s iface=%s offset=%.0f syncState=%s", processName, interfaceName, ptpOffset, syncState)
+			if processName == phc2sysProcessName {
+				handlePhc2sysOffsetSyncDirection(profileName, configName, interfaceName, ptpStats)
+			}
 			//  only ts2phc process will return actual interface name- allow all ts2phcprocess or iface in (master or  clock realtime)
 			if processName != ts2phcProcessName && !(interfaceName == master || interfaceName == ClockRealTime) {
 				return // only master and clock_realtime are supported
