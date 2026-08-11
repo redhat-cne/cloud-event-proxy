@@ -270,14 +270,7 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 	}
 	eventManager.SetInitalMetrics()
 	eventManager.PtpConfigMapUpdates.OnThresholdUpdate = func(thresholds map[string]*ptpConfig.PtpClockThreshold) {
-		for key, np := range thresholds {
-			ptpMetrics.Threshold.With(prometheus.Labels{
-				"threshold": "MinOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MinOffsetThreshold))
-			ptpMetrics.Threshold.With(prometheus.Labels{
-				"threshold": "MaxOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MaxOffsetThreshold))
-			ptpMetrics.Threshold.With(prometheus.Labels{
-				"threshold": "HoldOverTimeout", "node": nodeName, "profile": key}).Set(float64(np.HoldOverTimeout))
-		}
+		setThresholdMetrics(nodeName, thresholds)
 	}
 	startPtpConfigSync(ptpConfigSyncInitialTimeout, nodeName, configuration)
 	nConfigs := loadInitialPtp4lConfigs()
@@ -608,4 +601,15 @@ func InitPubSubTypes() map[ptp.EventType]*ptpTypes.EventPublisherType {
 		Resource:  ptp.SynceClockQuality,
 	}
 	return InitPubs
+}
+
+func setThresholdMetrics(nodeName string, thresholds map[string]*ptpConfig.PtpClockThreshold) {
+	for key, np := range thresholds {
+		ptpMetrics.Threshold.With(prometheus.Labels{
+			"threshold": "MinOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MinOffsetThreshold))
+		ptpMetrics.Threshold.With(prometheus.Labels{
+			"threshold": "MaxOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MaxOffsetThreshold))
+		ptpMetrics.Threshold.With(prometheus.Labels{
+			"threshold": "HoldOverTimeout", "node": nodeName, "profile": key}).Set(float64(np.HoldOverTimeout))
+	}
 }

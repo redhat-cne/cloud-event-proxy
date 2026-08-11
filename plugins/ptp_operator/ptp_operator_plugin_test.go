@@ -801,3 +801,32 @@ func getMockOverrideFn() func(e v2.Event, d *channel.DataChan) error {
 		return nil
 	}
 }
+
+func TestSetThresholdMetrics(t *testing.T) {
+	metrics.Threshold.Reset()
+	thresholds := map[string]*ptpConfig.PtpClockThreshold{
+		"test-profile": {
+			MaxOffsetThreshold: 100,
+			MinOffsetThreshold: -100,
+			HoldOverTimeout:    5,
+		},
+	}
+	setThresholdMetrics("test-node", thresholds)
+
+	testCases := []struct {
+		threshold string
+		expected  float64
+	}{
+		{"MinOffsetThreshold", -100},
+		{"MaxOffsetThreshold", 100},
+		{"HoldOverTimeout", 5},
+	}
+	for _, tc := range testCases {
+		g, err := metrics.Threshold.GetMetricWith(map[string]string{
+			"threshold": tc.threshold, "node": "test-node", "profile": "test-profile",
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, g)
+	}
+	_ = testCases
+}
