@@ -31,6 +31,7 @@ import (
 	"github.com/redhat-cne/sdk-go/pkg/event"
 
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/alias"
+	ptpConfig "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/config"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/ptp4lconf"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -200,14 +201,6 @@ func startPtpConfigSync(timeout time.Duration, nodeName string, configuration *c
 			eventManager.PtpConfigMapUpdates.UpdatePTPThreshold()
 			eventManager.PtpConfigMapUpdates.UpdatePTPSetting()
 			eventManager.RefreshProfileTypes()
-			for key, np := range eventManager.PtpConfigMapUpdates.EventThreshold {
-				ptpMetrics.Threshold.With(prometheus.Labels{
-					"threshold": "MinOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MinOffsetThreshold))
-				ptpMetrics.Threshold.With(prometheus.Labels{
-					"threshold": "MaxOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MaxOffsetThreshold))
-				ptpMetrics.Threshold.With(prometheus.Labels{
-					"threshold": "HoldOverTimeout", "node": nodeName, "profile": key}).Set(float64(np.HoldOverTimeout))
-			}
 		}
 	case <-time.After(timeout):
 		log.Warnf("configmap not available after %s, proceeding without profile settings", timeout)
@@ -251,6 +244,9 @@ func Start(wg *sync.WaitGroup, configuration *common.SCConfiguration, _ func(e i
 		log.Warn(err)
 	}
 	eventManager.SetInitalMetrics()
+	eventManager.PtpConfigMapUpdates.OnThresholdUpdate = func(thresholds map[string]*ptpConfig.PtpClockThreshold) {
+		setThresholdMetrics(nodeName, thresholds)
+	}
 	startPtpConfigSync(ptpConfigSyncInitialTimeout, nodeName, configuration)
 	loadInitialPtp4lConfigs()
 
@@ -563,4 +559,15 @@ func InitPubSubTypes() map[ptp.EventType]*ptpTypes.EventPublisherType {
 		Resource:  ptp.SynceClockQuality,
 	}
 	return InitPubs
+}
+
+func setThresholdMetrics(nodeName string, thresholds map[string]*ptpConfig.PtpClockThreshold) {
+	for key, np := range thresholds {
+		ptpMetrics.Threshold.With(prometheus.Labels{
+			"threshold": "MinOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MinOffsetThreshold))
+		ptpMetrics.Threshold.With(prometheus.Labels{
+			"threshold": "MaxOffsetThreshold", "node": nodeName, "profile": key}).Set(float64(np.MaxOffsetThreshold))
+		ptpMetrics.Threshold.With(prometheus.Labels{
+			"threshold": "HoldOverTimeout", "node": nodeName, "profile": key}).Set(float64(np.HoldOverTimeout))
+	}
 }
