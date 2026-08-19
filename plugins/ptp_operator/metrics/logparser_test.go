@@ -423,7 +423,7 @@ func TestExtractPTP4lEventState(t *testing.T) {
 			name:          "LISTENING to UNCALIBRATED ",
 			logLine:       "ptp4l.1.config  port 1 (ens2f0)  LISTENING to UNCALIBRATED on RS_SLAVE",
 			expectedPort:  1,
-			expectedRole:  types.FAULTY,
+			expectedRole:  types.LISTENING,
 			expectedState: ptp.HOLDOVER,
 		},
 		{
@@ -437,7 +437,14 @@ func TestExtractPTP4lEventState(t *testing.T) {
 			name:          "LISTENING to UNCALIBRATED",
 			logLine:       "ptp4l[72530.751]: [ptp4l.0.config:5] port 1 (ens1f0): LISTENING to UNCALIBRATED on RS_SLAVE",
 			expectedPort:  1,
-			expectedRole:  types.FAULTY,
+			expectedRole:  types.LISTENING,
+			expectedState: ptp.HOLDOVER,
+		},
+		{
+			name:          "MASTER to UNCALIBRATED RS_SLAVE",
+			logLine:       "ptp4l[72531.000]: [ptp4l.0.config:5] port 2 (ens1f1): MASTER to UNCALIBRATED on RS_SLAVE",
+			expectedPort:  2,
+			expectedRole:  types.LISTENING,
 			expectedState: ptp.HOLDOVER,
 		},
 		{
@@ -474,6 +481,27 @@ func TestExtractPTP4lEventState(t *testing.T) {
 			expectedPort:  1,
 			expectedRole:  types.MASTER,
 			expectedState: ptp.HOLDOVER,
+		},
+		{
+			name:          "UNCALIBRATED to PRE_MASTER RS_MASTER",
+			logLine:       "ptp4l[17192.487]: [ptp4l.1.config] port 2 (eno8403): UNCALIBRATED to PRE_MASTER on RS_MASTER",
+			expectedPort:  2,
+			expectedRole:  types.MASTER,
+			expectedState: ptp.FREERUN,
+		},
+		{
+			name:          "LISTENING to PRE_MASTER RS_MASTER",
+			logLine:       "ptp4l[17020.571]: [ptp4l.1.config] port 2 (eno8403): LISTENING to PRE_MASTER on RS_MASTER",
+			expectedPort:  2,
+			expectedRole:  types.MASTER,
+			expectedState: ptp.FREERUN,
+		},
+		{
+			name:          "PRE_MASTER to MASTER QUALIFICATION_TIMEOUT_EXPIRES",
+			logLine:       "ptp4l[17192.737]: [ptp4l.1.config] port 2 (eno8403): PRE_MASTER to MASTER on QUALIFICATION_TIMEOUT_EXPIRES",
+			expectedPort:  2,
+			expectedRole:  types.MASTER,
+			expectedState: ptp.FREERUN,
 		},
 		{
 			name:          "INITIALIZING to LISTENING (follower only)",

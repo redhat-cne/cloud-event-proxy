@@ -298,14 +298,23 @@ func extractPTP4lEventState(output string) (portID int, role types.PtpPortRole, 
 		strings.Contains(output, "LISTENING to PASSIVE") {
 		role = types.PASSIVE
 	} else if strings.Contains(output, "UNCALIBRATED to MASTER") ||
-		strings.Contains(output, "LISTENING to MASTER") {
+		strings.Contains(output, "LISTENING to MASTER") ||
+		strings.Contains(output, "to PRE_MASTER") ||
+		strings.Contains(output, "PRE_MASTER to MASTER") {
+		// PRE_MASTER is a transient state before full MASTER (IEEE 1588-2019 §9.2.5):
+		// the port behaves as MASTER but suppresses PTP message transmission until
+		// qualification timeout expires. Report as MASTER for metric purposes.
 		role = types.MASTER
 	} else if strings.Contains(output, "FAULT_DETECTED") ||
 		strings.Contains(output, "SYNCHRONIZATION_FAULT") ||
-		strings.Contains(output, "SLAVE to UNCALIBRATED") ||
-		strings.Contains(output, "MASTER to UNCALIBRATED on RS_SLAVE") ||
-		strings.Contains(output, "LISTENING to UNCALIBRATED on RS_SLAVE") {
+		strings.Contains(output, "SLAVE to UNCALIBRATED") {
 		role = types.FAULTY
+		clockState = ptp.HOLDOVER
+	} else if strings.Contains(output, "MASTER to UNCALIBRATED") ||
+		strings.Contains(output, "LISTENING to UNCALIBRATED") {
+		// BMCA re-evaluation on backup port — standard IEEE 1588 UNCALIBRATED phase,
+		// not a fault. Report LISTENING while the port evaluates offset before locking.
+		role = types.LISTENING
 		clockState = ptp.HOLDOVER
 	} else if strings.Contains(output, "SLAVE to MASTER") ||
 		strings.Contains(output, "SLAVE to GRAND_MASTER") {
