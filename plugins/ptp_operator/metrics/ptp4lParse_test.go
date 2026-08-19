@@ -252,3 +252,97 @@ func TestStartHoldoverTimerWithNilPtpOptsStillRecovers(t *testing.T) {
 
 	assert.Equal(t, ptp.FREERUN, ptpStats[master].LastSyncState())
 }
+
+// TestParsePTP4l_DualUpstreamPreMasterRecovery reproduces the actual switchover/recovery
+// sequence observed in OCPBUGS-111881 log-dual-upstream.txt, where the backup port (eno8403)
+// transitions through MASTER to UNCALIBRATED → UNCALIBRATED to PRE_MASTER → PRE_MASTER to MASTER
+// during and after the switchover, and must report MASTER (2) — not FAULTY (3) — in the metric.
+//
+// Sequence from ptp4l log:
+//
+//	ptp4l[17186.990] port 1 (eno8303): SLAVE to FAULTY           → eno8303=FAULTY
+//	ptp4l[17187.015] port 2 (eno8403): MASTER to UNCALIBRATED    → eno8403=LISTENING (fixed, was FAULTY)
+//	ptp4l[17192.156] port 1 (eno8303): FAULTY to LISTENING       → eno8303=LISTENING
+//	ptp4l[17192.487] port 1 (eno8303): LISTENING to UNCALIBRATED → eno8303=LISTENING (fixed, was FAULTY)
+//	ptp4l[17192.487] port 2 (eno8403): UNCALIBRATED to PRE_MASTER → eno8403=MASTER (was UNKNOWN/dropped)
+//	ptp4l[17192.737] port 2 (eno8403): PRE_MASTER to MASTER      → eno8403=MASTER (was UNKNOWN/dropped)
+//	ptp4l[17208.615] port 1 (eno8303): UNCALIBRATED to SLAVE     → eno8303=SLAVE
+func TestParsePTP4l_DualUpstreamPreMasterRecovery(t *testing.T) {
+	ensureTestNode(t)
+	SetMasterOffsetSource(ptp4lProcessName)
+
+	mgr := NewPTPEventManager("", nil, testNode, nil)
+	mgr.MockTest(true)
+	mockFS := &MockFileSystem{}
+	Filesystem = mockFS
+
+	cfgName := "ptp4l.1.config"
+	profileName := testProfileName
+
+	ptp4lCfg := &ptp4lconf.PTP4lConfig{
+		Name:        cfgName,
+		Profile:     profileName,
+		ProfileType: ptp4lconf.TBC,
+		Interfaces: []*ptp4lconf.PTPInterface{
+			{Name: "eno8303", PortID: 1, PortName: "port 1", Role: types.SLAVE},
+			{Name: "eno8403", PortID: 2, PortName: "port 2", Role: types.MASTER},
+		},
+	}
+	mgr.AddPTPConfig(types.ConfigName(cfgName), ptp4lCfg)
+	mgr.Stats[types.ConfigName(cfgName)] = make(stats.PTPStats)
+	ptpStats := mgr.GetStats(types.ConfigName(cfgName))
+	ptpStats.CheckSource(master, cfgName, ptp4lProcessName)
+	ptpStats[master].SetAlias("eno8303x")
+	ptpStats[master].SetLastSyncState(ptp.LOCKED)
+
+	roleLabel := func(iface string) map[string]string {
+		return map[string]string{"process": ptp4lProcessName, "node": testNode, "iface": iface}
+	}
+
+	// Pre-initialize metrics to match starting state (eno8303=SLAVE, eno8403=MASTER)
+	UpdateInterfaceRoleMetrics(ptp4lProcessName, "eno8303", types.SLAVE)
+	UpdateInterfaceRoleMetrics(ptp4lProcessName, "eno8403", types.MASTER)
+
+	parse := func(output string) {
+		fields := []string{"ptp4l", "0", cfgName}
+		mgr.ParsePTP4l(ptp4lProcessName, cfgName, profileName, output, fields,
+			ptp4lconf.PTPInterface{}, ptp4lCfg, ptpStats)
+	}
+
+	// Step 1: eno8303 link goes down → SLAVE to FAULTY
+	parse("ptp4l[17186.990]: [ptp4l.1.config] port 1 (eno8303): SLAVE to FAULTY on FAULT_DETECTED (FT_UNSPECIFIED)")
+	assert.Equal(t, types.FAULTY, ptp4lCfg.Interfaces[0].Role, "step1: eno8303 should be FAULTY")
+	assert.Equal(t, float64(types.FAULTY), testutil.ToFloat64(InterfaceRole.With(roleLabel("eno8303"))), "step1: eno8303 metric=FAULTY")
+
+	// Step 2: eno8403 backup starts evaluating upstream (MASTER to UNCALIBRATED → LISTENING, not FAULTY)
+	parse("ptp4l[17187.015]: [ptp4l.1.config] port 2 (eno8403): MASTER to UNCALIBRATED on RS_SLAVE")
+	assert.Equal(t, types.LISTENING, ptp4lCfg.Interfaces[1].Role, "step2: eno8403 should be LISTENING (BMCA eval, not FAULTY)")
+	assert.Equal(t, float64(types.LISTENING), testutil.ToFloat64(InterfaceRole.With(roleLabel("eno8403"))), "step2: eno8403 metric=LISTENING")
+
+	// Step 3: eno8303 link recovers → FAULTY to LISTENING
+	parse("ptp4l[17192.156]: [ptp4l.1.config] port 1 (eno8303): FAULTY to LISTENING on INIT_COMPLETE")
+	assert.Equal(t, types.LISTENING, ptp4lCfg.Interfaces[0].Role, "step3: eno8303 should be LISTENING")
+	assert.Equal(t, float64(types.LISTENING), testutil.ToFloat64(InterfaceRole.With(roleLabel("eno8303"))), "step3: eno8303 metric=LISTENING")
+
+	// Step 4: eno8303 selected as upstream (LISTENING to UNCALIBRATED → LISTENING, not FAULTY)
+	parse("ptp4l[17192.487]: [ptp4l.1.config] port 1 (eno8303): LISTENING to UNCALIBRATED on RS_SLAVE")
+	assert.Equal(t, types.LISTENING, ptp4lCfg.Interfaces[0].Role, "step4: eno8303 should remain LISTENING during BMCA eval")
+	assert.Equal(t, float64(types.LISTENING), testutil.ToFloat64(InterfaceRole.With(roleLabel("eno8303"))), "step4: eno8303 metric=LISTENING")
+
+	// Step 5: eno8403 transitions to PRE_MASTER (reported as MASTER)
+	parse("ptp4l[17192.487]: [ptp4l.1.config] port 2 (eno8403): UNCALIBRATED to PRE_MASTER on RS_MASTER")
+	assert.Equal(t, types.MASTER, ptp4lCfg.Interfaces[1].Role, "step5: eno8403 should be MASTER (PRE_MASTER→MASTER)")
+	assert.Equal(t, float64(types.MASTER), testutil.ToFloat64(InterfaceRole.With(roleLabel("eno8403"))), "step5: eno8403 metric=MASTER")
+
+	// Step 6: eno8403 fully becomes MASTER
+	parse("ptp4l[17192.737]: [ptp4l.1.config] port 2 (eno8403): PRE_MASTER to MASTER on QUALIFICATION_TIMEOUT_EXPIRES")
+	assert.Equal(t, types.MASTER, ptp4lCfg.Interfaces[1].Role, "step6: eno8403 should remain MASTER")
+	assert.Equal(t, float64(types.MASTER), testutil.ToFloat64(InterfaceRole.With(roleLabel("eno8403"))), "step6: eno8403 metric=MASTER")
+
+	// Step 7: eno8303 locks as SLAVE — final recovered state
+	parse("ptp4l[17208.615]: [ptp4l.1.config] port 1 (eno8303): UNCALIBRATED to SLAVE on MASTER_CLOCK_SELECTED")
+	assert.Equal(t, types.SLAVE, ptp4lCfg.Interfaces[0].Role, "step7: eno8303 should be SLAVE")
+	assert.Equal(t, types.MASTER, ptp4lCfg.Interfaces[1].Role, "step7: eno8403 stays MASTER (serving downstream)")
+	assert.Equal(t, float64(types.SLAVE), testutil.ToFloat64(InterfaceRole.With(roleLabel("eno8303"))), "step7: eno8303 metric=SLAVE")
+	assert.Equal(t, float64(types.MASTER), testutil.ToFloat64(InterfaceRole.With(roleLabel("eno8403"))), "step7: eno8403 metric=MASTER")
+}
