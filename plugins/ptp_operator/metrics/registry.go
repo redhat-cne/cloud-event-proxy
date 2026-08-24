@@ -230,11 +230,12 @@ func UpdateSyncStateMetrics(process, iface string, state ptp.SyncState) {
 		return
 	}
 	var clockState float64
-	if state == ptp.LOCKED {
+	switch state {
+	case ptp.LOCKED:
 		clockState = float64(types.LOCKED)
-	} else if state == ptp.FREERUN {
+	case ptp.FREERUN:
 		clockState = float64(types.FREERUN)
-	} else if state == ptp.HOLDOVER {
+	case ptp.HOLDOVER:
 		clockState = float64(types.HOLDOVER)
 	}
 	// prevent reporting wrong metrics
@@ -245,6 +246,12 @@ func UpdateSyncStateMetrics(process, iface string, state ptp.SyncState) {
 	log.Tracef("UpdateSyncStateMetrics: process=%s iface=%s state=%s value=%.0f", process, iface, state, clockState)
 	SyncState.With(prometheus.Labels{
 		"process": process, "node": ptpNodeName, "iface": iface}).Set(clockState)
+}
+
+// DeleteSyncStateMetrics ... delete a single sync state series for a process/iface pair
+func DeleteSyncStateMetrics(process, iface string) {
+	SyncState.Delete(prometheus.Labels{
+		"process": process, "node": ptpNodeName, "iface": iface})
 }
 
 // UpdateNmeaStatusMetrics ... update nmea status metrics
