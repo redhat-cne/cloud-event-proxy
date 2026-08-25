@@ -132,8 +132,9 @@ func Test_Config(t *testing.T) {
 				PtpClockThreshold: &ptpConfig.PtpClockThreshold{
 					HoldOverTimeout:    5,
 					MaxOffsetThreshold: 1000,
-					MinOffsetThreshold: -1000,
-					Close:              make(chan struct{}),
+					// MinOffsetThreshold is deprecated: the NTP-failover
+					// default now resolves to 0, not a synthetic -1000.
+					Close: make(chan struct{}),
 				},
 			}},
 			profilePath: "../_testprofile",
@@ -257,12 +258,15 @@ func TestUpdatePTPThreshold_NtpFailover(t *testing.T) {
 		expectedMin int64
 	}{
 		{
+			// MinOffsetThreshold is deprecated: the default (no explicit
+			// PtpClockThreshold on the profile) now resolves to 0, not a
+			// synthetic -100.
 			name: "default threshold without ntpfailover",
 			profile: ptpConfig.PtpProfile{
 				Name: &profileName,
 			},
 			expectedMax: 100,
-			expectedMin: -100,
+			expectedMin: 0,
 		},
 		{
 			name: "ntpfailover with gnssFailover enabled uses looser threshold",
@@ -273,7 +277,7 @@ func TestUpdatePTPThreshold_NtpFailover(t *testing.T) {
 				},
 			},
 			expectedMax: 1000,
-			expectedMin: -1000,
+			expectedMin: 0,
 		},
 		{
 			name: "ntpfailover with gnssFailover disabled uses standard threshold",
@@ -284,7 +288,7 @@ func TestUpdatePTPThreshold_NtpFailover(t *testing.T) {
 				},
 			},
 			expectedMax: 100,
-			expectedMin: -100,
+			expectedMin: 0,
 		},
 		{
 			name: "explicit PtpClockThreshold takes precedence over ntpfailover",
@@ -359,6 +363,53 @@ func TestUpdatePTPThreshold_NilCallbackDoesNotPanic(t *testing.T) {
 		EventThreshold: make(map[string]*ptpConfig.PtpClockThreshold),
 	}
 	assert.NotPanics(t, func() { l.UpdatePTPThreshold() })
+}
+
+func TestUpdatePTPThreshold_MinOffsetThresholdIgnored(t *testing.T) {
+	profileName := "test-profile"
+
+	tests := []struct {
+		name        string
+		profile     ptpConfig.PtpProfile
+		expectedMax int64
+	}{
+		{
+			name: "omitted MinOffsetThreshold",
+			profile: ptpConfig.PtpProfile{
+				Name: &profileName,
+				PtpClockThreshold: &ptpConfig.PtpClockThreshold{
+					HoldOverTimeout:    5,
+					MaxOffsetThreshold: 200,
+				},
+			},
+			expectedMax: 200,
+		},
+		{
+			name: "asymmetric MinOffsetThreshold",
+			profile: ptpConfig.PtpProfile{
+				Name: &profileName,
+				PtpClockThreshold: &ptpConfig.PtpClockThreshold{
+					HoldOverTimeout:    5,
+					MaxOffsetThreshold: 200,
+					MinOffsetThreshold: -50,
+				},
+			},
+			expectedMax: 200,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l := &ptpConfig.LinuxPTPConfigMapUpdate{
+				NodeProfiles:   []ptpConfig.PtpProfile{tt.profile},
+				EventThreshold: make(map[string]*ptpConfig.PtpClockThreshold),
+			}
+			l.UpdatePTPThreshold()
+			th := l.EventThreshold[profileName]
+			assert.NotNil(t, th)
+			assert.Equal(t, tt.expectedMax, th.MaxOffsetThreshold)
+		})
+	}
 }
 
 func TestUpdatePTPProcessOptions_TS2PhcConfSetsDefaultOpts(t *testing.T) {

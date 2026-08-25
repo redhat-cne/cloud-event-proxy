@@ -443,22 +443,22 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 	case ptp.LOCKED:
 		switch lastClockState {
 		case ptp.FREERUN: // last state was already sent for FreeRUN , but if its within then send again with new state
-			if isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) { // within range
-				log.Infof(" publishing event for ( profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
-					ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
+			if isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold) { // within range
+				log.Infof("publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for (Max Threshold %d)",
+					ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold)
 				oStats.SetLastSyncState(clockState)
 				p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType) // change to locked
 				oStats.SetLastOffset(ptpOffset)
 				oStats.AddValue(ptpOffset) // update off set when its in locked state and hold over only
 			}
 		case ptp.LOCKED: // last state was in sync , check if it is out of sync now
-			if isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
+			if isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold) {
 				oStats.SetLastOffset(ptpOffset)
 				oStats.AddValue(ptpOffset) // update off set when its in locked state and hold over only
 			} else {
 				clockState = ptp.FREERUN
-				log.Infof(" publishing event for ( profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
-					ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
+				log.Infof("publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for (Max Threshold %d)",
+					ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold)
 				oStats.SetLastSyncState(clockState)
 				p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType)
 				oStats.SetLastOffset(ptpOffset)
@@ -467,12 +467,12 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 			//FOR OC/BC  do nothing, the timeout will switch holdover to FREE-RUN OR LOCKED  if it is not within the holdover timeout
 			// FOR T-GM its handled differently
 			// previous state was HOLDOVER, now it is in LOCKED state, cancel any HOLDOVER
-			if isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
+			if isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold) {
 				log.Infof("interface %s is in LOCKED state, cancel any holdover states", eventResourceName)
 				log.Debugf("cancelling holdover timer: profile=%s resource=%s", ptpProfileName, eventResourceName)
 				threshold.SafeClose()
-				log.Infof(" publishing event for ( profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
-					ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
+				log.Infof("publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for (Max Threshold %d)",
+					ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold)
 				oStats.SetLastSyncState(clockState)
 				p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType) // change to locked
 				oStats.SetLastOffset(ptpOffset)
@@ -481,13 +481,13 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 
 		default: // not yet used states
 			clockState = ptp.FREERUN
-			if isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
+			if isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold) {
 				clockState = ptp.LOCKED
 			}
 			log.Warnf("%s sync state %s, last ptp state is unknown, setting to  %s", eventResourceName, lastClockState, clockState)
 
-			log.Infof(" publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
-				ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
+			log.Infof("publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for (Max Threshold %d)",
+				ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold)
 			oStats.SetLastSyncState(clockState)
 			p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType) // change to unknown
 			oStats.SetLastOffset(ptpOffset)
@@ -511,8 +511,8 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 		// the HOLDOVER→FREERUN transition through.
 		if lastClockState != ptp.HOLDOVER || eventType == ptp.OsClockSyncStateChange {
 			if lastClockState != ptp.FREERUN { // don't send event if last event was freerun
-				log.Infof("publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
-					ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
+				log.Infof("publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for (Max Threshold %d)",
+					ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold)
 				p.PublishEvent(clockState, ptpOffset, eventResourceName, eventType)
 			}
 			oStats.SetLastOffset(ptpOffset)
@@ -520,12 +520,12 @@ func (p *PTPEventManager) GenPTPEvent(ptpProfileName string, oStats *stats.Stats
 		}
 	default:
 		clockState = ptp.FREERUN
-		if isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
+		if isOffsetInRange(ptpOffset, threshold.MaxOffsetThreshold) {
 			clockState = ptp.LOCKED
 		}
 		log.Warnf("%s unknown current ptp state, setting to  %s", eventResourceName, clockState)
-		log.Infof(" publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for ( Max/Min Threshold %d/%d )",
-			ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold)
+		log.Infof("publishing event for (profile %s) %s with last state %s and current clock state %s and offset %d for (Max Threshold %d)",
+			ptpProfileName, eventResourceName, lastClockState, clockState, ptpOffset, threshold.MaxOffsetThreshold)
 		oStats.SetLastSyncState(clockState)
 		p.PublishEvent(clockState, ptpOffset, eventResourceName, ptp.PtpStateChange) // change to unknown state
 		oStats.SetLastOffset(ptpOffset)

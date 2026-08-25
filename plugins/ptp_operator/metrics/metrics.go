@@ -373,7 +373,7 @@ func (p *PTPEventManager) ExtractMetrics(msg string) {
 						p.GenPTPEvent(profileName, ptpStats[types.IFace(interfaceName)], masterResource, int64(ptpOffset), syncState, ptp.PtpStateChange)
 					} else {
 						threshold := p.PtpThreshold(profileName, false)
-						if syncState != ptp.HOLDOVER && !isOffsetInRange(int64(ptpOffset), threshold.MaxOffsetThreshold, threshold.MinOffsetThreshold) {
+						if syncState != ptp.HOLDOVER && !isOffsetInRange(int64(ptpOffset), threshold.MaxOffsetThreshold) {
 							syncState = ptp.FREERUN
 						}
 						ptpStats[types.IFace(interfaceName)].SetLastSyncState(syncState)
