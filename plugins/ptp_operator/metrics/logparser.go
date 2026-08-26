@@ -339,11 +339,15 @@ func FindInLogForCfgFileIndex(out string) int {
 	return -1
 }
 
-func isOffsetInRange(ptpOffset, maxOffsetThreshold, minOffsetThreshold int64) bool {
-	if ptpOffset < maxOffsetThreshold && ptpOffset > minOffsetThreshold {
-		return true
+func absInt64(n int64) int64 {
+	if n < 0 {
+		return -n
 	}
-	return false
+	return n
+}
+
+func isOffsetInRange(ptpOffset, maxOffsetThreshold int64) bool {
+	return absInt64(ptpOffset) < maxOffsetThreshold
 }
 
 func (p *PTPEventManager) parsePTPStatus(output string, fields []string) (int64, error) {

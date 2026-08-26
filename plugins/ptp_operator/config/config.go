@@ -45,9 +45,10 @@ const (
 	// DefaultUpdateInterval for watching ptpconfigmap update
 	DefaultUpdateInterval = 60
 	// DefaultProfilePath  default ptp profile path
-	DefaultProfilePath         = "/etc/linuxptp"
-	maxOffsetThreshold   int64 = 100 // in nano secs
-	minOffsetThreshold   int64 = -100
+	DefaultProfilePath       = "/etc/linuxptp"
+	maxOffsetThreshold int64 = 100 // in nano secs
+	// minOffsetThreshold is deprecated; no synthetic default is used
+	// anymore, so this constant was removed.
 	holdoverTimeout      int64 = 5
 	ignorePtp4lSection         = "global"
 	HaProfileIdentifier        = "haProfiles"
@@ -317,11 +318,13 @@ func (l *LinuxPTPConfigMapUpdate) UpdatePTPThreshold() {
 		} else if isNtpFailoverEnabled(&profile) {
 			holdOverTh = holdoverTimeout
 			maxOffsetTh = 1000
-			minOffsetTh = -1000
+			// minOffsetTh is deprecated and left at its zero value rather
+			// than a synthetic -1000.
 		} else {
 			holdOverTh = holdoverTimeout
 			maxOffsetTh = maxOffsetThreshold
-			minOffsetTh = minOffsetThreshold
+			// minOffsetTh is deprecated and left at its zero value rather
+			// than a synthetic default.
 		}
 
 		l.EventThreshold[*profile.Name] = &PtpClockThreshold{
@@ -580,7 +583,8 @@ func GetDefaultThreshold() PtpClockThreshold {
 	return PtpClockThreshold{
 		HoldOverTimeout:    holdoverTimeout,
 		MaxOffsetThreshold: maxOffsetThreshold,
-		MinOffsetThreshold: minOffsetThreshold,
-		Close:              make(chan struct{}),
+		// MinOffsetThreshold is deprecated and left at its zero value rather
+		// than a synthetic default.
+		Close: make(chan struct{}),
 	}
 }
