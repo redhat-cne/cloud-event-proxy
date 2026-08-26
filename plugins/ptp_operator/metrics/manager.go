@@ -32,9 +32,12 @@ type PTPEventManager struct {
 	nodeName       string
 	scConfig       *common.SCConfiguration
 	lock           sync.RWMutex
-	Stats          map[types.ConfigName]stats.PTPStats
-	mock           bool
-	mockEvent      []ptp.EventType
+	// extractMu serializes ExtractMetrics with settle-timer callbacks that
+	// publish OS-clock FREERUN (time.AfterFunc runs on another goroutine).
+	extractMu sync.Mutex
+	Stats     map[types.ConfigName]stats.PTPStats
+	mock      bool
+	mockEvent []ptp.EventType
 	// PtpConfigMapUpdates holds ptp-configmap updated details
 	PtpConfigMapUpdates *ptpConfig.LinuxPTPConfigMapUpdate
 	// Ptp4lConfigInterfaces holds interfaces and its roles, after reading from ptp4l config files
@@ -371,10 +374,12 @@ func (p *PTPEventManager) PublishEvent(state ptp.SyncState, ptpOffset int64, sou
 	}
 	// Handle mock mode
 	if p.mock {
+		p.lock.Lock()
 		p.mockEvent = []ptp.EventType{eventType}
 		if eventType == ptp.PtpStateChange || eventType == ptp.OsClockSyncStateChange {
 			p.mockEvent = append(p.mockEvent, ptp.SyncStateChange)
 		}
+		p.lock.Unlock()
 		log.Infof("PublishEvent state=%s, ptpOffset=%d, source=%s, eventType=%s", state, ptpOffset, source, eventType)
 	} else {
 		// /cluster/xyz/ptp/CLOCK_REALTIME this is not address the event is published to
@@ -576,11 +581,17 @@ func (p *PTPEventManager) resolveProfileName(profileName, configName string) str
 
 // GetMockEvent ...
 func (p *PTPEventManager) GetMockEvent() []ptp.EventType {
-	return p.mockEvent
+	p.lock.RLock()
+	defer p.lock.RUnlock()
+	out := make([]ptp.EventType, len(p.mockEvent))
+	copy(out, p.mockEvent)
+	return out
 }
 
 // ResetMockEvent ...
 func (p *PTPEventManager) ResetMockEvent() {
+	p.lock.Lock()
+	defer p.lock.Unlock()
 	p.mockEvent = []ptp.EventType{}
 }
 

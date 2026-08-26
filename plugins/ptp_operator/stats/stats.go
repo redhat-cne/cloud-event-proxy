@@ -45,6 +45,7 @@ type Stats struct {
 	ptpDependentEventState *event.PTPEventState
 	configDeleted          bool
 	syncE                  *SyncEStats // device name is the key
+	OsClock                OsClockDiscipline
 }
 
 // SyncEStats collects stats for synceE
@@ -165,6 +166,7 @@ func (s *Stats) reset() { //nolint:unused
 	s.processName = ""
 	s.lastOffset = 0
 	s.offsetSource = ""
+	s.OsClock.Reset()
 }
 
 // NewStats ... create new stats
