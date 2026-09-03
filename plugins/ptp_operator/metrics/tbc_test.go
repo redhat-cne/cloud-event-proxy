@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	ptpConfig "github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/config"
 	"github.com/redhat-cne/cloud-event-proxy/plugins/ptp_operator/metrics"
@@ -923,4 +925,105 @@ func TestE3NonTBCUsesMasterE1(t *testing.T) {
 			assert.Equal(t, tt.expectedE3, cStat.LastSyncState())
 		})
 	}
+}
+
+const (
+	syncStateLabelProcess = "process"
+	syncStateLabelIface   = "iface"
+)
+
+// syncStateMetricValue returns the current SyncState (clock_state) gauge value
+// for the given process/iface, ignoring the node label. Returns (0, false) if
+// no matching series exists.
+func syncStateMetricValue(process, iface string) (float64, bool) {
+	ch := make(chan prometheus.Metric, 64)
+	go func() {
+		metrics.SyncState.Collect(ch)
+		close(ch)
+	}()
+	// Drain the whole channel so the collector goroutine always completes and
+	// closes it (avoids a leak/blocked send on early return).
+	value, found := 0.0, false
+	for m := range ch {
+		var d dto.Metric
+		if err := m.Write(&d); err != nil {
+			continue
+		}
+		var p, i string
+		for _, lp := range d.Label {
+			switch lp.GetName() {
+			case syncStateLabelProcess:
+				p = lp.GetValue()
+			case syncStateLabelIface:
+				i = lp.GetValue()
+			}
+		}
+		if p == process && i == iface {
+			value, found = d.GetGauge().GetValue(), true
+		}
+	}
+	return value, found
+}
+
+// TestTBCParseHoldoverPublishesHoldoverEvent verifies that a T-BC holdover status
+// line ("T-BC-STATUS s3 holdover") emitted by linuxptp-daemon is parsed as
+// ptp.HOLDOVER (not FREERUN) by ParseTBCLogs, so that a HOLDOVER ptp-state-change
+// event is published for <alias>/master and the SyncState metric reports HOLDOVER.
+// Regression test for OCPBUGS-104526: previously the s3 token mapped to FREERUN
+// (GetSyncState default) and the trailing "holdover" keyword was ignored, so the
+// LOCKED->HOLDOVER transition never produced a HOLDOVER event.
+func TestTBCParseHoldoverPublishesHoldoverEvent(t *testing.T) {
+	cfgName := "ptp4l.0.config"
+	tbcProfile := "tbc-holdover-test"
+
+	eventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", &common.SCConfiguration{StorePath: "/tmp/store"})
+	eventManager.MockTest(true)
+
+	eventManager.PtpConfigMapUpdates.TBCProfiles = []string{tbcProfile}
+
+	ptp4lCfg := &ptp4lconf.PTP4lConfig{
+		Name:        cfgName,
+		Profile:     tbcProfile,
+		ProfileType: ptp4lconf.TBC,
+		Interfaces: []*ptp4lconf.PTPInterface{
+			{Name: "ens2f0", PortID: 1, PortName: "port 1", Role: types.SLAVE},
+		},
+	}
+	eventManager.AddPTPConfig(types.ConfigName(cfgName), ptp4lCfg)
+
+	ptpStats := eventManager.GetStats(types.ConfigName(cfgName))
+	ptpStats[metrics.MasterClockType] = &stats.Stats{}
+	ptpStats[metrics.MasterClockType].SetAlias("ens2f0")
+	ptpStats[metrics.MasterClockType].SetRole(types.SLAVE)
+
+	replacer := strings.NewReplacer("[", " ", "]", " ", ":", " ")
+	tbcKey := types.IFace(stats.TBCMainClockName)
+
+	parse := func(logLine string) {
+		output := replacer.Replace(logLine)
+		eventManager.ParseTBCLogs("T-BC", cfgName, output, strings.Fields(output), ptpStats)
+	}
+
+	// Step 1: LOCKED baseline (s2).
+	parse(fmt.Sprintf("T-BC[1743005894]:[%s] ens2f0 offset 5 T-BC-STATUS s2", cfgName))
+	assert.Equal(t, ptp.LOCKED, ptpStats[tbcKey].LastSyncState(), "T-BC should be LOCKED after s2")
+	aliasValue := ptpStats[tbcKey].Alias()
+
+	// Step 2: HOLDOVER (s3 holdover) — the path fixed by OCPBUGS-104526.
+	eventManager.ResetMockEvent()
+	parse(fmt.Sprintf("T-BC[1743005894]:[%s] ens2f0 offset 123 T-BC-STATUS s3 holdover", cfgName))
+	assert.Equal(t, ptp.HOLDOVER, ptpStats[tbcKey].LastSyncState(),
+		"T-BC-STATUS s3 holdover must be parsed as HOLDOVER, not FREERUN")
+	assert.Contains(t, eventManager.GetMockEvent(), ptp.PtpStateChange,
+		"a ptp-state-change event must be published on LOCKED->HOLDOVER")
+	val, ok := syncStateMetricValue("T-BC", aliasValue)
+	assert.True(t, ok, "SyncState metric must exist for the T-BC master")
+	assert.Equal(t, float64(types.HOLDOVER), val, "SyncState metric must report HOLDOVER (2) while in holdover")
+
+	// Step 3: FREERUN (s0) — holdover collapses to FREERUN.
+	eventManager.ResetMockEvent()
+	parse(fmt.Sprintf("T-BC[1743005894]:[%s] ens2f0 offset 999 T-BC-STATUS s0", cfgName))
+	assert.Equal(t, ptp.FREERUN, ptpStats[tbcKey].LastSyncState(), "T-BC should be FREERUN after s0")
+	assert.Contains(t, eventManager.GetMockEvent(), ptp.PtpStateChange,
+		"a ptp-state-change event must be published on HOLDOVER->FREERUN")
 }
