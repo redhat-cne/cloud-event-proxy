@@ -111,15 +111,70 @@ func validateEndpointURI(raw string) error {
 	if host == "" {
 		return fmt.Errorf("EndpointUri host is empty")
 	}
-	if ip := net.ParseIP(host); ip != nil {
-		switch {
-		case ip.IsLinkLocalUnicast(), ip.IsLinkLocalMulticast(), ip.IsMulticast(), ip.IsUnspecified():
-			return fmt.Errorf("EndpointUri host %q is not an allowed address", host)
-		case ip.Equal(net.ParseIP("169.254.169.254")):
-			return fmt.Errorf("EndpointUri host %q (cloud metadata) is not allowed", host)
-		}
+	if ip := net.ParseIP(host); ip != nil && isBlockedDialIP(ip) {
+		return fmt.Errorf("EndpointUri host %q is not an allowed address", host)
 	}
 	return nil
+}
+
+// isBlockedDialIP reports whether an IP is disallowed as an outbound
+// destination. Loopback and private (RFC1918 / IPv6 ULA) addresses are
+// permitted on purpose: per O-RAN RHT-0003 callbacks may be in-pod (localhost)
+// and event consumers routinely run as cluster Pods with private IPs. Only
+// link-local, multicast, unspecified and cloud-metadata addresses are blocked.
+func isBlockedDialIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+		return true
+	}
+	// Cloud instance-metadata endpoints (IPv4 IMDS is already link-local; the
+	// IPv6 variant is unique-local so must be listed explicitly).
+	if ip.Equal(net.ParseIP("169.254.169.254")) || ip.Equal(net.ParseIP("fd00:ec2::254")) {
+		return true
+	}
+	return false
+}
+
+// newSafeDialContext returns a DialContext that resolves the target host and
+// rejects the connection if any resolved address is blocked, then dials the
+// resolved IP directly. Dialing the already-resolved address (rather than the
+// hostname) closes the DNS-rebinding TOCTOU window between validation and
+// connection.
+func newSafeDialContext(base *net.Dialer) func(ctx context.Context, network, addr string) (net.Conn, error) {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		for _, ipa := range ips {
+			if isBlockedDialIP(ipa.IP) {
+				return nil, fmt.Errorf("refusing to connect to blocked address %s (resolved from %q)", ipa.IP, host)
+			}
+		}
+		var firstErr error
+		for _, ipa := range ips {
+			conn, derr := base.DialContext(ctx, network, net.JoinHostPort(ipa.IP.String(), port))
+			if derr == nil {
+				return conn, nil
+			}
+			firstErr = derr
+		}
+		return nil, firstErr
+	}
+}
+
+// noRedirectPolicy prevents the endpoint-validation client from following
+// redirects, which could otherwise be used to reach a blocked address after the
+// initial destination passed validation. The 3xx response itself is returned to
+// the caller unfollowed.
+func noRedirectPolicy(_ *http.Request, _ []*http.Request) error {
+	return http.ErrUseLastResponse
 }
 
 // tlsVersionFromString maps a TLS version name (as used by the OpenShift

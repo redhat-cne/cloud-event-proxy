@@ -134,13 +134,15 @@ func (c *ClientAuthConfig) CreateTLSConfig() (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		RootCAs:      caCertPool,
+		MinVersion:   tls.VersionTLS12,
 	}
 	// Apply the centrally-managed TLS profile (min version + cipher suites)
-	// sourced from the cluster TLSSecurityProfile. No hostname verification is
-	// skipped: FQDN / service-DNS connections must present a valid server
-	// certificate signed by the configured CA. In-pod loopback callers use the
-	// plaintext localhost fast-path and never reach this path.
-	c.AuthConfig.ApplyTLSProfile(tlsConfig)
+	// sourced from the cluster TLSSecurityProfile. It may raise MinVersion above
+	// the TLS 1.2 floor. No hostname verification is skipped: FQDN / service-DNS
+	// connections must present a valid server certificate signed by the
+	// configured CA. In-pod loopback callers use the plaintext localhost
+	// fast-path and never reach this path.
+	c.ApplyTLSProfile(tlsConfig)
 
 	log.Info("Created TLS configuration for mTLS")
 	return tlsConfig, nil

@@ -131,7 +131,11 @@ gha:
 	fi
 	@if [ "$$(realpath $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy)" != "$$(realpath .)" ]; then \
 		echo "✅ Safe to delete: cleaning GOPATH workspace..."; \
-		rm -rf $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy/*; \
+		echo "Cleaning stale vendored dependency copies from GOPATH/src..."; \
+		for d in golang.org github.com k8s.io sigs.k8s.io google.golang.org gopkg.in go.uber.org go.opentelemetry.io; do \
+			rm -rf "$(GOPATH)/src/$$d" 2>/dev/null || true; \
+		done; \
+		mkdir -p $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy; \
 		cp -r cmd examples pkg plugins test $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy; \
 		cp -r vendor/* $(GOPATH)/src; \
 		rm -rf /tmp/sub-store && mkdir -p /tmp/sub-store; \

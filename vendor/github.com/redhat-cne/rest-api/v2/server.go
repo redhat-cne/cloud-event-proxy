@@ -52,6 +52,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -316,17 +317,25 @@ func InitServer(port int, apiHost, apiPath, storePath string,
 		// Configure HTTPClient used to validate publisher endpoints. When mTLS
 		// is enabled we verify the endpoint's server certificate against the CA
 		// pool (Service CA) rather than skipping verification.
+		// A shared dialer whose DialContext resolves the target and rejects
+		// blocked (link-local / metadata / multicast) addresses before
+		// connecting, closing the SSRF DNS-rebinding window for endpoint checks.
+		safeDial := newSafeDialContext(&net.Dialer{Timeout: 10 * time.Second})
 		if authConfig != nil && authConfig.EnableMTLS {
 			tlsClientConfig := &tls.Config{
-				RootCAs: ServerInstance.caCertPool,
+				RootCAs:    ServerInstance.caCertPool,
+				MinVersion: tls.VersionTLS12,
 			}
+			// ApplyTLSProfile may raise MinVersion to the cluster-configured floor.
 			authConfig.ApplyTLSProfile(tlsClientConfig)
 			ServerInstance.HTTPClient = &http.Client{
 				Transport: &http.Transport{
 					MaxIdleConnsPerHost: 20,
 					TLSClientConfig:     tlsClientConfig,
+					DialContext:         safeDial,
 				},
-				Timeout: 10 * time.Second,
+				Timeout:       10 * time.Second,
+				CheckRedirect: noRedirectPolicy,
 			}
 			log.Info("InitServer: configured HTTPClient with CA verification for mTLS endpoint validation")
 		} else {
@@ -334,8 +343,10 @@ func InitServer(port int, apiHost, apiPath, storePath string,
 			ServerInstance.HTTPClient = &http.Client{
 				Transport: &http.Transport{
 					MaxIdleConnsPerHost: 20,
+					DialContext:         safeDial,
 				},
-				Timeout: 10 * time.Second,
+				Timeout:       10 * time.Second,
+				CheckRedirect: noRedirectPolicy,
 			}
 		}
 	})
@@ -695,8 +706,10 @@ func (s *Server) Start() {
 				Certificates: []tls.Certificate{cert},
 				ClientAuth:   tls.VerifyClientCertIfGiven,
 				ClientCAs:    s.caCertPool,
+				MinVersion:   tls.VersionTLS12,
 			}
 			// Apply the centrally-managed TLS profile (min version + ciphers).
+			// A configured profile may raise MinVersion above the TLS 1.2 floor.
 			s.authConfig.ApplyTLSProfile(tlsConfig)
 
 			s.httpServer.TLSConfig = tlsConfig
