@@ -463,6 +463,12 @@ func (p *PTPEventManager) ParseTBCLogs(processName, configName, output string, f
 	iface := fields[3]
 	syncState := fields[7]
 	ptpSyncState := GetSyncState(syncState)
+	// T-BC HOLDOVER is reported as "... T-BC-STATUS s3 holdover": the s3 token maps
+	// to FREERUN by default in GetSyncState, so the trailing "holdover" keyword must
+	// be detected explicitly (mirrors the ts2phc path in extractRegularMetrics).
+	if len(fields) >= 9 && fields[8] == "holdover" {
+		ptpSyncState = ptp.HOLDOVER
+	}
 	offs, err := strconv.ParseInt(fields[5], 10, 64)
 	if err != nil {
 		log.Errorf("unable to parse T-BC offset %q: %v", fields[5], err)
