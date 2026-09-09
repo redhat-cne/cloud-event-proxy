@@ -88,15 +88,19 @@ type AuthConfig struct {
 	ServerKeyPath  string `json:"serverKeyPath"`
 	UseServiceCA   bool   `json:"useServiceCA"` // Use OpenShift Service CA (recommended for all cluster sizes)
 
-	// OAuth configuration using OpenShift OAuth Server - works for both single and multi-node clusters
+	// OAuth 2.0 / bearer-token configuration. Tokens are validated by the
+	// TokenValidator installed via Server.SetTokenValidator (cloud-event-proxy
+	// uses the Kubernetes TokenReview API), so no issuer/JWKS is configured here.
 	EnableOAuth         bool     `json:"enableOAuth"`
-	OAuthIssuer         string   `json:"oauthIssuer"`         // OpenShift OAuth server URL
-	OAuthJWKSURL        string   `json:"oauthJWKSURL"`        // OpenShift JWKS endpoint
-	RequiredScopes      []string `json:"requiredScopes"`      // Required OAuth scopes
-	RequiredAudience    string   `json:"requiredAudience"`    // Required OAuth audience
-	ServiceAccountName  string   `json:"serviceAccountName"`  // ServiceAccount for client authentication
-	ServiceAccountToken string   `json:"serviceAccountToken"` // ServiceAccount token path
-	UseOpenShiftOAuth   bool     `json:"useOpenShiftOAuth"`   // Use OpenShift's built-in OAuth server (recommended for all cluster sizes)
+	RequiredAudiences   []string `json:"requiredAudiences"`   // Required token audiences (validated by TokenReview)
+	ServiceAccountName  string   `json:"serviceAccountName"`  // ServiceAccount used by clients for authentication
+	ServiceAccountToken string   `json:"serviceAccountToken"` // ServiceAccount token path (client side)
+	UseOpenShiftOAuth   bool     `json:"useOpenShiftOAuth"`   // Client hint: obtain tokens from OpenShift OAuth
+
+	// TLS profile - centrally managed by the cluster's TLSSecurityProfile and
+	// propagated by the operator. Nothing is hardcoded in this library.
+	TLSMinVersion   string   `json:"tlsMinVersion"`   // e.g. "VersionTLS12", "VersionTLS13"
+	TLSCipherSuites []string `json:"tlsCipherSuites"` // IANA cipher suite names
 }
 
 // LoadAuthConfig loads authentication configuration from a JSON file
@@ -130,13 +134,14 @@ func (c *AuthConfig) GetConfigSummary() string {
 	}
 	summary += fmt.Sprintf("  Enable OAuth: %t\n", c.EnableOAuth)
 	if c.EnableOAuth {
-		summary += fmt.Sprintf("    OAuth Issuer: %s\n", c.OAuthIssuer)
-		summary += fmt.Sprintf("    OAuth JWKS URL: %s\n", c.OAuthJWKSURL)
-		summary += fmt.Sprintf("    Required Scopes: %v\n", c.RequiredScopes)
-		summary += fmt.Sprintf("    Required Audience: %s\n", c.RequiredAudience)
+		summary += fmt.Sprintf("    Required Audiences: %v\n", c.RequiredAudiences)
 		summary += fmt.Sprintf("    Service Account Name: %s\n", c.ServiceAccountName)
 		summary += fmt.Sprintf("    Service Account Token Path: %s\n", c.ServiceAccountToken)
 		summary += fmt.Sprintf("    Use OpenShift OAuth: %t\n", c.UseOpenShiftOAuth)
+	}
+	if c.TLSMinVersion != "" || len(c.TLSCipherSuites) > 0 {
+		summary += fmt.Sprintf("  TLS Min Version: %s\n", c.TLSMinVersion)
+		summary += fmt.Sprintf("  TLS Cipher Suites: %v\n", c.TLSCipherSuites)
 	}
 	return summary
 }
@@ -158,6 +163,7 @@ type Server struct {
 	statusLock              sync.RWMutex
 	authConfig              *AuthConfig
 	caCertPool              *x509.CertPool
+	tokenValidator          TokenValidator
 }
 
 // SubscriptionInfo
@@ -299,19 +305,30 @@ func InitServer(port int, apiHost, apiPath, storePath string,
 			authConfig:              authConfig,
 		}
 
-		// Configure HTTPClient with proper TLS settings for publisher endpoint validation
+		// Initialize the mTLS CA certificate pool first so the HTTPClient below
+		// can verify endpoint certificates against it.
+		if authConfig != nil && authConfig.EnableMTLS && authConfig.CACertPath != "" {
+			if err := ServerInstance.initMTLSCACertPool(); err != nil {
+				log.Errorf("failed to initialize mTLS CA certificate pool: %v", err)
+			}
+		}
+
+		// Configure HTTPClient used to validate publisher endpoints. When mTLS
+		// is enabled we verify the endpoint's server certificate against the CA
+		// pool (Service CA) rather than skipping verification.
 		if authConfig != nil && authConfig.EnableMTLS {
-			// Create HTTPClient with TLS configuration that allows localhost connections
+			tlsClientConfig := &tls.Config{
+				RootCAs: ServerInstance.caCertPool,
+			}
+			authConfig.ApplyTLSProfile(tlsClientConfig)
 			ServerInstance.HTTPClient = &http.Client{
 				Transport: &http.Transport{
 					MaxIdleConnsPerHost: 20,
-					TLSClientConfig: &tls.Config{
-						InsecureSkipVerify: true, // nolint:gosec // Required for localhost connections in mTLS setup
-					},
+					TLSClientConfig:     tlsClientConfig,
 				},
 				Timeout: 10 * time.Second,
 			}
-			log.Infof("InitServer: Configured HTTPClient with InsecureSkipVerify for mTLS localhost connections")
+			log.Info("InitServer: configured HTTPClient with CA verification for mTLS endpoint validation")
 		} else {
 			// Use default HTTP client for non-mTLS configurations
 			ServerInstance.HTTPClient = &http.Client{
@@ -320,16 +337,6 @@ func InitServer(port int, apiHost, apiPath, storePath string,
 				},
 				Timeout: 10 * time.Second,
 			}
-		}
-
-		// Initialize mTLS CA certificate pool if mTLS is enabled
-		if authConfig != nil && authConfig.EnableMTLS && authConfig.CACertPath != "" {
-			fmt.Printf("InitServer: Setting authConfig with EnableMTLS=%t\n", authConfig.EnableMTLS)
-			if err := ServerInstance.initMTLSCACertPool(); err != nil {
-				log.Errorf("failed to initialize mTLS CA certificate pool: %v", err)
-			}
-		} else {
-			fmt.Printf("InitServer: authConfig is nil or EnableMTLS is false (authConfig=%v, EnableMTLS=%t)\n", authConfig != nil, authConfig != nil && authConfig.EnableMTLS)
 		}
 	})
 	// singleton
@@ -494,7 +501,7 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/subscriptions"
 	//   "400":
 	//     description: Bad request by the client.
-	api.Handle("/subscriptions", applyAuth(s.getSubscriptions, false)).Methods(http.MethodGet)
+	api.Handle("/subscriptions", applyAuth(s.getSubscriptions, true)).Methods(http.MethodGet)
 
 	// swagger:operation GET /subscriptions/{subscriptionId} Subscriptions getSubscriptionByID
 	// ---
@@ -505,7 +512,7 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/subscription"
 	//   "404":
 	//     description: Not Found. Subscription resources are not available (not created).
-	api.Handle("/subscriptions/{subscriptionId}", applyAuth(s.getSubscriptionByID, false)).Methods(http.MethodGet)
+	api.Handle("/subscriptions/{subscriptionId}", applyAuth(s.getSubscriptionByID, true)).Methods(http.MethodGet)
 
 	// swagger:operation DELETE /subscriptions/{subscriptionId} Subscriptions deleteSubscription
 	// ---
@@ -529,7 +536,7 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/eventResp"
 	//   "404":
 	//     description: Not Found. Event notification resource is not available on this node.
-	api.Handle("/{resourceAddress:.*}/CurrentState", applyAuth(s.getCurrentState, false)).Methods(http.MethodGet)
+	api.Handle("/{resourceAddress:.*}/CurrentState", applyAuth(s.getCurrentState, true)).Methods(http.MethodGet)
 
 	// *** Extensions to O-RAN API ***
 
@@ -556,7 +563,7 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/publishers"
 	//   "404":
 	//	   description: Publishers not found
-	api.Handle("/publishers", applyAuth(s.getPublishers, false)).Methods(http.MethodGet)
+	api.Handle("/publishers", applyAuth(s.getPublishers, true)).Methods(http.MethodGet)
 
 	// swagger:operation DELETE /subscriptions Subscriptions deleteAllSubscriptions
 	// ---
@@ -571,7 +578,7 @@ func (s *Server) Start() {
 
 	// *** Internal API ***
 
-	api.Handle("/publishers/{publisherid}", applyAuth(s.getPublisherByID, false)).Methods(http.MethodGet)
+	api.Handle("/publishers/{publisherid}", applyAuth(s.getPublisherByID, true)).Methods(http.MethodGet)
 	api.Handle("/publishers/{publisherid}", applyAuth(s.deletePublisher, true)).Methods(http.MethodDelete)
 	api.Handle("/publishers", applyAuth(s.deleteAllPublishers, true)).Methods(http.MethodDelete)
 
@@ -679,14 +686,18 @@ func (s *Server) Start() {
 				return
 			}
 
-			// Configure TLS to request client certificates but not require them
-			// We'll handle certificate validation at the application level
+			// VerifyClientCertIfGiven lets loopback clients connect without a
+			// certificate (trusted same-pod fast-path) while cryptographically
+			// verifying any certificate that IS presented against the CA pool.
+			// The middleware then requires a verified certificate for all
+			// non-loopback (FQDN/service-DNS/external) requests.
 			tlsConfig := &tls.Config{
 				Certificates: []tls.Certificate{cert},
-				ClientAuth:   tls.RequestClientCert, // Request but don't require
+				ClientAuth:   tls.VerifyClientCertIfGiven,
 				ClientCAs:    s.caCertPool,
-				MinVersion:   tls.VersionTLS12,
 			}
+			// Apply the centrally-managed TLS profile (min version + ciphers).
+			s.authConfig.ApplyTLSProfile(tlsConfig)
 
 			s.httpServer.TLSConfig = tlsConfig
 

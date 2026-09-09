@@ -241,6 +241,18 @@ func StartPubSubService(scConfig *SCConfiguration, authConfig *restapi.AuthConfi
 		scConfig.StorePath, scConfig.EventOutCh, scConfig.CloseCh, nil, authConfig)
 	scConfig.RestAPI = server
 	scConfig.AuthConfig = authConfig
+	// When OAuth is enabled, install an in-process Kubernetes TokenReview
+	// validator so bearer tokens (ServiceAccount JWTs and opaque OpenShift OAuth
+	// tokens) are cryptographically verified against the API server. Without a
+	// validator the server fails closed on all non-loopback requests.
+	if authConfig != nil && authConfig.EnableOAuth {
+		validator, verr := auth.NewTokenReviewValidator()
+		if verr != nil {
+			return fmt.Errorf("failed to initialize OAuth TokenReview validator: %w", verr)
+		}
+		server.SetTokenValidator(validator)
+		log.Info("OAuth TokenReview validator installed")
+	}
 	server.Start()
 	err = server.EndPointHealthChk()
 	if err == nil {

@@ -95,12 +95,6 @@ func (c *ClientAuthConfig) Validate() error {
 	}
 
 	if c.EnableOAuth {
-		if c.OAuthIssuer == "" {
-			return fmt.Errorf("OAuth issuer is required when OAuth is enabled")
-		}
-		if c.OAuthJWKSURL == "" {
-			return fmt.Errorf("OAuth JWKS URL is required when OAuth is enabled")
-		}
 		if c.ServiceAccountToken == "" {
 			return fmt.Errorf("service account token path is required when OAuth is enabled")
 		}
@@ -138,13 +132,15 @@ func (c *ClientAuthConfig) CreateTLSConfig() (*tls.Config, error) {
 	}
 
 	tlsConfig := &tls.Config{
-		Certificates:       []tls.Certificate{cert},
-		RootCAs:            caCertPool,
-		MinVersion:         tls.VersionTLS12,
-		InsecureSkipVerify: true, // Skip hostname verification for localhost connections
-		// Note: Server certificates from Service CA may not support client authentication
-		// This is acceptable for internal localhost connections
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      caCertPool,
 	}
+	// Apply the centrally-managed TLS profile (min version + cipher suites)
+	// sourced from the cluster TLSSecurityProfile. No hostname verification is
+	// skipped: FQDN / service-DNS connections must present a valid server
+	// certificate signed by the configured CA. In-pod loopback callers use the
+	// plaintext localhost fast-path and never reach this path.
+	c.AuthConfig.ApplyTLSProfile(tlsConfig)
 
 	log.Info("Created TLS configuration for mTLS")
 	return tlsConfig, nil
@@ -181,8 +177,6 @@ func (c *ClientAuthConfig) GetConfigSummary() string {
 	}
 	summary += fmt.Sprintf("  OAuth: %t\n", c.EnableOAuth)
 	if c.EnableOAuth {
-		summary += fmt.Sprintf("    Issuer: %s\n", c.OAuthIssuer)
-		summary += fmt.Sprintf("    JWKS URL: %s\n", c.OAuthJWKSURL)
 		summary += fmt.Sprintf("    Service Account: %s\n", c.ServiceAccountName)
 		summary += fmt.Sprintf("    Token Path: %s\n", c.ServiceAccountToken)
 		summary += fmt.Sprintf("    Use OpenShift OAuth: %t\n", c.UseOpenShiftOAuth)

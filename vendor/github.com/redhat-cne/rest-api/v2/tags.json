@@ -1,12 +1,24 @@
 {
 "tags": [
     {
-        "name":"Subscriptions",
-        "description":"Manage Subscriptions"
+        "name": "Subscriptions",
+        "description": "Manage event subscriptions for O-RAN compliant notifications. Includes both O-RAN standard operations and extensions."
     },
     {
-        "name":"Events",
-        "description":"Event Pull Status Notification"
+        "name": "Publishers",
+        "description": "Manage event publishers and their configurations. Extensions to O-RAN API for internal cluster management."
+    },
+    {
+        "name": "Events",
+        "description": "Event publication and status notification endpoints. Includes current state retrieval and event creation."
+    },
+    {
+        "name": "HealthCheck",
+        "description": "Health and status monitoring endpoints. Extensions to O-RAN API for service availability checking."
+    },
+    {
+        "name": "Authentication",
+        "description": "Authentication and authorization using mTLS (mutual TLS) and OAuth 2.0 with OpenShift integration."
     }
   ]
 }
