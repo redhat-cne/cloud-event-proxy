@@ -12,7 +12,7 @@ require (
 	github.com/onsi/gomega v1.23.0
 	github.com/prometheus/client_golang v1.14.0
 	github.com/prometheus/client_model v0.3.0
-	github.com/redhat-cne/rest-api v1.23.7-0.20260909223410-6aaccdbd1f77
+	github.com/redhat-cne/rest-api v1.23.7-0.20260909233613-7f73e7bd6710
 	github.com/redhat-cne/sdk-go v1.23.6
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.1

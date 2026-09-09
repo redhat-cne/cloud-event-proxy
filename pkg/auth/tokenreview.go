@@ -38,6 +38,14 @@ import (
 // requests carrying the same token.
 const defaultTokenCacheTTL = 30 * time.Second
 
+// maxTokenCacheEntries bounds the positive-result cache so a flood of distinct
+// (attacker-supplied but briefly-valid, or simply many-tenant) tokens cannot
+// grow the map without limit and exhaust memory (CWE-400). When the cache is
+// full and no expired entry can be reclaimed, new results are simply not cached
+// - correctness is unaffected because every cache miss re-validates against the
+// API server.
+const maxTokenCacheEntries = 4096
+
 // tokenReviewer is the subset of the Kubernetes API used to validate tokens.
 // It is satisfied by kubernetes.Interface and can be faked in tests.
 type tokenReviewer interface {
@@ -109,6 +117,25 @@ func cacheKey(token string, audiences []string) string {
 	return hex.EncodeToString(h.Sum(nil))
 }
 
+// storeLocked inserts an entry into the bounded positive cache. The caller must
+// hold v.mu. When the cache is at capacity it first reclaims expired entries;
+// if it is still full, the new entry is dropped rather than evicting a live one
+// (a subsequent request simply re-validates against the API server).
+func (v *TokenReviewValidator) storeLocked(key string, entry cacheEntry) {
+	if _, exists := v.cache[key]; !exists && len(v.cache) >= maxTokenCacheEntries {
+		now := time.Now()
+		for k, e := range v.cache {
+			if now.After(e.expiresAt) {
+				delete(v.cache, k)
+			}
+		}
+		if len(v.cache) >= maxTokenCacheEntries {
+			return
+		}
+	}
+	v.cache[key] = entry
+}
+
 // ValidateToken implements restapi.TokenValidator.
 func (v *TokenReviewValidator) ValidateToken(ctx context.Context, token string, audiences []string) (*restapi.TokenInfo, error) {
 	if token == "" {
@@ -160,7 +187,7 @@ func (v *TokenReviewValidator) ValidateToken(ctx context.Context, token string, 
 
 	if v.ttl > 0 {
 		v.mu.Lock()
-		v.cache[key] = cacheEntry{info: info, expiresAt: time.Now().Add(v.ttl)}
+		v.storeLocked(key, cacheEntry{info: info, expiresAt: time.Now().Add(v.ttl)})
 		v.mu.Unlock()
 	}
 

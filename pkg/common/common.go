@@ -262,6 +262,23 @@ func StartPubSubService(scConfig *SCConfiguration, authConfig *restapi.AuthConfi
 	return err
 }
 
+// isLoopbackURL reports whether rawURL targets the local loopback interface.
+// It parses the URL and inspects the hostname so that only a genuine loopback
+// host matches - a substring scan would misclassify hosts such as
+// "publisher-localhost.example.com" or any URL whose path happened to contain
+// "127.0.0.1", causing the mTLS client certificate to be silently dropped.
+func isLoopbackURL(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return host == "localhost"
+}
+
 // CreatePublisher creates a publisher objects
 func CreatePublisher(config *SCConfiguration, publisher pubsub.PubSub) (pub pubsub.PubSub, err error) {
 	apiURL := fmt.Sprintf("%s%s", config.BaseURL.String(), "publishers")
@@ -269,11 +286,8 @@ func CreatePublisher(config *SCConfiguration, publisher pubsub.PubSub) (pub pubs
 	var status int
 	if pubB, err = json.Marshal(&publisher); err == nil {
 		var rc *restclient.Rest
-		// Check if this is a localhost connection (IPv4 and IPv6)
-		isLocalhost := strings.Contains(apiURL, "localhost") ||
-			strings.Contains(apiURL, "127.0.0.1") ||
-			strings.Contains(apiURL, "[::1]") ||
-			strings.Contains(apiURL, "::1")
+		// Check if this is a localhost connection (IPv4 and IPv6) by hostname.
+		isLocalhost := isLoopbackURL(apiURL)
 
 		if isLocalhost && config.AuthConfig != nil && config.AuthConfig.EnableMTLS {
 			// For localhost connections with mTLS enabled, create a client that skips certificate verification
