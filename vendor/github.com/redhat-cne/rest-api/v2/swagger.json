@@ -11,12 +11,37 @@
   ],
   "swagger": "2.0",
   "info": {
-    "description": "REST API Spec.",
-    "title": "O-RAN Compliant REST API",
-    "version": "2.0.0"
+    "description": "O-RAN compliant REST API for cloud event notifications with mTLS and OAuth 2.0 authentication support. This API provides secure event subscription management, publisher control, and real-time event notifications for OpenShift and Kubernetes environments.",
+    "title": "O-RAN Compliant REST API with Authentication",
+    "version": "2.0.0",
+    "contact": {
+      "name": "Red Hat CNE Team",
+      "url": "https://github.com/redhat-cne/rest-api"
+    },
+    "license": {
+      "name": "Apache 2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+    }
   },
   "host": "localhost:9043",
   "basePath": "/api/ocloudNotifications/v2",
+  "securityDefinitions": {
+    "mTLS": {
+      "type": "basic",
+      "description": "Mutual TLS authentication using client certificates. Clients must present valid certificates signed by the trusted CA."
+    },
+    "OAuth2": {
+      "type": "oauth2",
+      "description": "OAuth 2.0 authentication using Bearer tokens. Supports OpenShift OAuth server and Kubernetes ServiceAccount tokens.",
+      "flow": "application",
+      "tokenUrl": "https://oauth-openshift.apps.cluster.local/oauth/token",
+      "scopes": {
+        "user:info": "Access to user information",
+        "read": "Read access to resources",
+        "write": "Write access to resources"
+      }
+    }
+  },
   "paths": {
     "/health": {
       "get": {
@@ -75,6 +100,12 @@
         ],
         "summary": "Creates a subscription resource for the Event Consumer.",
         "operationId": "createSubscription",
+        "security": [
+          {
+            "mTLS": [],
+            "OAuth2": ["write"]
+          }
+        ],
         "parameters": [
           {
             "description": "The payload will include an event notification request, endpointUri and ResourceAddress. The SubscriptionId and UriLocation are ignored in the POST body (these will be sent to the client after the resource is created).",
@@ -92,6 +123,9 @@
           "400": {
             "description": "Bad request. For example, the endpoint URI is not correctly formatted."
           },
+          "401": {
+            "description": "Unauthorized. Authentication required (mTLS and/or OAuth)."
+          },
           "404": {
             "description": "Not Found. Subscription resource is not available."
           },
@@ -107,9 +141,18 @@
         ],
         "summary": "(Extensions to O-RAN API) Delete all subscriptions.",
         "operationId": "deleteAllSubscriptions",
+        "security": [
+          {
+            "mTLS": [],
+            "OAuth2": ["write"]
+          }
+        ],
         "responses": {
           "204": {
             "description": "Deleted all subscriptions."
+          },
+          "401": {
+            "description": "Unauthorized. Authentication required (mTLS and/or OAuth)."
           }
         }
       }
@@ -148,6 +191,12 @@
         ],
         "summary": "Delete a specific subscription.",
         "operationId": "deleteSubscription",
+        "security": [
+          {
+            "mTLS": [],
+            "OAuth2": ["write"]
+          }
+        ],
         "parameters": [
           {
             "type": "string",
@@ -161,6 +210,9 @@
         "responses": {
           "204": {
             "description": "Success."
+          },
+          "401": {
+            "description": "Unauthorized. Authentication required (mTLS and/or OAuth)."
           },
           "404": {
             "description": "Not Found. Subscription resources are not available (not created)."
@@ -366,12 +418,24 @@
   },
   "tags": [
     {
-      "description": "Manage Subscriptions",
-      "name": "Subscriptions"
+      "name": "Subscriptions",
+      "description": "Manage event subscriptions for O-RAN compliant notifications. Includes both O-RAN standard operations and extensions."
     },
     {
-      "description": "Event Pull Status Notification",
-      "name": "Events"
+      "name": "Publishers",
+      "description": "Manage event publishers and their configurations. Extensions to O-RAN API for internal cluster management."
+    },
+    {
+      "name": "Events",
+      "description": "Event publication and status notification endpoints. Includes current state retrieval and event creation."
+    },
+    {
+      "name": "HealthCheck",
+      "description": "Health and status monitoring endpoints. Extensions to O-RAN API for service availability checking."
+    },
+    {
+      "name": "Authentication",
+      "description": "Authentication and authorization using mTLS (mutual TLS) and OAuth 2.0 with OpenShift integration."
     }
   ]
 }

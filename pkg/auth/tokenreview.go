@@ -1,0 +1,169 @@
+// Copyright 2025 The Cloud Native Events Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package auth
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"os"
+	"sync"
+	"time"
+
+	restapi "github.com/redhat-cne/rest-api/v2"
+	log "github.com/sirupsen/logrus"
+	authnv1 "k8s.io/api/authentication/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
+)
+
+// defaultTokenCacheTTL bounds how long a positive TokenReview result is trusted
+// without re-validating against the API server. It is intentionally short so
+// that token revocation takes effect quickly while still absorbing bursts of
+// requests carrying the same token.
+const defaultTokenCacheTTL = 30 * time.Second
+
+// tokenReviewer is the subset of the Kubernetes API used to validate tokens.
+// It is satisfied by kubernetes.Interface and can be faked in tests.
+type tokenReviewer interface {
+	Create(ctx context.Context, tr *authnv1.TokenReview, opts metav1.CreateOptions) (*authnv1.TokenReview, error)
+}
+
+type cacheEntry struct {
+	info      *restapi.TokenInfo
+	expiresAt time.Time
+}
+
+// TokenReviewValidator validates bearer tokens using the Kubernetes TokenReview
+// API. It handles both projected ServiceAccount JWTs and opaque OpenShift OAuth
+// access tokens (which cannot be verified via JWKS), and honours revocation
+// because every cache miss consults the API server. It implements
+// restapi.TokenValidator.
+type TokenReviewValidator struct {
+	reviewer tokenReviewer
+	ttl      time.Duration
+
+	mu    sync.Mutex
+	cache map[string]cacheEntry
+}
+
+// NewTokenReviewValidator builds a validator using an in-cluster config (or
+// KUBECONFIG when set). The pod's ServiceAccount must be bound to the
+// system:auth-delegator ClusterRole so it may create TokenReviews.
+func NewTokenReviewValidator() (*TokenReviewValidator, error) {
+	var config *rest.Config
+	var err error
+	if kubeConfig := os.Getenv("KUBECONFIG"); kubeConfig != "" {
+		config, err = clientcmd.BuildConfigFromFlags("", kubeConfig)
+	} else {
+		config, err = rest.InClusterConfig()
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to build kubernetes config for TokenReview: %w", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kubernetes client for TokenReview: %w", err)
+	}
+
+	return NewTokenReviewValidatorWithReviewer(clientset.AuthenticationV1().TokenReviews(), defaultTokenCacheTTL), nil
+}
+
+// NewTokenReviewValidatorWithReviewer builds a validator around a supplied
+// reviewer (used for testing) and cache TTL. A non-positive ttl disables
+// caching.
+func NewTokenReviewValidatorWithReviewer(reviewer tokenReviewer, ttl time.Duration) *TokenReviewValidator {
+	return &TokenReviewValidator{
+		reviewer: reviewer,
+		ttl:      ttl,
+		cache:    make(map[string]cacheEntry),
+	}
+}
+
+// cacheKey derives a stable, non-reversible key from the token and the required
+// audiences so that a token accepted for one audience set is not reused for a
+// different one. The raw token is never stored.
+func cacheKey(token string, audiences []string) string {
+	h := sha256.New()
+	h.Write([]byte(token))
+	for _, a := range audiences {
+		h.Write([]byte{0})
+		h.Write([]byte(a))
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// ValidateToken implements restapi.TokenValidator.
+func (v *TokenReviewValidator) ValidateToken(ctx context.Context, token string, audiences []string) (*restapi.TokenInfo, error) {
+	if token == "" {
+		return nil, fmt.Errorf("empty bearer token")
+	}
+
+	key := cacheKey(token, audiences)
+	if v.ttl > 0 {
+		v.mu.Lock()
+		if e, ok := v.cache[key]; ok && time.Now().Before(e.expiresAt) {
+			v.mu.Unlock()
+			return e.info, nil
+		}
+		v.mu.Unlock()
+	}
+
+	tr := &authnv1.TokenReview{
+		Spec: authnv1.TokenReviewSpec{
+			Token:     token,
+			Audiences: audiences,
+		},
+	}
+
+	result, err := v.reviewer.Create(ctx, tr, metav1.CreateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("TokenReview request failed: %w", err)
+	}
+
+	if result.Status.Error != "" {
+		return nil, fmt.Errorf("TokenReview rejected token: %s", result.Status.Error)
+	}
+	if !result.Status.Authenticated {
+		return nil, fmt.Errorf("token is not authenticated")
+	}
+
+	// When audiences were requested, the API server echoes back the subset the
+	// token is actually valid for. An empty intersection means the token was
+	// not minted for us and must be rejected.
+	if len(audiences) > 0 && len(result.Status.Audiences) == 0 {
+		return nil, fmt.Errorf("token audience does not match required audiences %v", audiences)
+	}
+
+	info := &restapi.TokenInfo{
+		Username:  result.Status.User.Username,
+		UID:       result.Status.User.UID,
+		Groups:    result.Status.User.Groups,
+		Audiences: result.Status.Audiences,
+	}
+
+	if v.ttl > 0 {
+		v.mu.Lock()
+		v.cache[key] = cacheEntry{info: info, expiresAt: time.Now().Add(v.ttl)}
+		v.mu.Unlock()
+	}
+
+	log.Debugf("TokenReview authenticated user %q (uid=%s)", info.Username, info.UID)
+	return info, nil
+}

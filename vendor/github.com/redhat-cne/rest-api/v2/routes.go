@@ -78,6 +78,11 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
 		return
 	}
+	if err = validateEndpointURI(endPointURI); err != nil {
+		respondWithStatusCode(w, http.StatusBadRequest, err.Error())
+		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
+		return
+	}
 	for id, address := range s.subscriberAPI.GetClientIDAddressByResource(sub.GetResource()) {
 		if address.String() == endPointURI {
 			respondWithStatusCode(w, http.StatusConflict,
@@ -199,6 +204,11 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if pub.GetEndpointURI() != "" {
+		if err = validateEndpointURI(pub.GetEndpointURI()); err != nil {
+			localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
+			respondWithError(w, err.Error())
+			return
+		}
 		response, err = s.HTTPClient.Post(pub.GetEndpointURI(), cloudevents.ApplicationJSON, nil)
 		if err != nil {
 			log.Infof("there was an error validating the publisher endpointurl %v, publisher won't be created.", err)

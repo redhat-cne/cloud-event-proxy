@@ -12,7 +12,7 @@ require (
 	github.com/onsi/gomega v1.23.0
 	github.com/prometheus/client_golang v1.14.0
 	github.com/prometheus/client_model v0.3.0
-	github.com/redhat-cne/rest-api v1.23.6
+	github.com/redhat-cne/rest-api v1.23.7-0.20260909223410-6aaccdbd1f77
 	github.com/redhat-cne/sdk-go v1.23.6
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.1
@@ -36,7 +36,6 @@ require (
 	github.com/go-openapi/jsonreference v0.20.0 // indirect
 	github.com/go-openapi/swag v0.19.14 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/google/gnostic v0.5.7-v3refs // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
@@ -77,5 +76,3 @@ require (
 )
 
 replace k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20220328201542-3ee0da9b0b42 // indirect
-
-replace github.com/redhat-cne/rest-api => /Users/jacding/workspace/redhat-cne/rest-api

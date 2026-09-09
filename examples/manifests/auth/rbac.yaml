@@ -21,3 +21,19 @@ roleRef:
   kind: Role
   name: consumer-setup-role
   apiGroup: rbac.authorization.k8s.io
+---
+# Allows the consumer's in-process OAuth validator to create TokenReviews so it
+# can cryptographically verify bearer tokens (ServiceAccount JWTs and opaque
+# OpenShift OAuth tokens) presented on its notification/status endpoints.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: consumer-sa-auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: consumer-sa
+  namespace: cloud-events
+roleRef:
+  kind: ClusterRole
+  name: system:auth-delegator
+  apiGroup: rbac.authorization.k8s.io

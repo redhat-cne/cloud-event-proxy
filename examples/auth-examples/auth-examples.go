@@ -21,6 +21,7 @@ import (
 
 	"github.com/redhat-cne/cloud-event-proxy/pkg/auth"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
+	restapi "github.com/redhat-cne/rest-api/v2"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -55,8 +56,10 @@ func runAuthenticatedConsumerExample() {
 func basicAuthExample() {
 	// Create a basic authentication configuration
 	authConfig := &auth.AuthConfig{
-		EnableMTLS:  false,
-		EnableOAuth: false,
+		AuthConfig: &restapi.AuthConfig{
+			EnableMTLS:  false,
+			EnableOAuth: false,
+		},
 	}
 
 	// Create authenticated REST client
@@ -73,12 +76,14 @@ func basicAuthExample() {
 func mtlsOnlyExample() {
 	// Create mTLS authentication configuration
 	authConfig := &auth.AuthConfig{
-		EnableMTLS:     true,
-		UseServiceCA:   true,
+		AuthConfig: &restapi.AuthConfig{
+			EnableMTLS:   true,
+			UseServiceCA: true,
+			CACertPath:   "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
+			EnableOAuth:  false,
+		},
 		ClientCertPath: "/etc/cloud-event-consumer/client-certs/tls.crt",
 		ClientKeyPath:  "/etc/cloud-event-consumer/client-certs/tls.key",
-		CACertPath:     "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
-		EnableOAuth:    false,
 	}
 
 	// Validate configuration
@@ -100,17 +105,17 @@ func mtlsOnlyExample() {
 
 // oauthOnlyExample shows how to configure OAuth authentication
 func oauthOnlyExample() {
-	// Create OAuth authentication configuration
+	// Create OAuth authentication configuration. Tokens are verified in-process
+	// via the Kubernetes TokenReview API, so no issuer / JWKS URL is required.
 	authConfig := &auth.AuthConfig{
-		EnableMTLS:          false,
-		EnableOAuth:         true,
-		UseOpenShiftOAuth:   true,
-		OAuthIssuer:         "https://oauth-openshift.apps.your-cluster.com",
-		OAuthJWKSURL:        "https://oauth-openshift.apps.your-cluster.com/oauth/jwks",
-		RequiredScopes:      []string{"user:info"},
-		RequiredAudience:    "openshift",
-		ServiceAccountName:  "consumer-sa",
-		ServiceAccountToken: "/var/run/secrets/kubernetes.io/serviceaccount/token",
+		AuthConfig: &restapi.AuthConfig{
+			EnableMTLS:          false,
+			EnableOAuth:         true,
+			UseOpenShiftOAuth:   true,
+			RequiredAudiences:   []string{"https://kubernetes.default.svc"},
+			ServiceAccountName:  "consumer-sa",
+			ServiceAccountToken: "/var/run/secrets/kubernetes.io/serviceaccount/token",
+		},
 	}
 
 	// Validate configuration
@@ -127,22 +132,21 @@ func oauthOnlyExample() {
 func combinedAuthExample() {
 	// Create combined authentication configuration
 	authConfig := &auth.AuthConfig{
-		// mTLS configuration
-		EnableMTLS:     true,
-		UseServiceCA:   true,
+		AuthConfig: &restapi.AuthConfig{
+			// mTLS configuration
+			EnableMTLS:   true,
+			UseServiceCA: true,
+			CACertPath:   "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
+
+			// OAuth configuration
+			EnableOAuth:         true,
+			UseOpenShiftOAuth:   true,
+			RequiredAudiences:   []string{"https://kubernetes.default.svc"},
+			ServiceAccountName:  "consumer-sa",
+			ServiceAccountToken: "/var/run/secrets/kubernetes.io/serviceaccount/token",
+		},
 		ClientCertPath: "/etc/cloud-event-consumer/client-certs/tls.crt",
 		ClientKeyPath:  "/etc/cloud-event-consumer/client-certs/tls.key",
-		CACertPath:     "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
-
-		// OAuth configuration
-		EnableOAuth:         true,
-		UseOpenShiftOAuth:   true,
-		OAuthIssuer:         "https://oauth-openshift.apps.your-cluster.com",
-		OAuthJWKSURL:        "https://oauth-openshift.apps.your-cluster.com/oauth/jwks",
-		RequiredScopes:      []string{"user:info"},
-		RequiredAudience:    "openshift",
-		ServiceAccountName:  "consumer-sa",
-		ServiceAccountToken: "/var/run/secrets/kubernetes.io/serviceaccount/token",
 	}
 
 	// Validate configuration
@@ -250,11 +254,13 @@ func realWorldExample() {
 
 	// 1. Create a sample configuration
 	sampleConfig := &auth.AuthConfig{
-		EnableMTLS:     true,
+		AuthConfig: &restapi.AuthConfig{
+			EnableMTLS:   true,
+			CACertPath:   "/etc/ssl/certs/ca.crt",
+			UseServiceCA: true,
+		},
 		ClientCertPath: "/etc/ssl/certs/client.crt",
 		ClientKeyPath:  "/etc/ssl/private/client.key",
-		CACertPath:     "/etc/ssl/certs/ca.crt",
-		UseServiceCA:   true,
 	}
 
 	// 2. Save configuration to a temporary file (demonstrates saveConfigToFile)

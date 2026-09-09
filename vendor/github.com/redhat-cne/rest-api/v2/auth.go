@@ -15,14 +15,16 @@
 package restapi
 
 import (
+	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
-	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -48,147 +50,166 @@ func (s *Server) initMTLSCACertPool() error {
 	return nil
 }
 
-// OAuthClaims represents the claims in an OAuth JWT token
-type OAuthClaims struct {
-	Issuer    string   `json:"iss"`
-	Subject   string   `json:"sub"`
-	Audience  []string `json:"aud"`
-	ExpiresAt int64    `json:"exp"`
-	IssuedAt  int64    `json:"iat"`
-	Scopes    []string `json:"scope"`
+// TokenInfo carries the authenticated identity returned by a TokenValidator.
+type TokenInfo struct {
+	Username  string
+	UID       string
+	Groups    []string
+	Audiences []string
 }
 
-// validateOAuthToken validates the OAuth JWT token
-func (s *Server) validateOAuthToken(tokenString string) (*OAuthClaims, error) {
-	if s.authConfig == nil || !s.authConfig.EnableOAuth {
-		return nil, fmt.Errorf("OAuth not enabled")
-	}
+// TokenValidator validates an OAuth 2.0 / OIDC bearer token and returns the
+// authenticated identity. Implementations are supplied by the embedding
+// application (e.g. cloud-event-proxy uses the Kubernetes TokenReview API) so
+// that this library remains free of any Kubernetes client dependency.
+//
+// A validator MUST cryptographically verify the token (signature and, when
+// audiences are supplied, audience binding). Returning a non-nil error MUST
+// cause the request to be rejected with 401.
+type TokenValidator interface {
+	ValidateToken(ctx context.Context, token string, audiences []string) (*TokenInfo, error)
+}
 
-	// Parse the token without verification first to get the issuer
-	token, _, err := new(jwt.Parser).ParseUnverified(tokenString, jwt.MapClaims{})
+// SetTokenValidator installs the bearer-token validator used when OAuth is
+// enabled. When OAuth is enabled and no validator is installed, all
+// non-localhost requests fail closed (401).
+func (s *Server) SetTokenValidator(v TokenValidator) {
+	s.tokenValidator = v
+}
+
+// isLoopbackRemoteAddr reports whether the request originates from the local
+// loopback interface (same pod). Such requests never leave the pod's network
+// namespace and are treated as a trusted fast-path.
+func isLoopbackRemoteAddr(remoteAddr string) bool {
+	if remoteAddr == "" {
+		return false
+	}
+	host := remoteAddr
+	if h, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return host == "localhost"
+}
+
+// validateEndpointURI performs SSRF hardening on a caller-supplied callback /
+// endpoint URI (subscriber EndpointUri or publisher endpoint). Per O-RAN
+// RHT-0003 the host may be localhost, an IP, or an FQDN, so those are allowed;
+// link-local, cloud-metadata, multicast and unspecified addresses are rejected.
+func validateEndpointURI(raw string) error {
+	u, err := url.Parse(raw)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse token: %v", err)
+		return fmt.Errorf("invalid EndpointUri %q: %v", raw, err)
 	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return nil, fmt.Errorf("invalid token claims")
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("EndpointUri scheme must be http or https, got %q", u.Scheme)
 	}
-
-	// Validate issuer
-	issuer, ok := claims["iss"].(string)
-	if !ok {
-		return nil, fmt.Errorf("missing or invalid issuer in token")
+	host := u.Hostname()
+	if host == "" {
+		return fmt.Errorf("EndpointUri host is empty")
 	}
-
-	// Accept both OpenShift OAuth tokens and Kubernetes ServiceAccount tokens
-	validIssuers := []string{
-		s.authConfig.OAuthIssuer,                       // OpenShift OAuth server
-		"https://kubernetes.default.svc.cluster.local", // Kubernetes ServiceAccount tokens (full)
-		"https://kubernetes.default.svc",               // Kubernetes ServiceAccount tokens (short)
-		"kubernetes.default.svc.cluster.local",         // Kubernetes ServiceAccount tokens (no https)
-		"kubernetes.default.svc",                       // Kubernetes ServiceAccount tokens (minimal)
-	}
-
-	issuerValid := false
-	for _, validIssuer := range validIssuers {
-		if issuer == validIssuer {
-			issuerValid = true
-			break
+	if ip := net.ParseIP(host); ip != nil {
+		switch {
+		case ip.IsLinkLocalUnicast(), ip.IsLinkLocalMulticast(), ip.IsMulticast(), ip.IsUnspecified():
+			return fmt.Errorf("EndpointUri host %q is not an allowed address", host)
+		case ip.Equal(net.ParseIP("169.254.169.254")):
+			return fmt.Errorf("EndpointUri host %q (cloud metadata) is not allowed", host)
 		}
 	}
-
-	if !issuerValid {
-		return nil, fmt.Errorf("token issuer not accepted: got %s, expected one of: %v", issuer, validIssuers)
-	}
-
-	// Validate expiration
-	if exp, ok := claims["exp"].(float64); ok {
-		if time.Now().Unix() > int64(exp) {
-			return nil, fmt.Errorf("token expired")
-		}
-	} else {
-		return nil, fmt.Errorf("missing or invalid expiration in token")
-	}
-
-	// Validate audience if required
-	if len(s.authConfig.RequiredAudience) > 0 {
-		var audiences []string
-		if aud, ok := claims["aud"].([]interface{}); ok {
-			for _, a := range aud {
-				if audStr, ok := a.(string); ok {
-					audiences = append(audiences, audStr)
-				}
-			}
-		} else if audStr, ok := claims["aud"].(string); ok {
-			audiences = []string{audStr}
-		}
-
-		audienceValid := false
-		for _, aud := range audiences {
-			if aud == s.authConfig.RequiredAudience {
-				audienceValid = true
-				break
-			}
-		}
-		if !audienceValid {
-			return nil, fmt.Errorf("token audience validation failed")
-		}
-	}
-
-	// Convert to OAuthClaims struct
-	oauthClaims := &OAuthClaims{
-		Issuer:    issuer,
-		ExpiresAt: int64(claims["exp"].(float64)),
-	}
-
-	if sub, ok := claims["sub"].(string); ok {
-		oauthClaims.Subject = sub
-	}
-
-	if iat, ok := claims["iat"].(float64); ok {
-		oauthClaims.IssuedAt = int64(iat)
-	}
-
-	return oauthClaims, nil
+	return nil
 }
 
-// combinedAuthMiddleware applies both mTLS and OAuth authentication
+// tlsVersionFromString maps a TLS version name (as used by the OpenShift
+// TLSSecurityProfile / crypto/tls) to its constant. Returns 0 when unknown.
+func tlsVersionFromString(v string) uint16 {
+	switch strings.TrimSpace(v) {
+	case "VersionTLS10":
+		return tls.VersionTLS10
+	case "VersionTLS11":
+		return tls.VersionTLS11
+	case "VersionTLS12":
+		return tls.VersionTLS12
+	case "VersionTLS13":
+		return tls.VersionTLS13
+	default:
+		return 0
+	}
+}
+
+// cipherSuitesFromNames maps IANA cipher suite names to their crypto/tls IDs.
+// Unknown names are ignored. TLS 1.3 cipher suites are not configurable in Go
+// and are silently dropped, which is expected.
+func cipherSuitesFromNames(names []string) []uint16 {
+	if len(names) == 0 {
+		return nil
+	}
+	lookup := make(map[string]uint16)
+	for _, cs := range tls.CipherSuites() {
+		lookup[cs.Name] = cs.ID
+	}
+	for _, cs := range tls.InsecureCipherSuites() {
+		lookup[cs.Name] = cs.ID
+	}
+	var out []uint16
+	for _, n := range names {
+		if id, ok := lookup[strings.TrimSpace(n)]; ok {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+// ApplyTLSProfile applies the centrally-managed TLS profile (min version and
+// cipher suites, sourced from the cluster's TLSSecurityProfile via the
+// operator) onto a tls.Config. Nothing is hardcoded here: values come from the
+// AuthConfig. Only when no min version is supplied at all do we fall back to
+// TLS 1.2 to avoid negotiating an insecure protocol by default.
+func (c *AuthConfig) ApplyTLSProfile(cfg *tls.Config) {
+	if c == nil {
+		return
+	}
+	if mv := tlsVersionFromString(c.TLSMinVersion); mv != 0 {
+		cfg.MinVersion = mv
+	} else if cfg.MinVersion == 0 {
+		cfg.MinVersion = tls.VersionTLS12
+	}
+	if cs := cipherSuitesFromNames(c.TLSCipherSuites); len(cs) > 0 {
+		cfg.CipherSuites = cs
+	}
+}
+
+// combinedAuthMiddleware enforces mTLS and/or OAuth on protected endpoints.
+//
+// Requests from the local loopback interface (same pod) are treated as a
+// trusted fast-path and skip authentication - they never leave the pod. All
+// other (FQDN / service-DNS / external) requests must satisfy every enabled
+// mechanism: a verified client certificate when mTLS is enabled, and a valid
+// bearer token when OAuth is enabled.
 func (s *Server) combinedAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip authentication for localhost connections (same pod)
-		if r.RemoteAddr != "" {
-			host := r.RemoteAddr
-			if idx := strings.LastIndex(host, ":"); idx != -1 {
-				host = host[:idx] // Remove port
-			}
-			if host == "127.0.0.1" || host == "::1" || host == "[::1]" {
-				log.Debugf("Allowing localhost connection from %s for %s", r.RemoteAddr, r.URL.Path)
-				next.ServeHTTP(w, r)
-				return
-			}
+		// Trusted loopback fast-path (same pod, e.g. in-process producer self-call).
+		if isLoopbackRemoteAddr(r.RemoteAddr) {
+			log.Debugf("allowing loopback connection from %s for %s", r.RemoteAddr, r.URL.Path)
+			next.ServeHTTP(w, r)
+			return
 		}
 
-		// Check for client certificate when mTLS is enabled
+		// mTLS: the TLS handshake (ClientAuth: VerifyClientCertIfGiven) has
+		// already verified any presented certificate chain against the CA pool;
+		// here we require that a client certificate was in fact presented.
 		if s.authConfig != nil && s.authConfig.EnableMTLS {
 			if r.TLS == nil || len(r.TLS.PeerCertificates) == 0 {
 				log.Warnf("mTLS required but no client certificate provided for %s", r.URL.Path)
 				http.Error(w, "Client certificate required", http.StatusUnauthorized)
 				return
 			}
-
-			// Verify the client certificate against our CA
-			cert := r.TLS.PeerCertificates[0]
-			opts := x509.VerifyOptions{Roots: s.caCertPool}
-			if _, err := cert.Verify(opts); err != nil {
-				log.Warnf("Client certificate verification failed for %s: %v", r.URL.Path, err)
-				http.Error(w, "Invalid client certificate", http.StatusUnauthorized)
-				return
-			}
-			log.Debugf("Client certificate verified successfully for %s", r.URL.Path)
+			log.Debugf("client certificate present and verified for %s", r.URL.Path)
 		}
 
-		// Validate OAuth token if OAuth is enabled
+		// OAuth: require and validate a bearer token.
 		if s.authConfig != nil && s.authConfig.EnableOAuth {
 			authHeader := r.Header.Get("Authorization")
 			if authHeader == "" {
@@ -196,25 +217,29 @@ func (s *Server) combinedAuthMiddleware(next http.Handler) http.Handler {
 				http.Error(w, "Authorization header required", http.StatusUnauthorized)
 				return
 			}
-
-			// Extract Bearer token
 			if !strings.HasPrefix(authHeader, "Bearer ") {
-				log.Warnf("OAuth required but invalid Authorization header format for %s", r.URL.Path)
+				log.Warnf("invalid Authorization header format for %s", r.URL.Path)
 				http.Error(w, "Bearer token required", http.StatusUnauthorized)
 				return
 			}
+			token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
 
-			token := strings.TrimPrefix(authHeader, "Bearer ")
-			_, err := s.validateOAuthToken(token)
+			// Fail closed: OAuth is enabled but no validator was installed.
+			if s.tokenValidator == nil {
+				log.Error("OAuth enabled but no TokenValidator configured; rejecting request")
+				http.Error(w, "token validation unavailable", http.StatusUnauthorized)
+				return
+			}
+
+			info, err := s.tokenValidator.ValidateToken(r.Context(), token, s.authConfig.RequiredAudiences)
 			if err != nil {
 				log.Warnf("OAuth token validation failed for %s: %v", r.URL.Path, err)
 				http.Error(w, "Invalid OAuth token", http.StatusUnauthorized)
 				return
 			}
-			log.Debugf("OAuth token validated successfully for %s", r.URL.Path)
+			log.Debugf("OAuth token validated for %s (user=%s)", r.URL.Path, info.Username)
 		}
 
-		// Call the next handler
 		next.ServeHTTP(w, r)
 	})
 }
