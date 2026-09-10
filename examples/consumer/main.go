@@ -203,9 +203,12 @@ func initializeAuthentication() error {
 	return nil
 }
 
-// getScheme returns the appropriate URL scheme based on authentication configuration
+// getScheme returns the appropriate URL scheme based on authentication configuration.
+// HTTPS is required whenever a credential is sent on the wire: mTLS presents a client
+// certificate, and OAuth sends a bearer token that must never traverse cleartext HTTP
+// (CWE-319). Returning "http" only when no authentication is configured.
 func getScheme() string {
-	if authConfig != nil && authConfig.EnableMTLS {
+	if authConfig != nil && (authConfig.EnableMTLS || authConfig.EnableOAuth) {
 		return "https"
 	}
 	return "http"

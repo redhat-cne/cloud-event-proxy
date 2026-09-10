@@ -21,10 +21,9 @@ The consumer supports two types of authentication:
 - Works with OpenShift Service CA or cert-manager
 
 ### 2. OAuth
-- JWT token-based authentication
-- OpenShift OAuth server integration
-- ServiceAccount token support
-- Bearer token authentication
+- ServiceAccount bearer-token authentication
+- Tokens validated in-process against the Kubernetes TokenReview API (issuer, signature, expiry checked by the API server)
+- Optional audience restriction via `requiredAudiences`
 
 ## Configuration
 
@@ -38,11 +37,7 @@ Authentication is configured using a JSON configuration file. The configuration 
   "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
   "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
   "enableOAuth": true,
-  "useOpenShiftOAuth": true,
-  "oauthIssuer": "https://oauth-openshift.apps.your-cluster.com",
-  "oauthJWKSURL": "https://oauth-openshift.apps.your-cluster.com/oauth/jwks",
-  "requiredScopes": ["user:info"],
-  "requiredAudience": "openshift",
+  "requiredAudiences": ["ptp-event-publisher"],
   "serviceAccountName": "consumer-sa",
   "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
 }
@@ -60,15 +55,14 @@ Authentication is configured using a JSON configuration file. The configuration 
 - `certManagerNamespace`: Namespace for cert-manager resources
 
 #### OAuth Configuration
-- `enableOAuth`: Enable/disable OAuth authentication
-- `useOpenShiftOAuth`: Use OpenShift's built-in OAuth server (recommended)
-- `oauthIssuer`: OAuth server issuer URL
-- `oauthJWKSURL`: OAuth JWKS endpoint URL
-- `requiredScopes`: Required OAuth scopes
-- `requiredAudience`: Required OAuth audience
+- `enableOAuth`: Enable/disable OAuth (ServiceAccount bearer-token) authentication
+- `requiredAudiences`: Array of audiences a presented token must contain; validated by the audience-restricted Kubernetes TokenReview. Leave empty to accept any token the API server authenticates.
 - `serviceAccountName`: ServiceAccount name for authentication
-- `serviceAccountToken`: Path to ServiceAccount token file
-- `authenticationOperator`: Use OpenShift Authentication Operator (alternative)
+- `serviceAccountToken`: Path to the ServiceAccount token file presented as the bearer token
+
+> Tokens are validated in-process against the Kubernetes TokenReview API. There
+> is no client-configured issuer or JWKS URL — the API server verifies the
+> token's issuer, signature, and expiry.
 
 ## Usage
 
@@ -95,7 +89,7 @@ Authentication is configured using a JSON configuration file. The configuration 
 - `NODE_IP`: Node IP address
 - `CONSUMER_TYPE`: Consumer type (PTP, HW, MOCK)
 - `ENABLE_STATUS_CHECK`: Enable periodic status checks
-- `CLUSTER_NAME`: Cluster name for OAuth issuer URL (default: openshift.local)
+- `CLUSTER_NAME`: Cluster name used for addressing/deployment (default: openshift.local)
 
 ## Examples
 
@@ -118,11 +112,7 @@ Authentication is configured using a JSON configuration file. The configuration 
 {
   "enableMTLS": false,
   "enableOAuth": true,
-  "useOpenShiftOAuth": true,
-  "oauthIssuer": "https://oauth-openshift.apps.your-cluster.com",
-  "oauthJWKSURL": "https://oauth-openshift.apps.your-cluster.com/oauth/jwks",
-  "requiredScopes": ["user:info"],
-  "requiredAudience": "openshift",
+  "requiredAudiences": ["ptp-event-publisher"],
   "serviceAccountName": "consumer-sa",
   "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
 }
@@ -138,11 +128,7 @@ Authentication is configured using a JSON configuration file. The configuration 
   "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
   "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
   "enableOAuth": true,
-  "useOpenShiftOAuth": true,
-  "oauthIssuer": "https://oauth-openshift.apps.your-cluster.com",
-  "oauthJWKSURL": "https://oauth-openshift.apps.your-cluster.com/oauth/jwks",
-  "requiredScopes": ["user:info"],
-  "requiredAudience": "openshift",
+  "requiredAudiences": ["ptp-event-publisher"],
   "serviceAccountName": "consumer-sa",
   "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
 }
@@ -191,37 +177,33 @@ kubectl logs deployment/cloud-consumer-deployment -n cloud-events
 
 #### Cluster Name Configuration
 
-The consumer's OAuth configuration is automatically generated with the correct cluster name:
+`CLUSTER_NAME` is used for resource addressing and deployment naming; it is
+**not** used to build OAuth issuer/JWKS URLs. Bearer tokens are validated
+in-process against the in-cluster Kubernetes TokenReview API, so the same auth
+config works on any cluster without cluster-specific OAuth URLs.
 
 - **Default**: `openshift.local` (consistent with ptp-operator)
 - **Custom**: Set `CLUSTER_NAME` environment variable before deployment
-- **OAuth URLs**: Generated as `https://oauth-openshift.apps.${CLUSTER_NAME}`
 
-Example OAuth URLs:
-- Default: `https://oauth-openshift.apps.openshift.local`
-- Custom: `https://oauth-openshift.apps.cnfdg4.sno.ptp.eng.rdu2.dc.redhat.com`
+#### Updating the Audience Configuration at Runtime
 
-#### Updating Consumer Cluster Name at Runtime
-
-If you need to update the cluster name after deployment (e.g., when the PTP operator's cluster name changes):
+If you need to change the required audiences after deployment:
 
 **Method 1: Automated Redeployment (Recommended)**
 ```bash
 # From the cloud-event-proxy repository root
-export CLUSTER_NAME=your-actual-cluster.example.com
 make undeploy-consumer
 make deploy-consumer
 
-# Verify the update
-oc get configmap consumer-auth-config -n cloud-events -o jsonpath='{.data.config\.json}' | jq '.oauthIssuer'
+# Verify the configured audiences
+oc get configmap consumer-auth-config -n cloud-events -o jsonpath='{.data.config\.json}' | jq '.requiredAudiences'
 ```
 
 **Method 2: Manual ConfigMap Update**
 ```bash
 # Update the consumer authentication configuration directly
-CLUSTER_NAME=your-actual-cluster.example.com
 oc patch configmap consumer-auth-config -n cloud-events --type='json' -p="[
-  {\"op\": \"replace\", \"path\": \"/data/config.json\", \"value\": \"{\\\"enableMTLS\\\": true, \\\"useServiceCA\\\": true, \\\"clientCertPath\\\": \\\"/etc/cloud-event-consumer/client-certs/tls.crt\\\", \\\"clientKeyPath\\\": \\\"/etc/cloud-event-consumer/client-certs/tls.key\\\", \\\"caCertPath\\\": \\\"/etc/cloud-event-consumer/ca-bundle/service-ca.crt\\\", \\\"enableOAuth\\\": true, \\\"useOpenShiftOAuth\\\": true, \\\"oauthIssuer\\\": \\\"https://oauth-openshift.apps.$CLUSTER_NAME\\\", \\\"oauthJWKSURL\\\": \\\"https://oauth-openshift.apps.$CLUSTER_NAME/oauth/jwks\\\", \\\"requiredScopes\\\": [\\\"user:info\\\"], \\\"requiredAudience\\\": \\\"openshift\\\", \\\"serviceAccountName\\\": \\\"consumer-sa\\\", \\\"serviceAccountToken\\\": \\\"/var/run/secrets/kubernetes.io/serviceaccount/token\\\"}\"}
+  {\"op\": \"replace\", \"path\": \"/data/config.json\", \"value\": \"{\\\"enableMTLS\\\": true, \\\"useServiceCA\\\": true, \\\"clientCertPath\\\": \\\"/etc/cloud-event-consumer/client-certs/tls.crt\\\", \\\"clientKeyPath\\\": \\\"/etc/cloud-event-consumer/client-certs/tls.key\\\", \\\"caCertPath\\\": \\\"/etc/cloud-event-consumer/ca-bundle/service-ca.crt\\\", \\\"enableOAuth\\\": true, \\\"requiredAudiences\\\": [\\\"ptp-event-publisher\\\"], \\\"serviceAccountName\\\": \\\"consumer-sa\\\", \\\"serviceAccountToken\\\": \\\"/var/run/secrets/kubernetes.io/serviceaccount/token\\\"}\"}
 ]"
 
 # Restart the consumer deployment
@@ -231,15 +213,11 @@ oc rollout status deployment/cloud-consumer-deployment -n cloud-events
 
 **Verification Steps**
 ```bash
-# 1. Check OAuth configuration
-oc get configmap consumer-auth-config -n cloud-events -o jsonpath='{.data.config\.json}' | jq '.oauthIssuer'
+# 1. Check the configured audiences
+oc get configmap consumer-auth-config -n cloud-events -o jsonpath='{.data.config\.json}' | jq '.requiredAudiences'
 
-# 2. Test OAuth server connectivity
-CLUSTER_NAME=$(oc get configmap consumer-auth-config -n cloud-events -o jsonpath='{.data.config\.json}' | jq -r '.oauthIssuer' | sed 's|https://oauth-openshift.apps.||')
-curl -k "https://oauth-openshift.apps.$CLUSTER_NAME/oauth/jwks" | head -5
-
-# 3. Check consumer logs for authentication
-oc logs deployment/cloud-consumer-deployment -n cloud-events --tail=20 | grep -i "oauth\|auth\|token"
+# 2. Check consumer logs for authentication
+oc logs deployment/cloud-consumer-deployment -n cloud-events --tail=20 | grep -i "auth\|token"
 
 # 4. Verify consumer can connect to PTP publisher
 oc logs deployment/cloud-consumer-deployment -n cloud-events | grep -i "subscription\|publisher"
@@ -324,9 +302,9 @@ roleRef:
    ```
    Error: 401 Unauthorized
    ```
-   - Verify OAuth token is valid
-   - Check OAuth server configuration
-   - Ensure proper scopes and audience
+   - Verify the ServiceAccount token is valid and not expired
+   - Confirm the publisher's ServiceAccount can `create` `tokenreviews` (authentication.k8s.io)
+   - Ensure the token's audience matches one of the publisher's `requiredAudiences`
 
 ### Debugging
 

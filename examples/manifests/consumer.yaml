@@ -17,6 +17,10 @@ spec:
       annotations:
         target.workload.openshift.io/management: '{"effect": "PreferredDuringScheduling"}'
     spec:
+      # Runtime identity. consumer-sa only needs TokenReview (auth-delegator) and
+      # read access to the publisher Service; it has NO Secret permissions. The
+      # required Secrets are provisioned out-of-band (see auth/rbac.yaml's
+      # consumer-setup-sa) and mounted read-only as volumes below.
       serviceAccountName: consumer-sa
       nodeSelector:
         node-role.kubernetes.io/worker: ""
