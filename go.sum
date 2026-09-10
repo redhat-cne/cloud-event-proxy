@@ -305,8 +305,8 @@ github.com/jstemmer/go-junit-report v0.9.1/go.mod h1:Brl9GWCQeLvo8nXZwPNNblvFj/X
 github.com/jtolds/gls v4.20.0+incompatible/go.mod h1:QJZ7F/aHp+rZTRtaJ1ow/lLfFfVYBRgL+9YlvaHOwJU=
 github.com/julienschmidt/httprouter v1.2.0/go.mod h1:SYymIcj16QtmaHHD7aYtjjsJG7VTCxuUUipMqKk8s4w=
 github.com/julienschmidt/httprouter v1.3.0/go.mod h1:JR6WtHb+2LUe8TCKY3cZOxFyyO8IZAc4RVcycCCAKdM=
-github.com/jzding/rest-api v0.0.0-20260910132119-968890594f30 h1:D4l5Pdu4YOLPyGc4V8het0pBvca3Ye79BVULw0UaGhc=
-github.com/jzding/rest-api v0.0.0-20260910132119-968890594f30/go.mod h1:jXoewRsnNcXDjp5cwL/9/3eciIOInuZxG08YUqFwTpw=
+github.com/jzding/rest-api v0.0.0-20260910132722-18cd3edfc8fd h1:xwCvAUoLMHIkr4vUWlEh1dUm9/DnhcoBg6nBRpWybJA=
+github.com/jzding/rest-api v0.0.0-20260910132722-18cd3edfc8fd/go.mod h1:jXoewRsnNcXDjp5cwL/9/3eciIOInuZxG08YUqFwTpw=
 github.com/kisielk/errcheck v1.1.0/go.mod h1:EZBBE59ingxPouuu3KfxchcWSUPOHkagtvWXihfKN4Q=
 github.com/kisielk/errcheck v1.2.0/go.mod h1:/BMXB+zMLi60iA8Vv6Ksmxu/1UDYcXs4uQLJ+jE2L00=
 github.com/kisielk/errcheck v1.5.0/go.mod h1:pFxgyoBC7bSaBwPgfKdkLd5X25qrDl4LWUI2bnpBCr8=
