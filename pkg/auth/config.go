@@ -178,8 +178,8 @@ func (c *ClientAuthConfig) CreateServerTLSConfig() (*tls.Config, error) {
 	}
 
 	if c.CACertPath != "" {
-		caCert, err := os.ReadFile(c.CACertPath)
-		if err != nil {
+		var caCert []byte
+		if caCert, err = os.ReadFile(c.CACertPath); err != nil {
 			return nil, fmt.Errorf("failed to read CA certificate: %v", err)
 		}
 		caCertPool := x509.NewCertPool()

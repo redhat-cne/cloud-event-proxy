@@ -374,7 +374,7 @@ func server() {
 		server.TLSConfig = tlsConfig
 		log.Infof("Starting local API (HTTPS, mTLS) listening to %s", port)
 		// Certs are supplied via server.TLSConfig.Certificates.
-		if err := server.ListenAndServeTLS("", ""); err != nil {
+		if err = server.ListenAndServeTLS("", ""); err != nil {
 			log.Errorf("error creating event server %s", err)
 		}
 		return
