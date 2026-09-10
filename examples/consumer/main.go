@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -80,6 +81,9 @@ var (
 	authenticatedClient *restclient.Rest
 	// Global authentication configuration
 	authConfig *auth.AuthConfig
+	// callbackTokenValidator validates bearer tokens presented by the publisher
+	// when it pushes events to this consumer's callback endpoints (OAuth mode).
+	callbackTokenValidator *auth.TokenReviewValidator
 )
 
 func main() {
@@ -199,8 +203,86 @@ func initializeAuthentication() error {
 		return fmt.Errorf("failed to create authenticated REST client: %v", err)
 	}
 
+	// When OAuth is enabled the publisher pushes events to this consumer's
+	// callback carrying a bearer token; build the validator that verifies it via
+	// the Kubernetes TokenReview API. The consumer ServiceAccount must be bound
+	// to system:auth-delegator (see examples/manifests/auth/rbac.yaml).
+	if authConfig.EnableOAuth {
+		callbackTokenValidator, err = auth.NewTokenReviewValidator()
+		if err != nil {
+			return fmt.Errorf("failed to create TokenReview validator for callback authentication: %v", err)
+		}
+	}
+
 	log.Info("Authentication initialized successfully")
 	return nil
+}
+
+// callbackAuthMiddleware enforces on the consumer's inbound callback endpoints
+// (/event, /ack/event) the same authentication the publisher enforces on its
+// APIs: a same-pod loopback caller is trusted, otherwise every enabled mechanism
+// must pass - a verified client certificate when mTLS is enabled and a valid
+// bearer token (Kubernetes TokenReview) when OAuth is enabled. This closes the
+// O-RAN CR-0003 clause 4.1.1 gap for a consumer in a separate POD/VM: the pushed
+// CloudEvent is authenticated, not merely transported over TLS. It mirrors
+// rest-api's combinedAuthMiddleware, so CreateServerTLSConfig can keep
+// VerifyClientCertIfGiven (allowing OAuth-only and loopback) while presented
+// certificates are still required here when mTLS is on.
+func callbackAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		// No authentication configured: plain-HTTP callback, pass through.
+		if authConfig == nil || (!authConfig.EnableMTLS && !authConfig.EnableOAuth) {
+			next.ServeHTTP(w, req)
+			return
+		}
+		// Trusted loopback fast-path (same-pod producer self-call).
+		if isLoopbackRemoteAddr(req.RemoteAddr) {
+			next.ServeHTTP(w, req)
+			return
+		}
+		// mTLS: require a client certificate the TLS handshake already verified
+		// against the configured CA pool.
+		if authConfig.EnableMTLS {
+			if req.TLS == nil || len(req.TLS.PeerCertificates) == 0 {
+				log.Warnf("mTLS required but no client certificate provided for %s", req.URL.Path)
+				http.Error(w, "Client certificate required", http.StatusUnauthorized)
+				return
+			}
+		}
+		// OAuth: require and validate a bearer token.
+		if authConfig.EnableOAuth {
+			authHeader := req.Header.Get("Authorization")
+			if !strings.HasPrefix(authHeader, "Bearer ") {
+				log.Warnf("OAuth required but no bearer token provided for %s", req.URL.Path)
+				http.Error(w, "Bearer token required", http.StatusUnauthorized)
+				return
+			}
+			token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+			// Fail closed: OAuth is enabled but no validator was installed.
+			if callbackTokenValidator == nil {
+				log.Error("OAuth enabled but no TokenReview validator configured; rejecting callback")
+				http.Error(w, "token validation unavailable", http.StatusUnauthorized)
+				return
+			}
+			if _, err := callbackTokenValidator.ValidateToken(req.Context(), token, authConfig.RequiredAudiences); err != nil {
+				log.Warnf("OAuth token validation failed for %s: %v", req.URL.Path, err)
+				http.Error(w, "Invalid OAuth token", http.StatusUnauthorized)
+				return
+			}
+		}
+		next.ServeHTTP(w, req)
+	})
+}
+
+// isLoopbackRemoteAddr reports whether an http.Request RemoteAddr is a loopback
+// address (a same-pod caller), which is trusted and exempt from callback auth.
+func isLoopbackRemoteAddr(remoteAddr string) bool {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // getScheme returns the appropriate URL scheme based on authentication configuration.
@@ -352,13 +434,17 @@ func getCurrentState(resource string) error {
 
 // Consumer webserver
 func server() {
-	http.HandleFunc("/event", getEvent)
-	http.HandleFunc("/ack/event", ackEvent)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/event", getEvent)
+	mux.HandleFunc("/ack/event", ackEvent)
 
 	port := extractPort(localAPIAddr)
 	server := &http.Server{
 		Addr:              port,
 		ReadHeaderTimeout: 3 * time.Second,
+		// Authenticate pushed callbacks (mTLS client cert and/or OAuth bearer
+		// token) when auth is enabled; a no-op pass-through otherwise.
+		Handler: callbackAuthMiddleware(mux),
 	}
 
 	// When authentication is enabled the callback EndpointURI is registered as

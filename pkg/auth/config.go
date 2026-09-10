@@ -188,8 +188,18 @@ func (c *ClientAuthConfig) CreateServerTLSConfig() (*tls.Config, error) {
 		}
 		tlsConfig.ClientCAs = caCertPool
 		// Verify a client certificate when the producer presents one (mTLS) but
-		// do not hard-require it: a producer may authenticate with an OAuth
-		// bearer token instead, and same-pod loopback pushes carry no cert.
+		// do not hard-require it at the handshake: a producer may authenticate
+		// with an OAuth bearer token instead, and same-pod loopback pushes carry
+		// no cert. This mirrors rest-api's server TLS config.
+		//
+		// SECURITY CONTRACT: because a missing client certificate is tolerated
+		// here, the HTTP handler in front of this listener MUST enforce
+		// authentication per request - require a verified client certificate
+		// when EnableMTLS and validate the bearer token when EnableOAuth (with a
+		// same-pod loopback exemption), exactly as rest-api's
+		// combinedAuthMiddleware and the example consumer's callbackAuthMiddleware
+		// do. Serving traffic straight off this tls.Config without that handler
+		// would accept unauthenticated requests.
 		tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
 	}
 
