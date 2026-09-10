@@ -14,9 +14,18 @@ metadata:
   name: consumer-setup-role
   namespace: cloud-events
 rules:
+# create cannot be constrained by resourceNames (the name is only known once the
+# object exists), so it is kept in its own unrestricted rule.
 - apiGroups: [""]
   resources: ["secrets"]
-  verbs: ["create", "update", "patch", "get"]
+  verbs: ["create"]
+# get/update/patch are restricted to only the setup Secrets this identity owns,
+# so a compromised setup token cannot read or tamper with unrelated credentials
+# in the namespace (CWE-200).
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "update", "patch"]
+  resourceNames: ["server-ca-bundle", "consumer-client-certs"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

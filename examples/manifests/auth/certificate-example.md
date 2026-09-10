@@ -49,11 +49,17 @@ openssl req -new -key server.key -out server.csr -subj "/C=US/ST=CA/O=MyOrg/CN=c
 
 # Generate server certificate signed by CA. This creates server.crt and ca.srl.
 # The certificate MUST carry a Subject Alternative Name (SAN): modern TLS clients
-# ignore the CN and validate the hostname against the SAN. Set the SAN to the DNS
-# name the consumer connects to (the event publisher service FQDN) and mark the
-# certificate for TLS server authentication.
+# ignore the CN and validate the hostname against the SAN, and this client keeps
+# hostname verification enabled. The consumer connects to the PER-NODE publisher
+# Service, whose DNS name embeds the node name:
+#   ptp-event-publisher-service-<NODE_NAME>.openshift-ptp.svc.cluster.local
+# so the SAN must contain every node-specific name (NOT the bare
+# ptp-event-publisher-service.openshift-ptp.svc.cluster.local, which no client
+# actually dials). List one DNS: entry per node below, or use the wildcard
+# *.openshift-ptp.svc.cluster.local to cover all of them in one certificate.
+# Mark the certificate for TLS server authentication.
 openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 365 -sha256 \
-  -extfile <(printf 'subjectAltName=DNS:ptp-event-publisher-service.openshift-ptp.svc.cluster.local\nextendedKeyUsage=serverAuth\n')
+  -extfile <(printf 'subjectAltName=DNS:ptp-event-publisher-service-node1.openshift-ptp.svc.cluster.local,DNS:ptp-event-publisher-service-node2.openshift-ptp.svc.cluster.local\nextendedKeyUsage=serverAuth\n')
 ```
 
 ### 3. Generate Client Certificate
