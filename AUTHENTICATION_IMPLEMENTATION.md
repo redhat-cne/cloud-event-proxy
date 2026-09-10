@@ -7,14 +7,14 @@ This document summarizes the implementation of custom consumer authentication ex
 The authentication implementation provides a comprehensive solution for securing cloud event consumer communications using:
 
 1. **mTLS (Mutual TLS)** - Transport layer security with client certificate authentication
-2. **OAuth** - Application layer authentication using JWT tokens with **strict validation**
+2. **OAuth** - Application layer authentication using Kubernetes ServiceAccount bearer tokens, validated in-process via the **TokenReview** API
 3. **OpenShift Integration** - Native support for OpenShift Service CA and OAuth server
 4. **Dynamic Configuration** - Support for `CLUSTER_NAME` environment variable for flexible deployment
 
 ### Security Features
 
-- **Strict OAuth Validation**: No authentication bypass mechanisms, tokens must match exact issuer
-- **Dynamic Cluster Support**: OAuth URLs automatically generated based on cluster name
+- **TokenReview Validation**: No authentication bypass mechanisms; tokens are validated by the Kubernetes API server (issuer, signature, expiry) and, when configured, restricted to the required audiences
+- **Dynamic Cluster Support**: Works across clusters without hardcoded issuer/JWKS URLs, since TokenReview delegates to the in-cluster API server
 - **Comprehensive Error Handling**: Clear error messages for authentication failures
 - **Backward Compatibility**: Works with existing deployments while providing enhanced security
 
@@ -88,68 +88,38 @@ The authentication system supports multiple configuration options:
   "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
   "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
   "enableOAuth": true,
-  "useOpenShiftOAuth": true,
-  "oauthIssuer": "https://oauth-openshift.apps.your-cluster.com",
-  "oauthJWKSURL": "https://oauth-openshift.apps.your-cluster.com/oauth/jwks",
-  "requiredScopes": ["user:info"],
-  "requiredAudience": "openshift",
+  "requiredAudiences": ["ptp-event-publisher"],
   "serviceAccountName": "consumer-sa",
   "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
 }
 ```
 
+Bearer tokens are validated in-process by the publisher against the Kubernetes
+**TokenReview** API — the token's issuer, signature, and expiry are checked by
+the API server, so no `oauthIssuer`, `oauthJWKSURL`, or `requiredScopes` fields
+are configured here. `requiredAudiences` lists the audiences a presented token
+must contain (via TokenReview's audience-restricted review); leave it empty to
+accept any audience the API server would otherwise accept.
+
 ### 2. OpenShift Integration
 
 - **Service CA**: Automatic certificate management using OpenShift Service CA
-- **OAuth Server**: Integration with OpenShift's built-in OAuth server with strict validation
+- **TokenReview**: Bearer tokens validated in-process against the Kubernetes API server (no external OAuth server round-trip)
 - **ServiceAccount**: Native Kubernetes ServiceAccount token support
-- **RBAC**: Proper role-based access control integration
-- **Dynamic Cluster Support**: `CLUSTER_NAME` environment variable for flexible deployment
+- **RBAC**: Proper role-based access control integration; the publisher's ServiceAccount needs `create` on `authentication.k8s.io/tokenreviews`
 
-#### Dynamic Cluster Configuration
+#### Audience Configuration
 
-The system supports dynamic cluster configuration using the `CLUSTER_NAME` environment variable:
+Token audience validation is driven by the `requiredAudiences` array in the
+auth config. Because validation is delegated to the in-cluster TokenReview API,
+there are no cluster-specific OAuth issuer or JWKS URLs to manage — the same
+config works across clusters.
 
+**Example verification:**
 ```bash
-# Default cluster name (consistent with ptp-operator)
-export CLUSTER_NAME="openshift.local"
-
-# Custom cluster name
-export CLUSTER_NAME="cnfdg4.sno.ptp.eng.rdu2.dc.redhat.com"
-
-# Deploy with custom cluster name
-make deploy-consumer
-```
-
-OAuth URLs are automatically generated as `https://oauth-openshift.apps.${CLUSTER_NAME}`, ensuring proper authentication configuration for any OpenShift cluster.
-
-#### Runtime Cluster Name Updates
-
-The authentication system supports updating cluster names at runtime without requiring code changes:
-
-**Publisher Side (PTP Operator):**
-- Update `CLUSTER_NAME` environment variable in operator deployment
-- Operator automatically regenerates all authentication ConfigMaps
-- OAuth URLs are updated to match the new cluster domain
-
-**Consumer Side (Cloud Event Proxy):**
-- Redeploy consumer with new `CLUSTER_NAME` environment variable
-- Or manually patch the `consumer-auth-config` ConfigMap
-- Consumer automatically reconnects with updated OAuth configuration
-
-**Example Runtime Update:**
-```bash
-# Update PTP operator
-oc set env deployment/ptp-operator -n openshift-ptp CLUSTER_NAME=production-cluster.example.com
-
-# Update consumer
-export CLUSTER_NAME=production-cluster.example.com
-make undeploy-consumer
-make deploy-consumer
-
-# Verify both sides are synchronized
-oc get configmap ptp-event-publisher-auth -n openshift-ptp -o jsonpath='{.data.config\.json}' | jq '.oauthIssuer'
-oc get configmap consumer-auth-config -n cloud-events -o jsonpath='{.data.config\.json}' | jq '.oauthIssuer'
+# Inspect the configured audiences on both sides
+oc get configmap ptp-event-publisher-auth -n openshift-ptp -o jsonpath='{.data.config\.json}' | jq '.requiredAudiences'
+oc get configmap consumer-auth-config -n cloud-events -o jsonpath='{.data.config\.json}' | jq '.requiredAudiences'
 ```
 
 ### 3. Backward Compatibility
@@ -161,17 +131,17 @@ oc get configmap consumer-auth-config -n cloud-events -o jsonpath='{.data.config
 ### 4. Security Features
 
 - **Certificate validation**: Proper TLS certificate chain validation
-- **Strict OAuth validation**: No authentication bypass, exact issuer matching required
-- **Token management**: Secure OAuth token handling with expiration and audience validation
+- **TokenReview validation**: No authentication bypass; tokens are validated by the Kubernetes API server
+- **Token management**: Secure ServiceAccount token handling with expiration and audience validation
 - **Error handling**: Comprehensive error handling and logging without exposing sensitive data
 - **Configuration validation**: Strict configuration validation with clear error messages
 
 #### OAuth Security Improvements
 
-- **Issuer Validation**: Token issuer must exactly match configured OAuth issuer
-- **Expiration Checking**: Expired tokens are immediately rejected
-- **Audience Validation**: Tokens must contain the required audience claim
-- **No Bypass Mechanisms**: Authentication cannot be bypassed with mismatched issuers
+- **TokenReview Validation**: Issuer, signature, and expiry are verified by the Kubernetes API server, not by client-supplied issuer/JWKS URLs
+- **Expiration Checking**: Expired tokens are rejected by TokenReview
+- **Audience Validation**: When `requiredAudiences` is set, tokens must contain one of the required audiences (audience-restricted TokenReview)
+- **No Bypass Mechanisms**: Authentication cannot be bypassed; every protected request requires a token the API server authenticates
 - **Clear Error Messages**: Specific error codes without exposing internal details
 
 ## Usage Examples

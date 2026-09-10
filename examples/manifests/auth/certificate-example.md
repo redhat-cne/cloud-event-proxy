@@ -47,8 +47,13 @@ openssl genrsa -out server.key 4096
 # Generate server certificate signing request
 openssl req -new -key server.key -out server.csr -subj "/C=US/ST=CA/O=MyOrg/CN=cloud-event-proxy"
 
-# Generate server certificate signed by CA. This creates server.crt and ca.srl
-openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 365 -sha256
+# Generate server certificate signed by CA. This creates server.crt and ca.srl.
+# The certificate MUST carry a Subject Alternative Name (SAN): modern TLS clients
+# ignore the CN and validate the hostname against the SAN. Set the SAN to the DNS
+# name the consumer connects to (the event publisher service FQDN) and mark the
+# certificate for TLS server authentication.
+openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out server.crt -days 365 -sha256 \
+  -extfile <(printf 'subjectAltName=DNS:ptp-event-publisher-service.openshift-ptp.svc.cluster.local\nextendedKeyUsage=serverAuth\n')
 ```
 
 ### 3. Generate Client Certificate
@@ -60,8 +65,11 @@ openssl genrsa -out client.key 4096
 # Generate client certificate signing request
 openssl req -new -key client.key -out client.csr -subj "/C=US/ST=CA/O=MyOrg/CN=cloud-event-consumer"
 
-# Generate client certificate signed by CA.  This creates client.crt and ca.srl
-openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt -days 365 -sha256
+# Generate client certificate signed by CA. This creates client.crt and ca.srl.
+# A client certificate must be marked for TLS client authentication (clientAuth
+# EKU); a server (serverAuth) certificate is NOT valid for mTLS client auth.
+openssl x509 -req -in client.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out client.crt -days 365 -sha256 \
+  -extfile <(printf 'extendedKeyUsage=clientAuth\n')
 ```
 
 ## Create Kubernetes Secrets

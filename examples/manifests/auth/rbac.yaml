@@ -1,3 +1,13 @@
+# Secret provisioning is a one-time setup task performed by setup-secrets.sh, not
+# something the running consumer needs. Grant Secret write access to a dedicated
+# setup-only identity (consumer-setup-sa) rather than the runtime consumer-sa, so
+# a compromised consumer token cannot read or modify Secrets (CWE-200/CWE-269).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: consumer-setup-sa
+  namespace: cloud-events
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -14,8 +24,9 @@ metadata:
   name: consumer-setup-rolebinding
   namespace: cloud-events
 subjects:
+# Bound to the setup identity only — NOT the runtime consumer-sa.
 - kind: ServiceAccount
-  name: consumer-sa
+  name: consumer-setup-sa
   namespace: cloud-events
 roleRef:
   kind: Role
