@@ -307,10 +307,17 @@ func InitServer(port int, apiHost, apiPath, storePath string,
 		}
 
 		// Initialize the mTLS CA certificate pool first so the HTTPClient below
-		// can verify endpoint certificates against it.
-		if authConfig != nil && authConfig.EnableMTLS && authConfig.CACertPath != "" {
-			if err := ServerInstance.initMTLSCACertPool(); err != nil {
-				log.Errorf("failed to initialize mTLS CA certificate pool: %v", err)
+		// can verify endpoint certificates against it. When mTLS is enabled a
+		// usable CA pool is mandatory: without it client certificates cannot be
+		// verified and endpoint server certificates cannot be validated, so we
+		// must fail closed rather than silently fall back to an unverified
+		// configuration. The absence of a pool is enforced in Start(), which
+		// refuses to begin serving TLS when it is nil.
+		if authConfig != nil && authConfig.EnableMTLS {
+			if authConfig.CACertPath == "" {
+				log.Error("InitServer: mTLS enabled but CACertPath is empty; server will fail closed at Start()")
+			} else if err := ServerInstance.initMTLSCACertPool(); err != nil {
+				log.Errorf("InitServer: failed to initialize mTLS CA certificate pool: %v; server will fail closed at Start()", err)
 			}
 		}
 
@@ -685,6 +692,15 @@ func (s *Server) Start() {
 		if s.authConfig != nil && s.authConfig.EnableMTLS {
 			if s.authConfig.ServerCertPath == "" || s.authConfig.ServerKeyPath == "" {
 				log.Error("mTLS enabled but server certificate or key path not provided")
+				s.SetStatus(failed)
+				return
+			}
+
+			// Fail closed: without a CA pool, presented client certificates
+			// cannot be verified against a trusted authority, so an mTLS
+			// server must not begin listening.
+			if s.caCertPool == nil {
+				log.Error("mTLS enabled but CA certificate pool is not initialized; refusing to start (fail closed)")
 				s.SetStatus(failed)
 				return
 			}
