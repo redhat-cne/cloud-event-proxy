@@ -186,7 +186,7 @@ github.com/prometheus/common/model
 github.com/prometheus/procfs
 github.com/prometheus/procfs/internal/fs
 github.com/prometheus/procfs/internal/util
-# github.com/redhat-cne/rest-api v1.23.7-0.20260909233613-7f73e7bd6710 => github.com/jzding/rest-api v0.0.0-20260910132722-18cd3edfc8fd
+# github.com/redhat-cne/rest-api v1.23.7-0.20260909233613-7f73e7bd6710 => github.com/jzding/rest-api v0.0.0-20260910150157-c6e15b6ab89c
 ## explicit; go 1.23.0
 github.com/redhat-cne/rest-api/pkg/localmetrics
 github.com/redhat-cne/rest-api/pkg/restclient
@@ -647,4 +647,4 @@ sigs.k8s.io/structured-merge-diff/v4/value
 ## explicit; go 1.12
 sigs.k8s.io/yaml
 # k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20220328201542-3ee0da9b0b42
-# github.com/redhat-cne/rest-api => github.com/jzding/rest-api v0.0.0-20260910132722-18cd3edfc8fd
+# github.com/redhat-cne/rest-api => github.com/jzding/rest-api v0.0.0-20260910150157-c6e15b6ab89c

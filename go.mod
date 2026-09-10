@@ -82,4 +82,4 @@ replace k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20220328201542-3ee0da9
 // pin (7f73e7b). Those files make `go mod vendor` drift and fail verify-deps.
 // Remove this replace once redhat-cne/rest-api #113 merges and bump the
 // require above to the merged commit.
-replace github.com/redhat-cne/rest-api => github.com/jzding/rest-api v0.0.0-20260910132722-18cd3edfc8fd
+replace github.com/redhat-cne/rest-api => github.com/jzding/rest-api v0.0.0-20260910150157-c6e15b6ab89c

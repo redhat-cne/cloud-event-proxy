@@ -70,6 +70,13 @@ type ServerStatus int
 
 const (
 	HTTPReadHeaderTimeout = 2 * time.Second
+	// HTTPReadTimeout bounds the total time to read the entire request, including
+	// a slowly-transmitted body. ReadHeaderTimeout only covers the headers and
+	// WriteTimeout does not bound request-body reads, so without this a client
+	// could dribble a POST body to pin a handler goroutine indefinitely
+	// (Slowloris on the request body). Request bodies here are small JSON
+	// documents, so this is set to the same generous ceiling as the write side.
+	HTTPReadTimeout = 30 * time.Second
 	// HTTPWriteTimeout bounds the time to read the request body plus write the
 	// response, capping slow/stalled clients. It is set comfortably above the
 	// 10s timeout of the outbound initial-notification POST that
@@ -691,6 +698,7 @@ func (s *Server) Start() {
 		s.SetStatus(started)
 		s.httpServer = &http.Server{
 			ReadHeaderTimeout: HTTPReadHeaderTimeout,
+			ReadTimeout:       HTTPReadTimeout,
 			WriteTimeout:      HTTPWriteTimeout,
 			IdleTimeout:       HTTPIdleTimeout,
 			MaxHeaderBytes:    HTTPMaxHeaderBytes,
