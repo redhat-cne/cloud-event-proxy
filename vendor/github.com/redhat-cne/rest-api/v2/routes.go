@@ -127,7 +127,11 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	restClient := restclient.New()
+	// Use the server's SSRF-hardened HTTP client (resolve-then-validate dialer
+	// plus no-redirect policy) for the initial-notification POST to the
+	// caller-supplied EndpointURI, rather than the default client which would
+	// follow redirects and dial arbitrary resolved addresses.
+	restClient := restclient.NewWithClient(s.HTTPClient)
 	// make sure event ID is unique
 	out.Data.SetID(uuid.New().String())
 	status, err := restClient.PostCloudEvent(sub.EndPointURI, *out.Data)
