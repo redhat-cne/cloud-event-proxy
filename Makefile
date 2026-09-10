@@ -120,32 +120,32 @@ undeploy-consumer: kustomize ## Undeploy consumer
 	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
 	$(KUSTOMIZE) build ./examples/manifests | kubectl delete -f -
 
-# For GitHub Actions CI
+# For GitHub Actions CI.
+#
+# The -buildmode=plugin builds below need GO111MODULE=off, which resolves imports
+# from GOPATH/src, so this target stages the project and its vendored deps under
+# GOPATH/src. Do this in a dedicated, throwaway GOPATH ($(GHA_GOPATH)) instead of
+# the developer's shared GOPATH: cleaning stale vendored copies removes whole
+# roots (github.com, k8s.io, ...), which against ~/go would irreversibly delete
+# unrelated repositories. Override GHA_GOPATH to relocate the staging area.
+GHA_GOPATH ?= /tmp/cloud-event-proxy-gha-gopath
 gha:
-	mkdir -p $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy
+	@echo "Staging plugin build in isolated GOPATH: $(GHA_GOPATH)"
+	rm -rf "$(GHA_GOPATH)/src"
+	mkdir -p "$(GHA_GOPATH)/src/github.com/redhat-cne/cloud-event-proxy"
 	@if [ "$(_SYS_GOPATH)" = "$(_SYS_GOROOT)" ] && [ -n "$(_SYS_GOROOT)" ]; then \
 		echo "Cleaning stale vendor copies from GOROOT/src..."; \
 		for d in golang.org github.com k8s.io sigs.k8s.io google.golang.org; do \
 			rm -rf "$(_SYS_GOROOT)/src/$$d" 2>/dev/null || true; \
 		done; \
 	fi
-	@if [ "$$(realpath $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy)" != "$$(realpath .)" ]; then \
-		echo "✅ Safe to delete: cleaning GOPATH workspace..."; \
-		echo "Cleaning stale vendored dependency copies from GOPATH/src..."; \
-		for d in golang.org github.com k8s.io sigs.k8s.io google.golang.org gopkg.in go.uber.org go.opentelemetry.io; do \
-			rm -rf "$(GOPATH)/src/$$d" 2>/dev/null || true; \
-		done; \
-		mkdir -p $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy; \
-		cp -r cmd examples pkg plugins test $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy; \
-		cp -r vendor/* $(GOPATH)/src; \
-		rm -rf /tmp/sub-store && mkdir -p /tmp/sub-store; \
-	else \
-		echo "⚠️ Skipping delete: GOPATH is pointing to current working directory!"; \
-	fi
+	cp -r cmd examples pkg plugins test "$(GHA_GOPATH)/src/github.com/redhat-cne/cloud-event-proxy"
+	cp -r vendor/* "$(GHA_GOPATH)/src"
+	rm -rf /tmp/sub-store && mkdir -p /tmp/sub-store
 
-	PATH=$(_MOD_GOROOT)/bin:$$PATH GOROOT=$(_MOD_GOROOT) GO111MODULE=off go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
-	PATH=$(_MOD_GOROOT)/bin:$$PATH GOROOT=$(_MOD_GOROOT) GO111MODULE=off go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
-	PATH=$(_MOD_GOROOT)/bin:$$PATH GOROOT=$(_MOD_GOROOT) GO111MODULE=off STORE_PATH=/tmp/sub-store go test ./... --tags=unittests -coverprofile=cover.out
+	PATH=$(_MOD_GOROOT)/bin:$$PATH GOROOT=$(_MOD_GOROOT) GOPATH=$(GHA_GOPATH) GO111MODULE=off go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
+	PATH=$(_MOD_GOROOT)/bin:$$PATH GOROOT=$(_MOD_GOROOT) GOPATH=$(GHA_GOPATH) GO111MODULE=off go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
+	PATH=$(_MOD_GOROOT)/bin:$$PATH GOROOT=$(_MOD_GOROOT) GOPATH=$(GHA_GOPATH) GO111MODULE=off STORE_PATH=/tmp/sub-store go test ./... --tags=unittests -coverprofile=cover.out
 
 docker-build:
 	# make sure build the right target when developer using a Mac
