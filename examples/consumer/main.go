@@ -303,7 +303,13 @@ func createSubscription(resourceAddress string) (sub pubsub.PubSub, status int, 
 	subURL := &types.URI{URL: url.URL{Scheme: getScheme(),
 		Host: apiAddr,
 		Path: apiPath + "subscriptions"}}
-	endpointURL := &types.URI{URL: url.URL{Scheme: "http",
+	// Register the callback EndpointURI with the same scheme used for outbound
+	// calls: https:// when authentication is enabled. Per O-RAN CR-0003 clause
+	// 4.1.1 a callback reachable from a separate POD/VM must be protected by an
+	// authorization mechanism (clause 3.2); registering a plaintext http://
+	// callback would have the producer push event data in the clear (CWE-319)
+	// and accept unauthenticated, spoofable events.
+	endpointURL := &types.URI{URL: url.URL{Scheme: getScheme(),
 		Host: localAPIAddr,
 		Path: "event"}}
 
@@ -350,14 +356,32 @@ func server() {
 	http.HandleFunc("/ack/event", ackEvent)
 
 	port := extractPort(localAPIAddr)
-	log.Infof("Starting local API listening to %s", port)
 	server := &http.Server{
 		Addr:              port,
 		ReadHeaderTimeout: 3 * time.Second,
 	}
 
-	err := server.ListenAndServe()
-	if err != nil {
+	// When authentication is enabled the callback EndpointURI is registered as
+	// https:// (see getScheme/createSubscription), so the local /event server
+	// must terminate TLS and authenticate the pushing producer. This mirrors the
+	// control/pull path and closes the CR-0003 clause 4.1.1 gap for consumers in
+	// a separate POD/VM.
+	if getScheme() == "https" {
+		tlsConfig, err := authConfig.CreateServerTLSConfig()
+		if err != nil {
+			log.Fatalf("failed to create TLS config for callback server: %v", err)
+		}
+		server.TLSConfig = tlsConfig
+		log.Infof("Starting local API (HTTPS, mTLS) listening to %s", port)
+		// Certs are supplied via server.TLSConfig.Certificates.
+		if err := server.ListenAndServeTLS("", ""); err != nil {
+			log.Errorf("error creating event server %s", err)
+		}
+		return
+	}
+
+	log.Infof("Starting local API listening to %s", port)
+	if err := server.ListenAndServe(); err != nil {
 		log.Errorf("error creating event server %s", err)
 	}
 }
@@ -399,9 +423,13 @@ func processEvent(data []byte) error {
 		log.Errorf("failed to unmarshal event, %v", err)
 		return err
 	}
-	latency := time.Now().UnixMilli() - e.Context.GetTime().UnixMilli()
+	// Microsecond resolution: the publisher->consumer hop is in-node (localhost)
+	// on an SNO, so per-event auth overhead is sub-millisecond and invisible at
+	// ms granularity. Log µs (and keep a ms figure for readability) so the
+	// baseline-vs-mTLS/OAuth A/B delta is measurable.
+	latencyUs := time.Now().UnixMicro() - e.Context.GetTime().UnixMicro()
 	// set log to Info level for performance measurement
-	log.Infof("Latency for the event: %v ms", latency)
+	log.Infof("Latency for the event: %d us (%.3f ms)", latencyUs, float64(latencyUs)/1000.0)
 	log.Infof("Event: %s", e.String())
 	return nil
 }

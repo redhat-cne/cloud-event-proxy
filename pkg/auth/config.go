@@ -148,6 +148,57 @@ func (c *ClientAuthConfig) CreateTLSConfig() (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
+// CreateServerTLSConfig builds a TLS configuration for an inbound server, such
+// as the event-consumer callback endpoint that receives pushed CloudEvents.
+// It presents the server certificate (ServerCertPath/ServerKeyPath) and, when a
+// CA is configured, verifies a client certificate presented by the pushing
+// producer (mTLS). Client certs are verified when presented but not strictly
+// required, so a producer may instead authenticate with an OAuth bearer token
+// and an in-pod loopback caller needs no cert. The centrally-managed TLS profile
+// (min version + cipher suites from the cluster TLSSecurityProfile) is applied
+// on top.
+//
+// This is the server-role counterpart of CreateTLSConfig: per O-RAN CR-0003
+// clause 4.1.1 a callback reachable from a separate POD/VM must be protected by
+// an authorization mechanism (clause 3.2 — mTLS and/or OAuth), so the consumer
+// callback cannot serve plaintext once authentication is enabled.
+func (c *ClientAuthConfig) CreateServerTLSConfig() (*tls.Config, error) {
+	if c.ServerCertPath == "" || c.ServerKeyPath == "" {
+		return nil, fmt.Errorf("server certificate and key paths are required for a TLS callback server")
+	}
+
+	cert, err := tls.LoadX509KeyPair(c.ServerCertPath, c.ServerKeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load server certificate: %v", err)
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	if c.CACertPath != "" {
+		caCert, err := os.ReadFile(c.CACertPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA certificate: %v", err)
+		}
+		caCertPool := x509.NewCertPool()
+		if !caCertPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to parse CA certificate")
+		}
+		tlsConfig.ClientCAs = caCertPool
+		// Verify a client certificate when the producer presents one (mTLS) but
+		// do not hard-require it: a producer may authenticate with an OAuth
+		// bearer token instead, and same-pod loopback pushes carry no cert.
+		tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
+	}
+
+	c.ApplyTLSProfile(tlsConfig)
+
+	log.Info("Created TLS configuration for callback server")
+	return tlsConfig, nil
+}
+
 // GetOAuthToken reads the OAuth token from the service account token file
 func (c *ClientAuthConfig) GetOAuthToken() (string, error) {
 	if !c.EnableOAuth {
