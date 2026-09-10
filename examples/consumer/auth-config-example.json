@@ -5,7 +5,7 @@
   "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
   "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
   "enableOAuth": true,
-  "requiredAudiences": ["ptp-event-publisher"],
+  "requiredAudiences": ["https://kubernetes.default.svc"],
   "serviceAccountName": "consumer-sa",
   "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
 }

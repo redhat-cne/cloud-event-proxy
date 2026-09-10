@@ -37,7 +37,7 @@ Authentication is configured using a JSON configuration file. The configuration 
   "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
   "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
   "enableOAuth": true,
-  "requiredAudiences": ["ptp-event-publisher"],
+  "requiredAudiences": ["https://kubernetes.default.svc"],
   "serviceAccountName": "consumer-sa",
   "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
 }
@@ -112,7 +112,7 @@ Authentication is configured using a JSON configuration file. The configuration 
 {
   "enableMTLS": false,
   "enableOAuth": true,
-  "requiredAudiences": ["ptp-event-publisher"],
+  "requiredAudiences": ["https://kubernetes.default.svc"],
   "serviceAccountName": "consumer-sa",
   "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
 }
@@ -128,7 +128,7 @@ Authentication is configured using a JSON configuration file. The configuration 
   "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
   "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
   "enableOAuth": true,
-  "requiredAudiences": ["ptp-event-publisher"],
+  "requiredAudiences": ["https://kubernetes.default.svc"],
   "serviceAccountName": "consumer-sa",
   "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
 }
@@ -203,7 +203,7 @@ oc get configmap consumer-auth-config -n cloud-events -o jsonpath='{.data.config
 ```bash
 # Update the consumer authentication configuration directly
 oc patch configmap consumer-auth-config -n cloud-events --type='json' -p="[
-  {\"op\": \"replace\", \"path\": \"/data/config.json\", \"value\": \"{\\\"enableMTLS\\\": true, \\\"useServiceCA\\\": true, \\\"clientCertPath\\\": \\\"/etc/cloud-event-consumer/client-certs/tls.crt\\\", \\\"clientKeyPath\\\": \\\"/etc/cloud-event-consumer/client-certs/tls.key\\\", \\\"caCertPath\\\": \\\"/etc/cloud-event-consumer/ca-bundle/service-ca.crt\\\", \\\"enableOAuth\\\": true, \\\"requiredAudiences\\\": [\\\"ptp-event-publisher\\\"], \\\"serviceAccountName\\\": \\\"consumer-sa\\\", \\\"serviceAccountToken\\\": \\\"/var/run/secrets/kubernetes.io/serviceaccount/token\\\"}\"}
+  {\"op\": \"replace\", \"path\": \"/data/config.json\", \"value\": \"{\\\"enableMTLS\\\": true, \\\"useServiceCA\\\": true, \\\"clientCertPath\\\": \\\"/etc/cloud-event-consumer/client-certs/tls.crt\\\", \\\"clientKeyPath\\\": \\\"/etc/cloud-event-consumer/client-certs/tls.key\\\", \\\"caCertPath\\\": \\\"/etc/cloud-event-consumer/ca-bundle/service-ca.crt\\\", \\\"enableOAuth\\\": true, \\\"requiredAudiences\\\": [\\\"https://kubernetes.default.svc\\\"], \\\"serviceAccountName\\\": \\\"consumer-sa\\\", \\\"serviceAccountToken\\\": \\\"/var/run/secrets/kubernetes.io/serviceaccount/token\\\"}\"}
 ]"
 
 # Restart the consumer deployment
