@@ -29,7 +29,7 @@
       "type": "apiKey",
       "name": "Authorization",
       "in": "header",
-      "description": "OAuth 2.0 Bearer token supplied in the Authorization header, e.g. `Authorization: Bearer <token>`. Tokens (OpenShift OAuth or Kubernetes ServiceAccount tokens) are validated server-side via the Kubernetes TokenReview API, which checks the issuer, signature, expiry and audience. NOTE: in addition to the Bearer token, every protected endpoint also requires mutual TLS - the client must present a certificate signed by the trusted CA. mTLS cannot be represented in the Swagger 2.0 security model but is enforced at the transport layer for all non-loopback requests."
+      "description": "OAuth 2.0 Bearer token supplied in the Authorization header, e.g. `Authorization: Bearer <token>`. Tokens (OpenShift OAuth or Kubernetes ServiceAccount tokens) are validated server-side via the Kubernetes TokenReview API, which checks the issuer, signature, expiry and audience. NOTE: in addition to the Bearer token, every protected endpoint also requires mutual TLS - the client must present a certificate signed by the trusted CA. mTLS cannot be represented in the Swagger 2.0 security model but is enforced at the transport layer for all non-loopback requests. CONFIGURATION-DEPENDENT: this document describes the fully-secured (strict) deployment. Each mechanism is applied only when enabled in the server's AuthConfig - the Bearer token is required only when OAuth is enabled (EnableOAuth) and mTLS only when mTLS is enabled (EnableMTLS); a deployment may enable either, both, or neither. Loopback (same-pod) requests bypass both checks."
     }
   },
   "paths": {
