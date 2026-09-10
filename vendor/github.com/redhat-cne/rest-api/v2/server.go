@@ -70,6 +70,16 @@ type ServerStatus int
 
 const (
 	HTTPReadHeaderTimeout = 2 * time.Second
+	// HTTPWriteTimeout bounds the time to read the request body plus write the
+	// response, capping slow/stalled clients. It is set comfortably above the
+	// 10s timeout of the outbound initial-notification POST that
+	// createSubscription performs while handling a request.
+	HTTPWriteTimeout = 30 * time.Second
+	// HTTPIdleTimeout bounds how long an idle keep-alive connection is retained,
+	// so flooding the server with idle connections cannot exhaust it.
+	HTTPIdleTimeout = 60 * time.Second
+	// HTTPMaxHeaderBytes caps request header size to limit per-connection memory.
+	HTTPMaxHeaderBytes = 1 << 20 // 1 MiB
 )
 
 const (
@@ -681,6 +691,9 @@ func (s *Server) Start() {
 		s.SetStatus(started)
 		s.httpServer = &http.Server{
 			ReadHeaderTimeout: HTTPReadHeaderTimeout,
+			WriteTimeout:      HTTPWriteTimeout,
+			IdleTimeout:       HTTPIdleTimeout,
+			MaxHeaderBytes:    HTTPMaxHeaderBytes,
 			Addr:              fmt.Sprintf(":%d", s.port),
 			Handler:           api,
 		}

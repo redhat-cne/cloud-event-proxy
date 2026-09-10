@@ -83,4 +83,4 @@ replace golang.org/x/net => github.com/openshift-sustaining/net v0.43.0-sec.4
 // pin (7f73e7b). Those files make `go mod vendor` drift and fail verify-deps.
 // Remove this replace once redhat-cne/rest-api #113 merges and bump the
 // require above to the merged commit.
-replace github.com/redhat-cne/rest-api => github.com/jzding/rest-api v0.0.0-20260910132119-968890594f30
+replace github.com/redhat-cne/rest-api => github.com/jzding/rest-api v0.0.0-20260910132722-18cd3edfc8fd
