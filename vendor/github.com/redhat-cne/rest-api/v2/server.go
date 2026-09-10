@@ -675,9 +675,6 @@ func (s *Server) Start() {
 	if err != nil {
 		log.Println(err)
 	}
-	api.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, r)
-	})
 
 	log.Infof("starting v2 rest api server at port %d, endpoint %s", s.port, s.apiPath)
 	go wait.Until(func() {
