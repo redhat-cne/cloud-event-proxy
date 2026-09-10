@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"time"
 
+	restapi "github.com/redhat-cne/rest-api/v2"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -46,7 +47,10 @@ func NewAuthenticatedClient(authConfig *AuthConfig) (*AuthenticatedClient, error
 			client: &http.Client{
 				Timeout: 30 * time.Second,
 			},
-			authConfig: &AuthConfig{},
+			// Initialize the embedded AuthConfig so the no-auth client is safe
+			// to use: Do/IsAuthenticated read promoted fields (EnableOAuth,
+			// EnableMTLS) that would nil-panic on an uninitialized embed.
+			authConfig: &AuthConfig{AuthConfig: &restapi.AuthConfig{}},
 		}, nil
 	}
 
