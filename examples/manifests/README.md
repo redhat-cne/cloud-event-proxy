@@ -10,6 +10,19 @@ The example consumer is designed to work with **OpenShift clusters of any size**
 - Configure mTLS authentication using OpenShift Service CA
 - Set up OAuth authentication using OpenShift's built-in OAuth server
 - Use OpenShift's native authentication components
+- Restrict network reachability of the O-RAN API with a NetworkPolicy
+
+### Network policy
+
+`network-policy.yaml` applies a default-deny-ingress `NetworkPolicy` to the
+consumer pods, allowing traffic to the O-RAN ocloudNotifications API (port
+9043) only from the PTP event publisher namespace (`openshift-ptp`) and cluster
+monitoring (`openshift-monitoring`). This is defense-in-depth on top of mTLS +
+OAuth: it stops arbitrary in-cluster pods from even reaching the port. It is an
+example — adapt the selectors to your cluster, and constrain the publisher side
+(managed by ptp-operator in `openshift-ptp`) similarly. NetworkPolicy does not
+apply to hostNetwork pods, so the ptp daemon's port needs host-level firewalling
+instead.
 
 ## Prerequisites
 
