@@ -1,0 +1,40 @@
+# Consumer client certificate for mTLS.
+#
+# NOTE: OpenShift Service CA serving certificates (the
+# `service.beta.openshift.io/serving-cert-secret-name` annotation on a Service)
+# are issued for TLS *server* authentication (serverAuth EKU) only. They are NOT
+# valid as a *client* certificate for mTLS — presenting one to the publisher will
+# fail client-certificate validation. Do not reuse a serving cert here.
+#
+# Provision a dedicated client certificate with the clientAuth EKU instead. The
+# example below uses cert-manager; for a cluster without cert-manager, generate a
+# clientAuth certificate manually (see certificate-example.md) and load it into
+# the `consumer-client-certs` Secret.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: consumer-client-cert
+  namespace: cloud-events
+spec:
+  # Secret the consumer mounts as its client keypair (tls.crt / tls.key).
+  secretName: consumer-client-certs
+  duration: 2160h    # 90d
+  renewBefore: 360h  # 15d
+  subject:
+    organizations:
+      - cloud-event-consumer
+  commonName: cloud-event-consumer
+  # clientAuth is required for mTLS client authentication; serverAuth is not.
+  usages:
+    - digital signature
+    - key encipherment
+    - client auth
+  privateKey:
+    algorithm: RSA
+    size: 4096
+  issuerRef:
+    # Point this at the same CA that signs the publisher's server certificate so
+    # the publisher trusts the consumer's client cert.
+    name: cloud-events-ca-issuer
+    kind: Issuer
+    group: cert-manager.io

@@ -33,7 +33,9 @@
 package restapi
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/redhat-cne/sdk-go/pkg/util/wait"
 
@@ -47,7 +49,10 @@ import (
 	pubsubv1 "github.com/redhat-cne/sdk-go/v1/pubsub"
 	subscriberApi "github.com/redhat-cne/sdk-go/v1/subscriber"
 
+	"crypto/tls"
+	"crypto/x509"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -65,6 +70,23 @@ type ServerStatus int
 
 const (
 	HTTPReadHeaderTimeout = 2 * time.Second
+	// HTTPReadTimeout bounds the total time to read the entire request, including
+	// a slowly-transmitted body. ReadHeaderTimeout only covers the headers and
+	// WriteTimeout does not bound request-body reads, so without this a client
+	// could dribble a POST body to pin a handler goroutine indefinitely
+	// (Slowloris on the request body). Request bodies here are small JSON
+	// documents, so this is set to the same generous ceiling as the write side.
+	HTTPReadTimeout = 30 * time.Second
+	// HTTPWriteTimeout bounds the time to read the request body plus write the
+	// response, capping slow/stalled clients. It is set comfortably above the
+	// 10s timeout of the outbound initial-notification POST that
+	// createSubscription performs while handling a request.
+	HTTPWriteTimeout = 30 * time.Second
+	// HTTPIdleTimeout bounds how long an idle keep-alive connection is retained,
+	// so flooding the server with idle connections cannot exhaust it.
+	HTTPIdleTimeout = 60 * time.Second
+	// HTTPMaxHeaderBytes caps request header size to limit per-connection memory.
+	HTTPMaxHeaderBytes = 1 << 20 // 1 MiB
 )
 
 const (
@@ -74,6 +96,73 @@ const (
 	failed
 	CURRENTSTATE = "CurrentState"
 )
+
+// AuthConfig contains authentication configuration for both single and multi-node OpenShift clusters
+type AuthConfig struct {
+	// mTLS configuration - works for both single and multi-node clusters
+	EnableMTLS     bool   `json:"enableMTLS"`
+	CACertPath     string `json:"caCertPath"`
+	ServerCertPath string `json:"serverCertPath"`
+	ServerKeyPath  string `json:"serverKeyPath"`
+	UseServiceCA   bool   `json:"useServiceCA"` // Use OpenShift Service CA (recommended for all cluster sizes)
+
+	// OAuth 2.0 / bearer-token configuration. Tokens are validated by the
+	// TokenValidator installed via Server.SetTokenValidator (cloud-event-proxy
+	// uses the Kubernetes TokenReview API), so no issuer/JWKS is configured here.
+	EnableOAuth         bool     `json:"enableOAuth"`
+	RequiredAudiences   []string `json:"requiredAudiences"`   // Required token audiences (validated by TokenReview)
+	ServiceAccountName  string   `json:"serviceAccountName"`  // ServiceAccount used by clients for authentication
+	ServiceAccountToken string   `json:"serviceAccountToken"` // ServiceAccount token path (client side)
+	UseOpenShiftOAuth   bool     `json:"useOpenShiftOAuth"`   // Client hint: obtain tokens from OpenShift OAuth
+
+	// TLS profile - centrally managed by the cluster's TLSSecurityProfile and
+	// propagated by the operator. Nothing is hardcoded in this library.
+	TLSMinVersion   string   `json:"tlsMinVersion"`   // e.g. "VersionTLS12", "VersionTLS13"
+	TLSCipherSuites []string `json:"tlsCipherSuites"` // IANA cipher suite names
+}
+
+// LoadAuthConfig loads authentication configuration from a JSON file
+func LoadAuthConfig(configPath string) (*AuthConfig, error) {
+	// Check if file exists
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("authentication config file not found: %s", configPath)
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read authentication config file %s: %v", configPath, err)
+	}
+
+	var config AuthConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal authentication config: %v", err)
+	}
+	return &config, nil
+}
+
+// GetConfigSummary returns a summary of the authentication configuration
+func (c *AuthConfig) GetConfigSummary() string {
+	summary := "Authentication Configuration Summary:\n"
+	summary += fmt.Sprintf("  Enable mTLS: %t\n", c.EnableMTLS)
+	if c.EnableMTLS {
+		summary += fmt.Sprintf("    CA Cert Path: %s\n", c.CACertPath)
+		summary += fmt.Sprintf("    Server Cert Path: %s\n", c.ServerCertPath)
+		summary += fmt.Sprintf("    Server Key Path: %s\n", c.ServerKeyPath)
+		summary += fmt.Sprintf("    Use Service CA: %t\n", c.UseServiceCA)
+	}
+	summary += fmt.Sprintf("  Enable OAuth: %t\n", c.EnableOAuth)
+	if c.EnableOAuth {
+		summary += fmt.Sprintf("    Required Audiences: %v\n", c.RequiredAudiences)
+		summary += fmt.Sprintf("    Service Account Name: %s\n", c.ServiceAccountName)
+		summary += fmt.Sprintf("    Service Account Token Path: %s\n", c.ServiceAccountToken)
+		summary += fmt.Sprintf("    Use OpenShift OAuth: %t\n", c.UseOpenShiftOAuth)
+	}
+	if c.TLSMinVersion != "" || len(c.TLSCipherSuites) > 0 {
+		summary += fmt.Sprintf("  TLS Min Version: %s\n", c.TLSMinVersion)
+		summary += fmt.Sprintf("  TLS Cipher Suites: %v\n", c.TLSCipherSuites)
+	}
+	return summary
+}
 
 // Server defines rest routes server object
 type Server struct {
@@ -90,6 +179,9 @@ type Server struct {
 	status                  ServerStatus
 	statusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error
 	statusLock              sync.RWMutex
+	authConfig              *AuthConfig
+	caCertPool              *x509.CertPool
+	tokenValidator          TokenValidator
 }
 
 // SubscriptionInfo
@@ -215,24 +307,71 @@ type swaggEventData struct { //nolint:deadcode,unused
 // InitServer is used to supply configurations for rest routes server
 func InitServer(port int, apiHost, apiPath, storePath string,
 	dataOut chan<- *channel.DataChan, closeCh <-chan struct{},
-	onStatusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error) *Server {
+	onStatusReceiveOverrideFn func(e cloudevents.Event, dataChan *channel.DataChan) error,
+	authConfig *AuthConfig) *Server {
 	once.Do(func() {
 		ServerInstance = &Server{
-			port:    port,
-			apiHost: apiHost,
-			apiPath: apiPath,
-			dataOut: dataOut,
-			closeCh: closeCh,
-			status:  notReady,
-			HTTPClient: &http.Client{
-				Transport: &http.Transport{
-					MaxIdleConnsPerHost: 20,
-				},
-				Timeout: 10 * time.Second,
-			},
+			port:                    port,
+			apiHost:                 apiHost,
+			apiPath:                 apiPath,
+			dataOut:                 dataOut,
+			closeCh:                 closeCh,
+			status:                  notReady,
 			pubSubAPI:               pubsubv1.GetAPIInstance(storePath),
 			subscriberAPI:           subscriberApi.GetAPIInstance(storePath),
 			statusReceiveOverrideFn: onStatusReceiveOverrideFn,
+			authConfig:              authConfig,
+		}
+
+		// Initialize the mTLS CA certificate pool first so the HTTPClient below
+		// can verify endpoint certificates against it. When mTLS is enabled a
+		// usable CA pool is mandatory: without it client certificates cannot be
+		// verified and endpoint server certificates cannot be validated, so we
+		// must fail closed rather than silently fall back to an unverified
+		// configuration. The absence of a pool is enforced in Start(), which
+		// refuses to begin serving TLS when it is nil.
+		if authConfig != nil && authConfig.EnableMTLS {
+			if authConfig.CACertPath == "" {
+				log.Error("InitServer: mTLS enabled but CACertPath is empty; server will fail closed at Start()")
+			} else if err := ServerInstance.initMTLSCACertPool(); err != nil {
+				log.Errorf("InitServer: failed to initialize mTLS CA certificate pool: %v; server will fail closed at Start()", err)
+			}
+		}
+
+		// Configure HTTPClient used to validate publisher endpoints. When mTLS
+		// is enabled we verify the endpoint's server certificate against the CA
+		// pool (Service CA) rather than skipping verification.
+		// A shared dialer whose DialContext resolves the target and rejects
+		// blocked (link-local / metadata / multicast) addresses before
+		// connecting, closing the SSRF DNS-rebinding window for endpoint checks.
+		safeDial := newSafeDialContext(&net.Dialer{Timeout: 10 * time.Second})
+		if authConfig != nil && authConfig.EnableMTLS {
+			tlsClientConfig := &tls.Config{
+				RootCAs:    ServerInstance.caCertPool,
+				MinVersion: tls.VersionTLS12,
+			}
+			// ApplyTLSProfile may raise MinVersion to the cluster-configured floor.
+			authConfig.ApplyTLSProfile(tlsClientConfig)
+			ServerInstance.HTTPClient = &http.Client{
+				Transport: &http.Transport{
+					MaxIdleConnsPerHost: 20,
+					TLSClientConfig:     tlsClientConfig,
+					DialContext:         safeDial,
+				},
+				Timeout:       10 * time.Second,
+				CheckRedirect: noRedirectPolicy,
+			}
+			log.Info("InitServer: configured HTTPClient with CA verification for mTLS endpoint validation")
+		} else {
+			// Use default HTTP client for non-mTLS configurations
+			ServerInstance.HTTPClient = &http.Client{
+				Transport: &http.Transport{
+					MaxIdleConnsPerHost: 20,
+					DialContext:         safeDial,
+				},
+				Timeout:       10 * time.Second,
+				CheckRedirect: noRedirectPolicy,
+			}
 		}
 	})
 	// singleton
@@ -249,8 +388,29 @@ func (s *Server) EndPointHealthChk() (err error) {
 			continue
 		}
 
-		log.Debugf("health check %s%s ", s.GetHostPath(), "health")
-		response, errResp := http.Get(fmt.Sprintf("%s%s", s.GetHostPath(), "health"))
+		healthURL := s.GetHealthPath()
+		log.Debugf("health check %s", healthURL)
+
+		var response *http.Response
+		var errResp error
+
+		if s.authConfig != nil && s.authConfig.EnableMTLS {
+			// Use HTTPS client without client certificate for health checks
+			client := &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{
+						RootCAs:            s.caCertPool,
+						InsecureSkipVerify: true, // nolint:gosec // Required for localhost health checks with self-signed certs
+						// No client certificate provided - this is allowed for /health
+					},
+				},
+			}
+			response, errResp = client.Get(healthURL)
+		} else {
+			// Use regular HTTP client
+			response, errResp = http.Get(healthURL)
+		}
+
 		if errResp != nil {
 			log.Errorf("try %d, return health check of the rest service for error  %v", i, errResp)
 			time.Sleep(healthCheckPause)
@@ -299,7 +459,28 @@ func (s *Server) GetStatus() ServerStatus {
 
 // GetHostPath  returns hostpath
 func (s *Server) GetHostPath() *types.URI {
-	return types.ParseURI(fmt.Sprintf("http://localhost:%d%s", s.port, s.apiPath))
+	protocol := "http"
+	port := s.port
+	path := s.apiPath
+
+	if s.authConfig != nil && s.authConfig.EnableMTLS {
+		protocol = "https"
+		fmt.Printf("GetHostPath: Using HTTPS protocol (authConfig.EnableMTLS=%t)\n", s.authConfig.EnableMTLS)
+	} else {
+		fmt.Printf("GetHostPath: Using HTTP protocol (authConfig=%v, EnableMTLS=%t)\n", s.authConfig != nil, s.authConfig != nil && s.authConfig.EnableMTLS)
+	}
+	uri := types.ParseURI(fmt.Sprintf("%s://localhost:%d%s", protocol, port, path))
+	fmt.Printf("GetHostPath: Returning URI=%s\n", uri.String())
+	return uri
+}
+
+// GetHealthPath returns the health check URL
+func (s *Server) GetHealthPath() string {
+	protocol := "http"
+	if s.authConfig != nil && s.authConfig.EnableMTLS {
+		protocol = "https"
+	}
+	return fmt.Sprintf("%s://localhost:%d%shealth", protocol, s.port, s.apiPath)
 }
 
 // Start will start res routes service
@@ -313,6 +494,14 @@ func (s *Server) Start() {
 	r := mux.NewRouter()
 
 	api := r.PathPrefix(s.apiPath).Subrouter()
+
+	// Helper function to apply authentication to handlers
+	applyAuth := func(handler http.HandlerFunc, needsAuth bool) http.Handler {
+		if needsAuth {
+			return s.combinedAuthMiddleware(http.Handler(handler))
+		}
+		return handler
+	}
 
 	// createSubscription create subscription and send it to a channel that is shared by middleware to process
 	// swagger:operation POST /subscriptions Subscriptions createSubscription
@@ -330,11 +519,13 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/pubSubResp"
 	//   "400":
 	//     description: Bad request. For example, the endpoint URI is not correctly formatted.
+	//   "401":
+	//     description: Unauthorized. Authentication required (mTLS and/or OAuth).
 	//   "404":
 	//     description: Not Found. Subscription resource is not available.
 	//   "409":
 	//     description: Conflict. The subscription resource already exists.
-	api.HandleFunc("/subscriptions", s.createSubscription).Methods(http.MethodPost)
+	api.Handle("/subscriptions", applyAuth(s.createSubscription, true)).Methods(http.MethodPost)
 
 	// swagger:operation GET /subscriptions Subscriptions getSubscriptions
 	// ---
@@ -345,7 +536,7 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/subscriptions"
 	//   "400":
 	//     description: Bad request by the client.
-	api.HandleFunc("/subscriptions", s.getSubscriptions).Methods(http.MethodGet)
+	api.Handle("/subscriptions", applyAuth(s.getSubscriptions, true)).Methods(http.MethodGet)
 
 	// swagger:operation GET /subscriptions/{subscriptionId} Subscriptions getSubscriptionByID
 	// ---
@@ -356,7 +547,7 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/subscription"
 	//   "404":
 	//     description: Not Found. Subscription resources are not available (not created).
-	api.HandleFunc("/subscriptions/{subscriptionId}", s.getSubscriptionByID).Methods(http.MethodGet)
+	api.Handle("/subscriptions/{subscriptionId}", applyAuth(s.getSubscriptionByID, true)).Methods(http.MethodGet)
 
 	// swagger:operation DELETE /subscriptions/{subscriptionId} Subscriptions deleteSubscription
 	// ---
@@ -365,9 +556,11 @@ func (s *Server) Start() {
 	// responses:
 	//   "204":
 	//     description: Success.
+	//   "401":
+	//     description: Unauthorized. Authentication required (mTLS and/or OAuth).
 	//   "404":
 	//     description: Not Found. Subscription resources are not available (not created).
-	api.HandleFunc("/subscriptions/{subscriptionId}", s.deleteSubscription).Methods(http.MethodDelete)
+	api.Handle("/subscriptions/{subscriptionId}", applyAuth(s.deleteSubscription, true)).Methods(http.MethodDelete)
 
 	// swagger:operation GET /{ResourceAddress}/CurrentState Events getCurrentState
 	// ---
@@ -378,7 +571,7 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/eventResp"
 	//   "404":
 	//     description: Not Found. Event notification resource is not available on this node.
-	api.HandleFunc("/{resourceAddress:.*}/CurrentState", s.getCurrentState).Methods(http.MethodGet)
+	api.Handle("/{resourceAddress:.*}/CurrentState", applyAuth(s.getCurrentState, true)).Methods(http.MethodGet)
 
 	// *** Extensions to O-RAN API ***
 
@@ -389,6 +582,7 @@ func (s *Server) Start() {
 	// responses:
 	//   "200":
 	//     "$ref": "#/responses/statusOK"
+	// Note: Health endpoint is always accessible without authentication
 	api.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		io.WriteString(w, "OK") //nolint:errcheck
 	}).Methods(http.MethodGet)
@@ -404,7 +598,7 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/publishers"
 	//   "404":
 	//	   description: Publishers not found
-	api.HandleFunc("/publishers", s.getPublishers).Methods(http.MethodGet)
+	api.Handle("/publishers", applyAuth(s.getPublishers, true)).Methods(http.MethodGet)
 
 	// swagger:operation DELETE /subscriptions Subscriptions deleteAllSubscriptions
 	// ---
@@ -413,13 +607,15 @@ func (s *Server) Start() {
 	// responses:
 	//   "204":
 	//     description: Deleted all subscriptions.
-	api.HandleFunc("/subscriptions", s.deleteAllSubscriptions).Methods(http.MethodDelete)
+	//   "401":
+	//     description: Unauthorized. Authentication required (mTLS and/or OAuth).
+	api.Handle("/subscriptions", applyAuth(s.deleteAllSubscriptions, true)).Methods(http.MethodDelete)
 
 	// *** Internal API ***
 
-	api.HandleFunc("/publishers/{publisherid}", s.getPublisherByID).Methods(http.MethodGet)
-	api.HandleFunc("/publishers/{publisherid}", s.deletePublisher).Methods(http.MethodDelete)
-	api.HandleFunc("/publishers", s.deleteAllPublishers).Methods(http.MethodDelete)
+	api.Handle("/publishers/{publisherid}", applyAuth(s.getPublisherByID, true)).Methods(http.MethodGet)
+	api.Handle("/publishers/{publisherid}", applyAuth(s.deletePublisher, true)).Methods(http.MethodDelete)
+	api.Handle("/publishers", applyAuth(s.deleteAllPublishers, true)).Methods(http.MethodDelete)
 
 	//pingForSubscribedEventStatus pings for event status  if the publisher  has capability to push event on demand
 	// this API is internal
@@ -435,11 +631,13 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/pubSubResp"
 	//   "400":
 	//     "$ref": "#/responses/badReq"
-	api.HandleFunc("/subscriptions/status/{subscriptionId}", s.pingForSubscribedEventStatus).Methods(http.MethodPut)
+	//   "401":
+	//     description: Unauthorized. Authentication required (mTLS and/or OAuth).
+	api.Handle("/subscriptions/status/{subscriptionId}", applyAuth(s.pingForSubscribedEventStatus, true)).Methods(http.MethodPut)
 
-	api.HandleFunc("/log", s.logEvent).Methods(http.MethodPost)
+	api.Handle("/log", applyAuth(s.logEvent, true)).Methods(http.MethodPost)
 
-	api.HandleFunc("/publishers", s.createPublisher).Methods(http.MethodPost)
+	api.Handle("/publishers", applyAuth(s.createPublisher, true)).Methods(http.MethodPost)
 
 	//publishEvent create event and send it to a channel that is shared by middleware to process
 	// this API is internal
@@ -457,12 +655,14 @@ func (s *Server) Start() {
 	//     "$ref": "#/responses/acceptedReq"
 	//   "400":
 	//     "$ref": "#/responses/badReq"
-	api.HandleFunc("/create/event", s.publishEvent).Methods(http.MethodPost)
+	//   "401":
+	//     description: Unauthorized. Authentication required (mTLS and/or OAuth).
+	api.Handle("/create/event", applyAuth(s.publishEvent, true)).Methods(http.MethodPost)
 
 	// for internal test
-	api.HandleFunc("/dummy", dummy).Methods(http.MethodPost)
+	api.Handle("/dummy", applyAuth(dummy, true)).Methods(http.MethodPost)
 	// for internal test: test multiple clients
-	api.HandleFunc("/dummy2", dummy).Methods(http.MethodPost)
+	api.Handle("/dummy2", applyAuth(dummy, true)).Methods(http.MethodPost)
 
 	err := r.Walk(func(route *mux.Route, _ *mux.Router, _ []*mux.Route) error {
 		pathTemplate, err := route.GetPathTemplate()
@@ -492,22 +692,78 @@ func (s *Server) Start() {
 	if err != nil {
 		log.Println(err)
 	}
-	api.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, r)
-	})
 
 	log.Infof("starting v2 rest api server at port %d, endpoint %s", s.port, s.apiPath)
 	go wait.Until(func() {
 		s.SetStatus(started)
 		s.httpServer = &http.Server{
 			ReadHeaderTimeout: HTTPReadHeaderTimeout,
+			ReadTimeout:       HTTPReadTimeout,
+			WriteTimeout:      HTTPWriteTimeout,
+			IdleTimeout:       HTTPIdleTimeout,
+			MaxHeaderBytes:    HTTPMaxHeaderBytes,
 			Addr:              fmt.Sprintf(":%d", s.port),
 			Handler:           api,
 		}
-		err := s.httpServer.ListenAndServe()
-		if err != nil {
-			log.Errorf("restarting due to error with api server %s\n", err.Error())
-			s.SetStatus(failed)
+
+		// Configure TLS if mTLS is enabled
+		if s.authConfig != nil && s.authConfig.EnableMTLS {
+			if s.authConfig.ServerCertPath == "" || s.authConfig.ServerKeyPath == "" {
+				log.Error("mTLS enabled but server certificate or key path not provided")
+				s.SetStatus(failed)
+				return
+			}
+
+			// Fail closed: without a CA pool, presented client certificates
+			// cannot be verified against a trusted authority, so an mTLS
+			// server must not begin listening.
+			if s.caCertPool == nil {
+				log.Error("mTLS enabled but CA certificate pool is not initialized; refusing to start (fail closed)")
+				s.SetStatus(failed)
+				return
+			}
+
+			// Load server certificate and key
+			cert, err := tls.LoadX509KeyPair(s.authConfig.ServerCertPath, s.authConfig.ServerKeyPath)
+			if err != nil {
+				log.Errorf("failed to load server certificate: %v", err)
+				s.SetStatus(failed)
+				return
+			}
+
+			// VerifyClientCertIfGiven lets loopback clients connect without a
+			// certificate (trusted same-pod fast-path) while cryptographically
+			// verifying any certificate that IS presented against the CA pool.
+			// The middleware then requires a verified certificate for all
+			// non-loopback (FQDN/service-DNS/external) requests.
+			tlsConfig := &tls.Config{
+				Certificates: []tls.Certificate{cert},
+				ClientAuth:   tls.VerifyClientCertIfGiven,
+				ClientCAs:    s.caCertPool,
+				MinVersion:   tls.VersionTLS12,
+			}
+			// Apply the centrally-managed TLS profile (min version + ciphers).
+			// A configured profile may raise MinVersion above the TLS 1.2 floor.
+			s.authConfig.ApplyTLSProfile(tlsConfig)
+
+			s.httpServer.TLSConfig = tlsConfig
+
+			// Note: When mTLS is enabled, client certificates are requested but validated at middleware level.
+			// The /health endpoint allows connections without certificates, while other endpoints require them.
+
+			log.Info("starting HTTPS server with application-level mTLS")
+			err = s.httpServer.ListenAndServeTLS("", "")
+			if err != nil {
+				log.Errorf("restarting due to error with TLS api server %s\n", err.Error())
+				s.SetStatus(failed)
+			}
+		} else {
+			log.Info("starting HTTP server")
+			err := s.httpServer.ListenAndServe()
+			if err != nil {
+				log.Errorf("restarting due to error with api server %s\n", err.Error())
+				s.SetStatus(failed)
+			}
 		}
 	}, 1*time.Second, s.closeCh)
 }

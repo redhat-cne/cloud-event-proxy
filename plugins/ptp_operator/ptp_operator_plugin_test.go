@@ -118,7 +118,7 @@ func TestMain(m *testing.M) {
 
 	c = make(chan os.Signal)
 	cleanUP()
-	common.StartPubSubService(scConfig)
+	common.StartPubSubService(scConfig, nil)
 	pubsubTypes = InitPubSubTypes()
 	scConfig.RestAPI.SetOnStatusReceiveOverrideFn(getMockOverrideFn())
 	code := m.Run()

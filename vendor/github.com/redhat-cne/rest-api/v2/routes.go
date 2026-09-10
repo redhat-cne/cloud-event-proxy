@@ -78,6 +78,11 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
 		return
 	}
+	if err = validateEndpointURI(endPointURI); err != nil {
+		respondWithStatusCode(w, http.StatusBadRequest, err.Error())
+		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
+		return
+	}
 	for id, address := range s.subscriberAPI.GetClientIDAddressByResource(sub.GetResource()) {
 		if address.String() == endPointURI {
 			respondWithStatusCode(w, http.StatusConflict,
@@ -122,7 +127,11 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	restClient := restclient.New()
+	// Use the server's SSRF-hardened HTTP client (resolve-then-validate dialer
+	// plus no-redirect policy) for the initial-notification POST to the
+	// caller-supplied EndpointURI, rather than the default client which would
+	// follow redirects and dial arbitrary resolved addresses.
+	restClient := restclient.NewWithClient(s.HTTPClient)
 	// make sure event ID is unique
 	out.Data.SetID(uuid.New().String())
 	status, err := restClient.PostCloudEvent(sub.EndPointURI, *out.Data)
@@ -199,6 +208,11 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if pub.GetEndpointURI() != "" {
+		if err = validateEndpointURI(pub.GetEndpointURI()); err != nil {
+			localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
+			respondWithError(w, err.Error())
+			return
+		}
 		response, err = s.HTTPClient.Post(pub.GetEndpointURI(), cloudevents.ApplicationJSON, nil)
 		if err != nil {
 			log.Infof("there was an error validating the publisher endpointurl %v, publisher won't be created.", err)
