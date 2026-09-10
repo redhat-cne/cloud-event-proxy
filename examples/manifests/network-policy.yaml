@@ -1,0 +1,51 @@
+# NetworkPolicy restricting ingress to the consumer's O-RAN ocloudNotifications
+# API (port 9043). Selecting the consumer pods with an Ingress policy makes all
+# ingress default-deny except the peers explicitly allowed below, so an
+# arbitrary in-cluster pod can no longer reach the API to create/hijack
+# subscriptions, exfiltrate events, or flood the port.
+#
+# NOTE: this is an EXAMPLE. Adapt the namespace/pod selectors to your cluster.
+# The event *publisher* (producer) side runs the same API in the ptp-operator
+# namespace (openshift-ptp) and should be constrained with an equivalent policy
+# there; that manifest is managed by ptp-operator, not this example set. Also
+# note NetworkPolicy does not apply to hostNetwork pods — the ptp daemon runs
+# with hostNetwork, so its port must additionally be protected at the host/
+# firewall level.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: consumer-events-subscription-allow
+  namespace: cloud-events
+  labels:
+    app: consumer-service
+spec:
+  # Applies to the consumer pods that serve the O-RAN API on 9043.
+  podSelector:
+    matchLabels:
+      app: consumer
+  policyTypes:
+    - Ingress
+  ingress:
+    # 1. Allow the PTP event publisher (producer) to deliver event callbacks to
+    #    the consumer's subscription endpoint. Tighten further by adding a
+    #    podSelector for the publisher pod label if known.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-ptp
+      ports:
+        - protocol: TCP
+          port: 9043
+    # 2. Allow cluster monitoring to scrape consumer metrics (the Service is
+    #    annotated prometheus.io/scrape: "true").
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: openshift-monitoring
+      ports:
+        - protocol: TCP
+          port: 9043
+  # kubelet liveness/readiness probes originate from the node and are permitted
+  # by OpenShift's OVN-Kubernetes CNI without an explicit rule. On CNIs that do
+  # not exempt node-local health probes, add an ingress rule allowing the node/
+  # host-network source for port 9043.
