@@ -348,10 +348,41 @@ func Test_ParseGmLogs(t *testing.T) {
 		masterType := types.IFace(metrics.MasterClockType)
 		ptpStats[masterType] = &stats.Stats{}
 		ptpEventManager.ParseGMLogs(tt.processName, configName, output, fields, ptpStats)
-		lastState, errState := ptpStats[masterType].GetStateState(tt.processName, pointer.String(tt.interfaceName))
+		gmType := types.IFace(stats.GMMainClockName)
+		lastState, errState := ptpStats[gmType].GetStateState(tt.processName, pointer.String(tt.interfaceName))
 		assert.Equal(t, errState, nil)
 		assert.Equal(t, tt.expectedState, lastState)
 	}
+}
+
+func Test_ParseGmLogsMasterStateDoesNotSuppressTransition(t *testing.T) {
+	ptpEventManager := metrics.NewPTPEventManager("", initPubSubTypes(), "testnode", nil)
+	ptpEventManager.MockTest(true)
+	ptpEventManager.Stats[types.ConfigName(configName)] = make(stats.PTPStats)
+	ptpStats := ptpEventManager.GetStats(types.ConfigName(configName))
+
+	iface := types.IFace("ens2f1")
+	ptpStats[iface] = &stats.Stats{}
+	masterType := types.IFace(metrics.MasterClockType)
+	ptpStats[masterType] = &stats.Stats{}
+
+	parseGMStatus := func(state string) {
+		output := fmt.Sprintf("GM 1689014431 ts2phc.0.config %s T-GM-STATUS %s", iface, state)
+		ptpEventManager.ParseGMLogs("GM", configName, output, strings.Fields(output), ptpStats)
+	}
+
+	parseGMStatus("s0")
+	gmType := types.IFace(stats.GMMainClockName)
+	assert.Equal(t, ptp.FREERUN, ptpStats[gmType].LastSyncState())
+
+	// A faster source updates the generic master before T-GM reports recovery.
+	ptpStats[masterType].SetLastSyncState(ptp.LOCKED)
+	ptpEventManager.ResetMockEvent()
+	parseGMStatus("s2")
+
+	assert.Equal(t, ptp.LOCKED, ptpStats[gmType].LastSyncState())
+	assert.Contains(t, ptpEventManager.GetMockEvent(), ptp.PtpStateChange,
+		"generic master state must not suppress the T-GM recovery event")
 }
 
 func Test_ParsTBCLogs(t *testing.T) {
