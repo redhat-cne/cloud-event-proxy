@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Secured (mTLS + OAuth) consumer overlay. Rendered by
+# `make deploy-consumer SECURED=true` (or `make deploy-consumer-secured`), which
+# also generates certs and runs auth/setup-secrets.sh to create the
+# consumer-client-certs, server-ca-bundle and consumer-auth-config resources.
+#
+# The client certificate itself is provisioned out-of-band (openssl by default,
+# or cert-manager when CERT_MANAGER=true) because OpenShift Service CA serving
+# certs are serverAuth-only and cannot be used as a client cert. cert-manager's
+# auth/client-cert-service.yaml is therefore applied by the Makefile only on the
+# cert-manager path, not included here.
+resources:
+- ../base
+- ../auth
+
+patches:
+- path: consumer-auth-patch.yaml
+- path: service-serving-cert-patch.yaml

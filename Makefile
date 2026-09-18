@@ -8,6 +8,16 @@ VERSION ?=latest
 IMG ?= quay.io/openshift/origin-cloud-event-proxy:$(VERSION)
 CONSUMER_IMG ?= quay.io/redhat-cne/cloud-event-consumer:$(VERSION)
 
+# Consumer deployment security. By default `make deploy-consumer` deploys the
+# plaintext consumer (HTTP, no auth) exactly as before. Opt in to mTLS + OAuth
+# with `make deploy-consumer SECURED=true` (or `make deploy-consumer-secured`).
+SECURED ?=
+# Where the openssl client CA / client cert are generated (default path only).
+DIR_CERTS ?= /tmp/certs
+# Client-cert provisioning method for the secured path: openssl (default) or
+# cert-manager when CERT_MANAGER=true.
+CERT_MANAGER ?= false
+
 export GO111MODULE=on
 export CGO_ENABLED=1
 export GOFLAGS=-mod=vendor
@@ -107,18 +117,36 @@ functests:
 	SUITE=./test/cne hack/run-functests.sh
 
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
-deploy-consumer: kustomize ## Deploy consumer with authentication
-	@echo "Deploying cloud-event-consumer with authentication..."
-	@echo "Using CLUSTER_NAME: $${CLUSTER_NAME:-openshift.local}"
-	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
-	$(KUSTOMIZE) build ./examples/manifests | kubectl apply -f -
-	@echo "Setting up authentication secrets..."
-	@export CLUSTER_NAME=$${CLUSTER_NAME:-openshift.local} && ./examples/manifests/auth/setup-secrets.sh
-	@echo "Consumer deployment completed!"
+#
+# Default: plaintext consumer (HTTP, no auth). `make deploy-consumer SECURED=true`
+# (or `make deploy-consumer-secured`) renders the ./examples/manifests/secured
+# overlay and runs auth/setup-secrets.sh to provision the mTLS + OAuth material.
+ifeq ($(SECURED),true)
+CONSUMER_OVERLAY = ./examples/manifests/secured
+else
+CONSUMER_OVERLAY = ./examples/manifests
+endif
+
+deploy-consumer: kustomize ## Deploy consumer (plaintext; set SECURED=true for mTLS+OAuth)
+	cd $(CONSUMER_OVERLAY) && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
+ifeq ($(SECURED),true)
+	@echo "Deploying cloud-event-consumer with mTLS + OAuth (secured overlay)..."
+	$(KUSTOMIZE) build $(CONSUMER_OVERLAY) | kubectl apply -f -
+	@echo "Provisioning authentication material (CERT_MANAGER=$(CERT_MANAGER), DIR_CERTS=$(DIR_CERTS))..."
+	DIR_CERTS=$(DIR_CERTS) CERT_MANAGER=$(CERT_MANAGER) ./examples/manifests/auth/setup-secrets.sh
+	@echo "Secured consumer deployment completed!"
+else
+	@echo "Deploying cloud-event-consumer (plaintext)..."
+	$(KUSTOMIZE) build $(CONSUMER_OVERLAY) | kubectl apply -f -
+	@echo "Consumer deployment completed! (plaintext; use SECURED=true for mTLS+OAuth)"
+endif
+
+deploy-consumer-secured: ## Deploy consumer with mTLS + OAuth (shortcut for deploy-consumer SECURED=true)
+	$(MAKE) deploy-consumer SECURED=true
 
 undeploy-consumer: kustomize ## Undeploy consumer
-	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
-	$(KUSTOMIZE) build ./examples/manifests | kubectl delete -f -
+	cd $(CONSUMER_OVERLAY) && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
+	$(KUSTOMIZE) build $(CONSUMER_OVERLAY) | kubectl delete -f -
 
 # For GitHub Actions CI.
 #
