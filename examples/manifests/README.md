@@ -16,13 +16,29 @@ The example consumer is designed to work with **OpenShift clusters of any size**
 
 `network-policy.yaml` applies a default-deny-ingress `NetworkPolicy` to the
 consumer pods, allowing traffic to the O-RAN ocloudNotifications API (port
-9043) only from the PTP event publisher namespace (`openshift-ptp`) and cluster
-monitoring (`openshift-monitoring`). This is defense-in-depth on top of mTLS +
-OAuth: it stops arbitrary in-cluster pods from even reaching the port. It is an
-example — adapt the selectors to your cluster, and constrain the publisher side
-(managed by ptp-operator in `openshift-ptp`) similarly. NetworkPolicy does not
-apply to hostNetwork pods, so the ptp daemon's port needs host-level firewalling
-instead.
+9043) only from the PTP event publisher namespace (`openshift-ptp`), cluster
+monitoring (`openshift-monitoring`), and the cluster's OVN-Kubernetes join
+subnet. This is defense-in-depth on top of mTLS + OAuth: it stops arbitrary
+in-cluster pods from even reaching the port. It is an example — adapt the
+selectors to your cluster, and constrain the publisher side (managed by
+ptp-operator in `openshift-ptp`) similarly.
+
+**Host-network push source (required for subscribe to work).** The PTP publisher
+(`linuxptp-daemon` / `cloud-event-proxy`) runs with `hostNetwork: true`, so the
+initial-notification push it sends to this consumer does **not** originate from a
+pod in `openshift-ptp` — on OVN-Kubernetes it is SNATed to the cluster's internal
+**join subnet** (default `100.64.0.0/16`). A `namespaceSelector` can never match
+it, so without an `ipBlock` for the join subnet the push is silently dropped and
+subscriptions never complete (no initial notification ⇒ CurrentState unavailable).
+`network-policy.yaml` therefore includes `ipBlock: 100.64.0.0/16` on port 9043.
+If your cluster overrides the join subnet
+(`network.operator/cluster: spec.defaultNetwork.ovnKubernetesConfig.ipv4.internalJoinSubnet`,
+formerly `v4InternalSubnet`), substitute that value; on non-OVN CNIs the source is
+typically the node IP instead.
+
+Note also that NetworkPolicy does not apply to hostNetwork pods, so the ptp
+daemon's **own** 9043 port (the publisher API) needs host-level firewalling
+rather than a NetworkPolicy.
 
 ## Prerequisites
 

@@ -218,6 +218,44 @@ spec:
 - **cert-manager**: Alternative certificate management solution
 - **Manual certificates**: Development and testing scenarios
 
+## Publisher Push Leg (Producer → Consumer Callback)
+
+The documentation above covers the **consumer** authenticating to the publisher
+(the control/pull leg: create subscription, GET CurrentState). There is a second,
+opposite leg that must also authenticate: when a subscription is created the
+**publisher** pushes an initial notification (and subsequent events) to the
+consumer's callback `EndpointUri`. When the consumer callback enforces mTLS +
+OAuth (as the secured overlay does), this push must present credentials too, or
+the callback returns 401 and the subscription is never established.
+
+This leg is implemented in the `redhat-cne/rest-api` library's push client
+(`Server.HTTPClient`, see rest-api `AUTHENTICATION.md` → *Outbound Push
+Authentication*) and wired by ptp-operator on the publisher side:
+
+- **Bearer token:** the publisher attaches its `linuxptp-daemon` ServiceAccount
+  token (re-read per request so rotated tokens stay current). This works with no
+  extra provisioning.
+- **Client certificate:** OpenShift Service CA mints **serverAuth-only** certs, so
+  the publisher's serving cert cannot be reused as a client cert. A dedicated
+  **clientAuth** keypair is supplied out-of-band via the optional
+  `ptp-event-publisher-client-tls` secret (ptp-operator mounts it at
+  `/etc/cloud-event-proxy/client-certs`, referenced by `clientCertPath`/
+  `clientKeyPath` in `ptp-event-publisher-auth`). When the secret is absent the
+  push falls back to bearer-token auth only.
+- **Consumer server CA trust:** the publisher verifies the consumer's callback
+  serving certificate using its `caCertPath` bundle (dual-purpose: ClientCAs for
+  inbound + RootCAs for outbound). If the consumer's serving cert is signed by a
+  non-Service-CA issuer, publish that CA into `ptp-event-publisher-client-ca` so
+  the operator folds it into the trust bundle.
+
+### NetworkPolicy requirement for the push
+
+Because `linuxptp-daemon` runs with `hostNetwork: true`, the push source is **not**
+a pod IP in `openshift-ptp`. On OVN-Kubernetes it is SNATed to the cluster's join
+subnet (default `100.64.0.0/16`), so the consumer `NetworkPolicy` must admit that
+`ipBlock` on the callback port — a `namespaceSelector` alone silently drops the
+push. See `examples/manifests/base/network-policy.yaml`.
+
 ## Testing and Validation
 
 ### Build Testing
