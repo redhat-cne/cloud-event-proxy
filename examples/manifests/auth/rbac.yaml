@@ -1,0 +1,59 @@
+# Secret provisioning is a one-time setup task performed by setup-secrets.sh, not
+# something the running consumer needs. Grant Secret write access to a dedicated
+# setup-only identity (consumer-setup-sa) rather than the runtime consumer-sa, so
+# a compromised consumer token cannot read or modify Secrets (CWE-200/CWE-269).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: consumer-setup-sa
+  namespace: cloud-events
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: consumer-setup-role
+  namespace: cloud-events
+rules:
+# create cannot be constrained by resourceNames (the name is only known once the
+# object exists), so it is kept in its own unrestricted rule.
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["create"]
+# get/update/patch are restricted to only the setup Secrets this identity owns,
+# so a compromised setup token cannot read or tamper with unrelated credentials
+# in the namespace (CWE-200).
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "update", "patch"]
+  resourceNames: ["server-ca-bundle", "consumer-client-certs"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: consumer-setup-rolebinding
+  namespace: cloud-events
+subjects:
+# Bound to the setup identity only — NOT the runtime consumer-sa.
+- kind: ServiceAccount
+  name: consumer-setup-sa
+  namespace: cloud-events
+roleRef:
+  kind: Role
+  name: consumer-setup-role
+  apiGroup: rbac.authorization.k8s.io
+---
+# Allows the consumer's in-process OAuth validator to create TokenReviews so it
+# can cryptographically verify bearer tokens (ServiceAccount JWTs and opaque
+# OpenShift OAuth tokens) presented on its notification/status endpoints.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: consumer-sa-auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: consumer-sa
+  namespace: cloud-events
+roleRef:
+  kind: ClusterRole
+  name: system:auth-delegator
+  apiGroup: rbac.authorization.k8s.io

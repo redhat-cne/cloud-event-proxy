@@ -23,12 +23,14 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 
 	ce "github.com/cloudevents/sdk-go/v2/event"
+	"github.com/redhat-cne/cloud-event-proxy/pkg/auth"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	ptpEvent "github.com/redhat-cne/sdk-go/pkg/event/ptp"
@@ -69,11 +71,19 @@ var (
 	mockResource       = "/mock"
 	mockResourceKey    = "mock"
 	httpEventPublisher string
+	authConfigPath     string
 	// map to track if subscriptions were created successfully for each publisher service
 	subscribed = make(map[string]bool)
 	subs       []*pubsub.PubSub
 	// Git commit of current build set at build time
 	GitCommit = "Undefined"
+	// Global authenticated REST client
+	authenticatedClient *restclient.Rest
+	// Global authentication configuration
+	authConfig *auth.AuthConfig
+	// callbackTokenValidator validates bearer tokens presented by the publisher
+	// when it pushes events to this consumer's callback endpoints (OAuth mode).
+	callbackTokenValidator *auth.TokenReviewValidator
 )
 
 func main() {
@@ -84,6 +94,7 @@ func main() {
 	flag.StringVar(&apiAddr, "api-addr", "", "Obsolete. The publisher API address is retrieved from httpEventPublisher flag")
 	flag.StringVar(&apiVersion, "api-version", "", "Obsolete. The version of event REST API is set to 2.0.")
 	flag.StringVar(&httpEventPublisher, "http-event-publishers", "", "Comma separated address of the publishers available.")
+	flag.StringVar(&authConfigPath, "auth-config", "", "Path to authentication configuration file (JSON format).")
 	flag.Parse()
 
 	if apiAddr != "" {
@@ -92,6 +103,11 @@ func main() {
 
 	if apiVersion != "" {
 		log.Warn("api-version flag is obsolete. Event REST API version is set to 2.0")
+	}
+
+	// Initialize authentication
+	if err := initializeAuthentication(); err != nil {
+		log.Fatalf("Failed to initialize authentication: %v", err)
 	}
 
 	nodeIP := os.Getenv("NODE_IP")
@@ -162,12 +178,129 @@ func main() {
 	time.Sleep(3 * time.Second)
 }
 
+// initializeAuthentication initializes the authentication configuration and client
+func initializeAuthentication() error {
+	if authConfigPath == "" {
+		log.Info("No authentication configuration provided, using basic HTTP client")
+		authenticatedClient = restclient.New()
+		authConfig = nil
+		return nil
+	}
+
+	// Load authentication configuration
+	var err error
+	authConfig, err = auth.LoadAuthConfig(authConfigPath)
+	if err != nil {
+		return fmt.Errorf("failed to load authentication configuration: %v", err)
+	}
+
+	// Print authentication configuration summary
+	log.Info(authConfig.GetConfigSummary())
+
+	// Create authenticated REST client
+	authenticatedClient, err = restclient.NewAuthenticated(authConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create authenticated REST client: %v", err)
+	}
+
+	// When OAuth is enabled the publisher pushes events to this consumer's
+	// callback carrying a bearer token; build the validator that verifies it via
+	// the Kubernetes TokenReview API. The consumer ServiceAccount must be bound
+	// to system:auth-delegator (see examples/manifests/auth/rbac.yaml).
+	if authConfig.EnableOAuth {
+		callbackTokenValidator, err = auth.NewTokenReviewValidator()
+		if err != nil {
+			return fmt.Errorf("failed to create TokenReview validator for callback authentication: %v", err)
+		}
+	}
+
+	log.Info("Authentication initialized successfully")
+	return nil
+}
+
+// callbackAuthMiddleware enforces on the consumer's inbound callback endpoints
+// (/event, /ack/event) the same authentication the publisher enforces on its
+// APIs: a same-pod loopback caller is trusted, otherwise every enabled mechanism
+// must pass - a verified client certificate when mTLS is enabled and a valid
+// bearer token (Kubernetes TokenReview) when OAuth is enabled. This closes the
+// O-RAN CR-0003 clause 4.1.1 gap for a consumer in a separate POD/VM: the pushed
+// CloudEvent is authenticated, not merely transported over TLS. It mirrors
+// rest-api's combinedAuthMiddleware, so CreateServerTLSConfig can keep
+// VerifyClientCertIfGiven (allowing OAuth-only and loopback) while presented
+// certificates are still required here when mTLS is on.
+func callbackAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		// No authentication configured: plain-HTTP callback, pass through.
+		if authConfig == nil || (!authConfig.EnableMTLS && !authConfig.EnableOAuth) {
+			next.ServeHTTP(w, req)
+			return
+		}
+		// Trusted loopback fast-path (same-pod producer self-call).
+		if isLoopbackRemoteAddr(req.RemoteAddr) {
+			next.ServeHTTP(w, req)
+			return
+		}
+		// mTLS: require a client certificate the TLS handshake already verified
+		// against the configured CA pool.
+		if authConfig.EnableMTLS {
+			if req.TLS == nil || len(req.TLS.PeerCertificates) == 0 {
+				log.Warnf("mTLS required but no client certificate provided for %s", req.URL.Path)
+				http.Error(w, "Client certificate required", http.StatusUnauthorized)
+				return
+			}
+		}
+		// OAuth: require and validate a bearer token.
+		if authConfig.EnableOAuth {
+			authHeader := req.Header.Get("Authorization")
+			if !strings.HasPrefix(authHeader, "Bearer ") {
+				log.Warnf("OAuth required but no bearer token provided for %s", req.URL.Path)
+				http.Error(w, "Bearer token required", http.StatusUnauthorized)
+				return
+			}
+			token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+			// Fail closed: OAuth is enabled but no validator was installed.
+			if callbackTokenValidator == nil {
+				log.Error("OAuth enabled but no TokenReview validator configured; rejecting callback")
+				http.Error(w, "token validation unavailable", http.StatusUnauthorized)
+				return
+			}
+			if _, err := callbackTokenValidator.ValidateToken(req.Context(), token, authConfig.RequiredAudiences); err != nil {
+				log.Warnf("OAuth token validation failed for %s: %v", req.URL.Path, err)
+				http.Error(w, "Invalid OAuth token", http.StatusUnauthorized)
+				return
+			}
+		}
+		next.ServeHTTP(w, req)
+	})
+}
+
+// isLoopbackRemoteAddr reports whether an http.Request RemoteAddr is a loopback
+// address (a same-pod caller), which is trusted and exempt from callback auth.
+func isLoopbackRemoteAddr(remoteAddr string) bool {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		host = remoteAddr
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// getScheme returns the appropriate URL scheme based on authentication configuration.
+// HTTPS is required whenever a credential is sent on the wire: mTLS presents a client
+// certificate, and OAuth sends a bearer token that must never traverse cleartext HTTP
+// (CWE-319). Returning "http" only when no authentication is configured.
+func getScheme() string {
+	if authConfig != nil && (authConfig.EnableMTLS || authConfig.EnableOAuth) {
+		return "https"
+	}
+	return "http"
+}
+
 func deleteAllSubscriptions() {
-	deleteURL := &types.URI{URL: url.URL{Scheme: "http",
+	deleteURL := &types.URI{URL: url.URL{Scheme: getScheme(),
 		Host: apiAddr,
 		Path: apiPath + "subscriptions"}}
-	rc := restclient.New()
-	rc.Delete(deleteURL)
+	authenticatedClient.Delete(deleteURL)
 	for p := range subscribed {
 		subscribed[p] = false
 	}
@@ -176,14 +309,13 @@ func deleteAllSubscriptions() {
 // checkSubscriptions gets all subscriptions
 // and returns true if there are any subscriptions
 func checkSubscriptions() bool {
-	url := &types.URI{URL: url.URL{Scheme: "http",
+	url := &types.URI{URL: url.URL{Scheme: getScheme(),
 		Host: apiAddr,
 		Path: apiPath + "subscriptions"}}
-	rc := restclient.New()
 
 	var subs = []pubsub.PubSub{}
 	var subB []byte
-	status, subB, err := rc.Get(url)
+	status, subB, err := authenticatedClient.Get(url)
 	if status != http.StatusOK {
 		log.Errorf("failed to list subscriptions, status %d", status)
 		if err != nil {
@@ -250,10 +382,16 @@ RETRY:
 }
 
 func createSubscription(resourceAddress string) (sub pubsub.PubSub, status int, err error) {
-	subURL := &types.URI{URL: url.URL{Scheme: "http",
+	subURL := &types.URI{URL: url.URL{Scheme: getScheme(),
 		Host: apiAddr,
 		Path: apiPath + "subscriptions"}}
-	endpointURL := &types.URI{URL: url.URL{Scheme: "http",
+	// Register the callback EndpointURI with the same scheme used for outbound
+	// calls: https:// when authentication is enabled. Per O-RAN CR-0003 clause
+	// 4.1.1 a callback reachable from a separate POD/VM must be protected by an
+	// authorization mechanism (clause 3.2); registering a plaintext http://
+	// callback would have the producer push event data in the clear (CWE-319)
+	// and accept unauthenticated, spoofable events.
+	endpointURL := &types.URI{URL: url.URL{Scheme: getScheme(),
 		Host: localAPIAddr,
 		Path: "event"}}
 
@@ -261,8 +399,7 @@ func createSubscription(resourceAddress string) (sub pubsub.PubSub, status int, 
 	var subB []byte
 
 	if subB, err = json.Marshal(&sub); err == nil {
-		rc := restclient.New()
-		status, subB = rc.PostWithReturn(subURL, subB)
+		status, subB = authenticatedClient.PostWithReturn(subURL, subB)
 		if status == http.StatusCreated {
 			err = json.Unmarshal(subB, &sub)
 		} else {
@@ -280,11 +417,10 @@ func createSubscription(resourceAddress string) (sub pubsub.PubSub, status int, 
 // getCurrentState get event state for the resource
 func getCurrentState(resource string) error {
 	//create publisher
-	url := &types.URI{URL: url.URL{Scheme: "http",
+	url := &types.URI{URL: url.URL{Scheme: getScheme(),
 		Host: apiAddr,
 		Path: fmt.Sprintf("%s%s", apiPath, fmt.Sprintf("%s/CurrentState", resource[1:]))}}
-	rc := restclient.New()
-	status, cloudEvent, err := rc.Get(url)
+	status, cloudEvent, err := authenticatedClient.Get(url)
 	if status != http.StatusOK {
 		if err != nil {
 			log.Error(err)
@@ -298,18 +434,40 @@ func getCurrentState(resource string) error {
 
 // Consumer webserver
 func server() {
-	http.HandleFunc("/event", getEvent)
-	http.HandleFunc("/ack/event", ackEvent)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/event", getEvent)
+	mux.HandleFunc("/ack/event", ackEvent)
 
 	port := extractPort(localAPIAddr)
-	log.Infof("Starting local API listening to %s", port)
 	server := &http.Server{
 		Addr:              port,
 		ReadHeaderTimeout: 3 * time.Second,
+		// Authenticate pushed callbacks (mTLS client cert and/or OAuth bearer
+		// token) when auth is enabled; a no-op pass-through otherwise.
+		Handler: callbackAuthMiddleware(mux),
 	}
 
-	err := server.ListenAndServe()
-	if err != nil {
+	// When authentication is enabled the callback EndpointURI is registered as
+	// https:// (see getScheme/createSubscription), so the local /event server
+	// must terminate TLS and authenticate the pushing producer. This mirrors the
+	// control/pull path and closes the CR-0003 clause 4.1.1 gap for consumers in
+	// a separate POD/VM.
+	if getScheme() == "https" {
+		tlsConfig, err := authConfig.CreateServerTLSConfig()
+		if err != nil {
+			log.Fatalf("failed to create TLS config for callback server: %v", err)
+		}
+		server.TLSConfig = tlsConfig
+		log.Infof("Starting local API (HTTPS, mTLS) listening to %s", port)
+		// Certs are supplied via server.TLSConfig.Certificates.
+		if err = server.ListenAndServeTLS("", ""); err != nil {
+			log.Errorf("error creating event server %s", err)
+		}
+		return
+	}
+
+	log.Infof("Starting local API listening to %s", port)
+	if err := server.ListenAndServe(); err != nil {
 		log.Errorf("error creating event server %s", err)
 	}
 }
@@ -351,9 +509,13 @@ func processEvent(data []byte) error {
 		log.Errorf("failed to unmarshal event, %v", err)
 		return err
 	}
-	latency := time.Now().UnixMilli() - e.Context.GetTime().UnixMilli()
+	// Microsecond resolution: the publisher->consumer hop is in-node (localhost)
+	// on an SNO, so per-event auth overhead is sub-millisecond and invisible at
+	// ms granularity. Log µs (and keep a ms figure for readability) so the
+	// baseline-vs-mTLS/OAuth A/B delta is measurable.
+	latencyUs := time.Now().UnixMicro() - e.Context.GetTime().UnixMicro()
 	// set log to Info level for performance measurement
-	log.Infof("Latency for the event: %v ms", latency)
+	log.Infof("Latency for the event: %d us (%.3f ms)", latencyUs, float64(latencyUs)/1000.0)
 	log.Infof("Event: %s", e.String())
 	return nil
 }
@@ -402,11 +564,27 @@ func pullEvents() {
 }
 
 func publisherHealthCheck(apiAddr string) bool {
-	healthURL := &types.URI{URL: url.URL{Scheme: "http",
+	healthURL := &types.URI{URL: url.URL{Scheme: getScheme(),
 		Host: apiAddr,
 		Path: apiPath + "health"}}
-	ok, _ := common.APIHealthCheck(healthURL, HealthCheckRetryInterval*time.Second)
-	return ok
+
+	// Use authenticated client for health checks when authentication is enabled
+	for i := 0; i <= 5; i++ {
+		log.Infof("health check %s", healthURL.String())
+		status, _, err := authenticatedClient.Get(healthURL)
+		if err != nil {
+			log.Warnf("try %d, return health check of the rest service for error %v", i, err)
+			time.Sleep(HealthCheckRetryInterval * time.Second)
+			continue
+		}
+		if status == http.StatusOK {
+			log.Info("rest service returned healthy status")
+			return true
+		}
+		log.Warnf("try %d, health check returned status %d", i, status)
+		time.Sleep(HealthCheckRetryInterval * time.Second)
+	}
+	return false
 }
 
 func updateHTTPPublishers(nodeIP, nodeName string, addr ...string) {

@@ -78,6 +78,11 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
 		return
 	}
+	if err = validateEndpointURI(endPointURI); err != nil {
+		respondWithStatusCode(w, http.StatusBadRequest, err.Error())
+		localmetrics.UpdateSubscriptionCount(localmetrics.FAILCREATE, 1)
+		return
+	}
 	for id, address := range s.subscriberAPI.GetClientIDAddressByResource(sub.GetResource()) {
 		if address.String() == endPointURI {
 			respondWithStatusCode(w, http.StatusConflict,
@@ -122,7 +127,11 @@ func (s *Server) createSubscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	restClient := restclient.New()
+	// Use the server's SSRF-hardened HTTP client (resolve-then-validate dialer
+	// plus no-redirect policy) for the initial-notification POST to the
+	// caller-supplied EndpointURI, rather than the default client which would
+	// follow redirects and dial arbitrary resolved addresses.
+	restClient := restclient.NewWithClient(s.HTTPClient)
 	// make sure event ID is unique
 	out.Data.SetID(uuid.New().String())
 	status, err := restClient.PostCloudEvent(sub.EndPointURI, *out.Data)
@@ -199,19 +208,33 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if pub.GetEndpointURI() != "" {
-		response, err = s.HTTPClient.Post(pub.GetEndpointURI(), cloudevents.ApplicationJSON, nil)
-		if err != nil {
-			log.Infof("there was an error validating the publisher endpointurl %v, publisher won't be created.", err)
+		if err = validateEndpointURI(pub.GetEndpointURI()); err != nil {
 			localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
 			respondWithError(w, err.Error())
 			return
 		}
-		defer response.Body.Close()
-		if response.StatusCode != http.StatusNoContent {
-			log.Infof("there was an error validating endpointurl %s returned status code %d", pub.GetEndpointURI(), response.StatusCode)
-			localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
-			respondWithError(w, "return url validation check failed for create publisher,check endpointURI")
-			return
+		// A loopback endpointURI is the server's own in-pod dummy callback: the
+		// ptp plugin self-registers its publishers against localhost. Under mTLS
+		// the reachability probe would dial https://localhost, but the Service-CA
+		// serving cert only carries the *.svc SANs, so hostname verification can
+		// never succeed for localhost. Loopback callers are already trusted via
+		// the auth loopback fast-path, so skip the reachability POST for them.
+		// The static SSRF checks in validateEndpointURI above still apply.
+		if !isLoopbackEndpointURI(pub.GetEndpointURI()) {
+			response, err = s.HTTPClient.Post(pub.GetEndpointURI(), cloudevents.ApplicationJSON, nil)
+			if err != nil {
+				log.Infof("there was an error validating the publisher endpointurl %v, publisher won't be created.", err)
+				localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
+				respondWithError(w, err.Error())
+				return
+			}
+			defer response.Body.Close()
+			if response.StatusCode != http.StatusNoContent {
+				log.Infof("there was an error validating endpointurl %s returned status code %d", pub.GetEndpointURI(), response.StatusCode)
+				localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
+				respondWithError(w, "return url validation check failed for create publisher,check endpointURI")
+				return
+			}
 		}
 	}
 

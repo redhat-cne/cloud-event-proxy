@@ -1,0 +1,12 @@
+# Secured overlay patch: have the OpenShift Service CA operator mint a serving
+# certificate for the consumer's callback server (push leg). The publisher opens
+# a TLS connection to consumer-events-subscription-service:9043 to deliver
+# CloudEvents, so this Service needs a server cert. Its Service CA-signed serving
+# cert is serverAuth, which is exactly what a server presents.
+apiVersion: v1
+kind: Service
+metadata:
+  name: consumer-events-subscription-service
+  namespace: cloud-events
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: consumer-server-certs
