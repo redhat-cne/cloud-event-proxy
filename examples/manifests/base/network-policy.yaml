@@ -26,13 +26,31 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    # 1. Allow the PTP event publisher (producer) to deliver event callbacks to
-    #    the consumer's subscription endpoint. Tighten further by adding a
-    #    podSelector for the publisher pod label if known.
+    # 1. Allow the PTP event publisher (producer) to deliver event callbacks
+    #    (the initial notification pushed when a subscription is created, plus
+    #    subsequent state-change events) to this endpoint.
+    #
+    #    IMPORTANT: the publisher (linuxptp-daemon / cloud-event-proxy) runs with
+    #    hostNetwork: true, so its push traffic does NOT leave a pod in
+    #    openshift-ptp. On OVN-Kubernetes a host-network source reaching a
+    #    ClusterIP is SNATed to the cluster's internal "join" subnet, which no
+    #    namespaceSelector can match — so WITHOUT the ipBlock below the push is
+    #    silently dropped and subscribe fails (the consumer never receives the
+    #    initial notification, so CurrentState stays unavailable). The
+    #    namespaceSelector is retained for clusters/CNIs where the publisher is
+    #    pod-networked; the ipBlock is what admits the host-network push on OVN-K.
+    #
+    #    100.64.0.0/16 is the OVN-Kubernetes DEFAULT join subnet. If your cluster
+    #    overrides it (network.operator/cluster:
+    #    spec.defaultNetwork.ovnKubernetesConfig.ipv4.internalJoinSubnet, formerly
+    #    v4InternalSubnet), substitute that value. On non-OVN CNIs the source is
+    #    typically the node IP instead — allow the node address range there.
     - from:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: openshift-ptp
+        - ipBlock:
+            cidr: 100.64.0.0/16
       ports:
         - protocol: TCP
           port: 9043
