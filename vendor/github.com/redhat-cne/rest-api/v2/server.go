@@ -104,6 +104,15 @@ type AuthConfig struct {
 	CACertPath     string `json:"caCertPath"`
 	ServerCertPath string `json:"serverCertPath"`
 	ServerKeyPath  string `json:"serverKeyPath"`
+	// ClientCertPath/ClientKeyPath are the certificate this server presents when
+	// it acts as an mTLS *client* for outbound pushes (the initial-notification
+	// and publisher-endpoint-validation POSTs). A dedicated clientAuth keypair is
+	// required because the server's own serving certificate is serverAuth-only
+	// and a crypto/tls server rejects it as a client cert. When empty the push
+	// client presents no certificate (prior behavior), which an mTLS-enforcing
+	// callback rejects with "client certificate required".
+	ClientCertPath string `json:"clientCertPath"`
+	ClientKeyPath  string `json:"clientKeyPath"`
 	UseServiceCA   bool   `json:"useServiceCA"` // Use OpenShift Service CA (recommended for all cluster sizes)
 
 	// OAuth 2.0 / bearer-token configuration. Tokens are validated by the
@@ -148,6 +157,10 @@ func (c *AuthConfig) GetConfigSummary() string {
 		summary += fmt.Sprintf("    CA Cert Path: %s\n", c.CACertPath)
 		summary += fmt.Sprintf("    Server Cert Path: %s\n", c.ServerCertPath)
 		summary += fmt.Sprintf("    Server Key Path: %s\n", c.ServerKeyPath)
+		if c.ClientCertPath != "" || c.ClientKeyPath != "" {
+			summary += fmt.Sprintf("    Client Cert Path: %s\n", c.ClientCertPath)
+			summary += fmt.Sprintf("    Client Key Path: %s\n", c.ClientKeyPath)
+		}
 		summary += fmt.Sprintf("    Use Service CA: %t\n", c.UseServiceCA)
 	}
 	summary += fmt.Sprintf("  Enable OAuth: %t\n", c.EnableOAuth)
@@ -350,14 +363,43 @@ func InitServer(port int, apiHost, apiPath, storePath string,
 				RootCAs:    ServerInstance.caCertPool,
 				MinVersion: tls.VersionTLS12,
 			}
+			// Present a client certificate for outbound pushes when one is
+			// configured. An mTLS-enforcing callback requires the pusher to
+			// authenticate with a clientAuth cert; the server's own serving cert
+			// is serverAuth-only and cannot be reused, so a dedicated keypair is
+			// supplied via ClientCertPath/ClientKeyPath. On load failure we log
+			// and proceed without a cert so the callback's own 401 surfaces the
+			// problem rather than crashing the server at startup.
+			if authConfig.ClientCertPath != "" && authConfig.ClientKeyPath != "" {
+				clientCert, err := tls.LoadX509KeyPair(authConfig.ClientCertPath, authConfig.ClientKeyPath)
+				if err != nil {
+					log.Errorf("InitServer: failed to load push client certificate from %s / %s: %v; outbound mTLS pushes will present no client cert",
+						authConfig.ClientCertPath, authConfig.ClientKeyPath, err)
+				} else {
+					tlsClientConfig.Certificates = []tls.Certificate{clientCert}
+					log.Info("InitServer: loaded client certificate for outbound mTLS pushes")
+				}
+			}
 			// ApplyTLSProfile may raise MinVersion to the cluster-configured floor.
 			authConfig.ApplyTLSProfile(tlsClientConfig)
+			var pushTransport http.RoundTripper = &http.Transport{
+				MaxIdleConnsPerHost: 20,
+				TLSClientConfig:     tlsClientConfig,
+				DialContext:         safeDial,
+			}
+			// When OAuth is enabled the callback also requires a bearer token, so
+			// wrap the transport to attach this client's ServiceAccount token to
+			// every outbound push. The token is re-read per request inside the
+			// RoundTripper so rotated projected tokens are always current.
+			if authConfig.EnableOAuth && authConfig.ServiceAccountToken != "" {
+				pushTransport = &bearerTokenRoundTripper{
+					base:      pushTransport,
+					tokenPath: authConfig.ServiceAccountToken,
+				}
+				log.Info("InitServer: outbound mTLS pushes will carry a ServiceAccount bearer token")
+			}
 			ServerInstance.HTTPClient = &http.Client{
-				Transport: &http.Transport{
-					MaxIdleConnsPerHost: 20,
-					TLSClientConfig:     tlsClientConfig,
-					DialContext:         safeDial,
-				},
+				Transport:     pushTransport,
 				Timeout:       10 * time.Second,
 				CheckRedirect: noRedirectPolicy,
 			}
