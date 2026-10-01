@@ -95,6 +95,24 @@ func isLoopbackRemoteAddr(remoteAddr string) bool {
 	return host == "localhost"
 }
 
+// isLoopbackEndpointURI reports whether an endpoint URI's host is a loopback
+// address (localhost, 127.0.0.0/8 or ::1). The ptp plugin self-registers its
+// publishers with an in-pod loopback endpointURI; such an endpoint is the
+// server's own dummy callback, already covered by the auth loopback fast-path,
+// so its reachability need not (and under mTLS cannot) be probed against a
+// Service-CA serving cert that only carries the *.svc SANs.
+func isLoopbackEndpointURI(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return host == "localhost"
+}
+
 // validateEndpointURI performs SSRF hardening on a caller-supplied callback /
 // endpoint URI (subscriber EndpointUri or publisher endpoint). Per O-RAN
 // RHT-0003 the host may be localhost, an IP, or an FQDN, so those are allowed;
@@ -175,6 +193,32 @@ func newSafeDialContext(base *net.Dialer) func(ctx context.Context, network, add
 // the caller unfollowed.
 func noRedirectPolicy(_ *http.Request, _ []*http.Request) error {
 	return http.ErrUseLastResponse
+}
+
+// bearerTokenRoundTripper injects a ServiceAccount bearer token into the
+// Authorization header of every outbound request. It wraps the push client's
+// transport so the server can authenticate to OAuth-enforcing callbacks (the
+// initial-notification and publisher-endpoint-validation POSTs). The token is
+// read from tokenPath per request so that rotated projected ServiceAccount
+// tokens are always current without restarting the server. A read failure is
+// logged and the request proceeds without the header, letting the callback
+// return its own 401 rather than silently dropping the push.
+type bearerTokenRoundTripper struct {
+	base      http.RoundTripper
+	tokenPath string
+}
+
+func (t *bearerTokenRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	data, err := os.ReadFile(t.tokenPath)
+	if err != nil {
+		log.Errorf("failed to read ServiceAccount token from %s for outbound push: %v", t.tokenPath, err)
+	} else if token := strings.TrimSpace(string(data)); token != "" {
+		// Clone the request before mutating headers: the RoundTripper contract
+		// forbids modifying the caller's *http.Request.
+		req = req.Clone(req.Context())
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	return t.base.RoundTrip(req)
 }
 
 // tlsVersionFromString maps a TLS version name (as used by the OpenShift

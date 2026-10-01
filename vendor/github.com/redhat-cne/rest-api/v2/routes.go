@@ -213,19 +213,28 @@ func (s *Server) createPublisher(w http.ResponseWriter, r *http.Request) {
 			respondWithError(w, err.Error())
 			return
 		}
-		response, err = s.HTTPClient.Post(pub.GetEndpointURI(), cloudevents.ApplicationJSON, nil)
-		if err != nil {
-			log.Infof("there was an error validating the publisher endpointurl %v, publisher won't be created.", err)
-			localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
-			respondWithError(w, err.Error())
-			return
-		}
-		defer response.Body.Close()
-		if response.StatusCode != http.StatusNoContent {
-			log.Infof("there was an error validating endpointurl %s returned status code %d", pub.GetEndpointURI(), response.StatusCode)
-			localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
-			respondWithError(w, "return url validation check failed for create publisher,check endpointURI")
-			return
+		// A loopback endpointURI is the server's own in-pod dummy callback: the
+		// ptp plugin self-registers its publishers against localhost. Under mTLS
+		// the reachability probe would dial https://localhost, but the Service-CA
+		// serving cert only carries the *.svc SANs, so hostname verification can
+		// never succeed for localhost. Loopback callers are already trusted via
+		// the auth loopback fast-path, so skip the reachability POST for them.
+		// The static SSRF checks in validateEndpointURI above still apply.
+		if !isLoopbackEndpointURI(pub.GetEndpointURI()) {
+			response, err = s.HTTPClient.Post(pub.GetEndpointURI(), cloudevents.ApplicationJSON, nil)
+			if err != nil {
+				log.Infof("there was an error validating the publisher endpointurl %v, publisher won't be created.", err)
+				localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
+				respondWithError(w, err.Error())
+				return
+			}
+			defer response.Body.Close()
+			if response.StatusCode != http.StatusNoContent {
+				log.Infof("there was an error validating endpointurl %s returned status code %d", pub.GetEndpointURI(), response.StatusCode)
+				localmetrics.UpdatePublisherCount(localmetrics.FAILCREATE, 1)
+				respondWithError(w, "return url validation check failed for create publisher,check endpointURI")
+				return
+			}
 		}
 	}
 
