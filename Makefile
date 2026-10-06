@@ -8,6 +8,16 @@ VERSION ?=latest
 IMG ?= quay.io/openshift/origin-cloud-event-proxy:$(VERSION)
 CONSUMER_IMG ?= quay.io/redhat-cne/cloud-event-consumer:$(VERSION)
 
+# Consumer deployment security. By default `make deploy-consumer` deploys the
+# plaintext consumer (HTTP, no auth) exactly as before. Opt in to mTLS + OAuth
+# with `make deploy-consumer SECURED=true` (or `make deploy-consumer-secured`).
+SECURED ?=
+# Where the openssl client CA / client cert are generated (default path only).
+DIR_CERTS ?= /tmp/certs
+# Client-cert provisioning method for the secured path: openssl (default) or
+# cert-manager when CERT_MANAGER=true.
+CERT_MANAGER ?= false
+
 export GO111MODULE=on
 export CGO_ENABLED=1
 export GOFLAGS=-mod=vendor
@@ -107,36 +117,63 @@ functests:
 	SUITE=./test/cne hack/run-functests.sh
 
 # Deploy all in the configured Kubernetes cluster in ~/.kube/config
-deploy-consumer:kustomize
-	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
-	$(KUSTOMIZE) build ./examples/manifests | kubectl apply -f -
+#
+# Default: plaintext consumer (HTTP, no auth). `make deploy-consumer SECURED=true`
+# (or `make deploy-consumer-secured`) renders the ./examples/manifests/secured
+# overlay and runs auth/setup-secrets.sh to provision the mTLS + OAuth material.
+ifeq ($(SECURED),true)
+CONSUMER_OVERLAY = ./examples/manifests/secured
+else
+CONSUMER_OVERLAY = ./examples/manifests
+endif
 
-undeploy-consumer:kustomize
-	cd ./examples/manifests && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
-	$(KUSTOMIZE) build ./examples/manifests | kubectl delete -f -
+deploy-consumer: kustomize ## Deploy consumer (plaintext; set SECURED=true for mTLS+OAuth)
+	cd $(CONSUMER_OVERLAY) && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
+ifeq ($(SECURED),true)
+	@echo "Deploying cloud-event-consumer with mTLS + OAuth (secured overlay)..."
+	$(KUSTOMIZE) build $(CONSUMER_OVERLAY) | kubectl apply -f -
+	@echo "Provisioning authentication material (CERT_MANAGER=$(CERT_MANAGER), DIR_CERTS=$(DIR_CERTS))..."
+	DIR_CERTS=$(DIR_CERTS) CERT_MANAGER=$(CERT_MANAGER) ./examples/manifests/auth/setup-secrets.sh
+	@echo "Secured consumer deployment completed!"
+else
+	@echo "Deploying cloud-event-consumer (plaintext)..."
+	$(KUSTOMIZE) build $(CONSUMER_OVERLAY) | kubectl apply -f -
+	@echo "Consumer deployment completed! (plaintext; use SECURED=true for mTLS+OAuth)"
+endif
 
-# For GitHub Actions CI
+deploy-consumer-secured: ## Deploy consumer with mTLS + OAuth (shortcut for deploy-consumer SECURED=true)
+	$(MAKE) deploy-consumer SECURED=true
+
+undeploy-consumer: kustomize ## Undeploy consumer
+	cd $(CONSUMER_OVERLAY) && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
+	$(KUSTOMIZE) build $(CONSUMER_OVERLAY) | kubectl delete -f -
+
+# For GitHub Actions CI.
+#
+# The -buildmode=plugin builds below need GO111MODULE=off, which resolves imports
+# from GOPATH/src, so this target stages the project and its vendored deps under
+# GOPATH/src. Do this in a dedicated, throwaway GOPATH ($(GHA_GOPATH)) instead of
+# the developer's shared GOPATH: cleaning stale vendored copies removes whole
+# roots (github.com, k8s.io, ...), which against ~/go would irreversibly delete
+# unrelated repositories. Override GHA_GOPATH to relocate the staging area.
+GHA_GOPATH ?= /tmp/cloud-event-proxy-gha-gopath
 gha:
-	mkdir -p $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy
+	@echo "Staging plugin build in isolated GOPATH: $(GHA_GOPATH)"
+	rm -rf "$(GHA_GOPATH)/src"
+	mkdir -p "$(GHA_GOPATH)/src/github.com/redhat-cne/cloud-event-proxy"
 	@if [ "$(_SYS_GOPATH)" = "$(_SYS_GOROOT)" ] && [ -n "$(_SYS_GOROOT)" ]; then \
 		echo "Cleaning stale vendor copies from GOROOT/src..."; \
 		for d in golang.org github.com k8s.io sigs.k8s.io google.golang.org; do \
 			rm -rf "$(_SYS_GOROOT)/src/$$d" 2>/dev/null || true; \
 		done; \
 	fi
-	@if [ "$$(realpath $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy)" != "$$(realpath .)" ]; then \
-		echo "✅ Safe to delete: cleaning GOPATH workspace..."; \
-		rm -rf $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy/*; \
-		cp -r cmd examples pkg plugins test $(GOPATH)/src/github.com/redhat-cne/cloud-event-proxy; \
-		cp -r vendor/* $(GOPATH)/src; \
-		rm -rf /tmp/sub-store && mkdir -p /tmp/sub-store; \
-	else \
-		echo "⚠️ Skipping delete: GOPATH is pointing to current working directory!"; \
-	fi
+	cp -r cmd examples pkg plugins test "$(GHA_GOPATH)/src/github.com/redhat-cne/cloud-event-proxy"
+	cp -r vendor/* "$(GHA_GOPATH)/src"
+	rm -rf /tmp/sub-store && mkdir -p /tmp/sub-store
 
-	PATH=$(_MOD_GOROOT)/bin:$$PATH GOROOT=$(_MOD_GOROOT) GO111MODULE=off go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
-	PATH=$(_MOD_GOROOT)/bin:$$PATH GOROOT=$(_MOD_GOROOT) GO111MODULE=off go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
-	PATH=$(_MOD_GOROOT)/bin:$$PATH GOROOT=$(_MOD_GOROOT) GO111MODULE=off STORE_PATH=/tmp/sub-store go test ./... --tags=unittests -coverprofile=cover.out
+	PATH=$(_MOD_GOROOT)/bin:$$PATH GOROOT=$(_MOD_GOROOT) GOPATH=$(GHA_GOPATH) GO111MODULE=off go build -a -o plugins/ptp_operator_plugin.so -buildmode=plugin plugins/ptp_operator/ptp_operator_plugin.go
+	PATH=$(_MOD_GOROOT)/bin:$$PATH GOROOT=$(_MOD_GOROOT) GOPATH=$(GHA_GOPATH) GO111MODULE=off go build -a -o plugins/mock_plugin.so -buildmode=plugin plugins/mock/mock_plugin.go
+	PATH=$(_MOD_GOROOT)/bin:$$PATH GOROOT=$(_MOD_GOROOT) GOPATH=$(GHA_GOPATH) GO111MODULE=off STORE_PATH=/tmp/sub-store go test ./... --tags=unittests -coverprofile=cover.out
 
 docker-build:
 	# make sure build the right target when developer using a Mac

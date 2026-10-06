@@ -1,0 +1,51 @@
+# Secured overlay patch: wire mTLS + OAuth into the consumer Deployment.
+#
+# volumeMounts/volumes merge by name (strategic merge), so only the auth items
+# are listed here - the base pubsubstore volume/mount is preserved. `args` has no
+# merge key, so the FULL arg list is repeated with --auth-config appended.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloud-consumer-deployment
+  namespace: cloud-events
+spec:
+  template:
+    spec:
+      containers:
+        - name: cloud-event-consumer
+          args:
+            - "--local-api-addr=consumer-events-subscription-service.cloud-events.svc.cluster.local:9043"
+            - "--api-path=/api/ocloudNotifications/v2/"
+            - "--http-event-publishers=ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043"
+            - "--auth-config=/etc/cloud-event-consumer/auth/config.json"
+          volumeMounts:
+            # Consumer client keypair (mTLS to the publisher). clientAuth cert
+            # minted out-of-band (openssl or cert-manager) - Service CA serving
+            # certs are serverAuth-only and cannot be used here.
+            - name: client-certs
+              mountPath: /etc/cloud-event-consumer/client-certs
+              readOnly: true
+            # Trust anchor to verify the publisher's Service CA-signed server cert.
+            - name: ca-bundle
+              mountPath: /etc/cloud-event-consumer/ca-bundle
+              readOnly: true
+            # Serving cert for the consumer's own callback server (push leg).
+            - name: server-certs
+              mountPath: /etc/cloud-event-consumer/server-certs
+              readOnly: true
+            - name: auth-config
+              mountPath: /etc/cloud-event-consumer/auth
+              readOnly: true
+      volumes:
+        - name: client-certs
+          secret:
+            secretName: consumer-client-certs
+        - name: ca-bundle
+          secret:
+            secretName: server-ca-bundle
+        - name: server-certs
+          secret:
+            secretName: consumer-server-certs
+        - name: auth-config
+          configMap:
+            name: consumer-auth-config
