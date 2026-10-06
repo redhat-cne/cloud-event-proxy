@@ -380,13 +380,13 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 			log.Errorf("GM Status is not in right format %s", output)
 			return
 		}
-		ptpStats.CheckSource(master, configName, ts2phcProcessName)
 	} else {
 		return
 	}
 	iface := fields[3]
 	syncState := fields[5]
-	masterType := types.IFace(MasterClockType)
+	gmClockNameType := types.IFace(stats.GMMainClockName)
+	ptpStats.CheckSource(gmClockNameType, configName, ts2phcProcessName)
 
 	clockState := event.ClockState{
 		State:       GetSyncState(syncState),
@@ -398,16 +398,18 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 		NodeName:    ptpNodeName,
 	}
 	aliasValue := alias.GetAlias(iface)
-	if ptpStats[masterType].Alias() != aliasValue {
-		ptpStats[masterType].SetAlias(aliasValue)
+	if ptpStats[gmClockNameType].Alias() != aliasValue {
+		ptpStats[gmClockNameType].SetAlias(aliasValue)
 	}
 	SyncState.With(map[string]string{"process": processName, "node": ptpNodeName, "iface": aliasValue}).Set(GetSyncStateID(syncState))
 	// status metrics
-	ptpStats[masterType].SetPtpDependentEventState(clockState, ptpStats.HasMetrics(processName), ptpStats.HasMetricHelp(processName))
+	ptpStats[gmClockNameType].SetPtpDependentEventState(clockState, ptpStats.HasMetrics(processName), ptpStats.HasMetricHelp(processName))
 
-	// If GM is locked/Freerun/Holdover then ptp state change event
+	// Keep T-GM aggregate state separate from the generic master state. The latter
+	// is also updated by faster ptp4l/ts2phc paths, which can otherwise consume the
+	// recovery transition before T-GM-STATUS publishes it.
 	masterResource := fmt.Sprintf("%s/%s", aliasValue, MasterClockType)
-	lastClockState := ptpStats[masterType].LastSyncState()
+	lastClockState := ptpStats[gmClockNameType].LastSyncState()
 
 	// When GM is enabled, there is only one event happening at the GM level for now, so it is not being sent to the state decision routine.
 	// LOCKED -->FREERUN
@@ -417,15 +419,15 @@ func (p *PTPEventManager) ParseGMLogs(processName, configName, output string, fi
 	//nolint:dogsled // Ignoring lint warning for blank identifiers in GetDependsOnValueState
 	_, phaseOffset, _, _ := ptpStats[types.IFace(iface)].GetDependsOnValueState(dpllProcessName, pointer.String(iface), phaseStatus)
 	// do not process error , if dpll phase is not available then it will print large offset forT-GM offset
-	ptpStats[masterType].SetLastOffset(int64(phaseOffset))
-	lastOffset := ptpStats[masterType].LastOffset()
+	ptpStats[gmClockNameType].SetLastOffset(int64(phaseOffset))
+	lastOffset := ptpStats[gmClockNameType].LastOffset()
 
 	if clockState.State != lastClockState && clockState.State != "" { // publish directly here
 		log.Infof("%s sync state %s, last ptp state is : %s", masterResource, clockState.State, lastClockState)
-		ptpStats[masterType].SetLastSyncState(clockState.State)
+		ptpStats[gmClockNameType].SetLastSyncState(clockState.State)
 		p.PublishEvent(clockState.State, lastOffset, masterResource, ptp.PtpStateChange)
 		p.lastOverallGMState = GetSyncState(syncState)
-		UpdateSyncStateMetrics(processName, aliasValue, ptpStats[masterType].LastSyncState())
+		UpdateSyncStateMetrics(processName, aliasValue, ptpStats[gmClockNameType].LastSyncState())
 		UpdatePTPOffsetMetrics(processName, processName, aliasValue, float64(lastOffset))
 	}
 }
