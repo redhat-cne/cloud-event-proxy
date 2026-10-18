@@ -334,7 +334,7 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 												if numSubDeleted, err = scConfig.SubscriberAPI.DeleteAllSubscriptionsForClient(clientID); err != nil {
 													log.Errorf("failed to delete all subscriptions for client %s: %s", clientID.String(), err.Error())
 												} else {
-													cleanupConfigMap(d.ClientID)
+													cleanupConfigMap(clientID)
 												}
 												apiMetrics.UpdateSubscriptionCount(apiMetrics.ACTIVE, -(numSubDeleted))
 											} else {
