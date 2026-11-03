@@ -358,6 +358,7 @@ func InitServer(port int, apiHost, apiPath, storePath string,
 		// blocked (link-local / metadata / multicast) addresses before
 		// connecting, closing the SSRF DNS-rebinding window for endpoint checks.
 		safeDial := newSafeDialContext(&net.Dialer{Timeout: 10 * time.Second})
+		var pushTransport http.RoundTripper
 		if authConfig != nil && authConfig.EnableMTLS {
 			tlsClientConfig := &tls.Config{
 				RootCAs:    ServerInstance.caCertPool,
@@ -382,38 +383,36 @@ func InitServer(port int, apiHost, apiPath, storePath string,
 			}
 			// ApplyTLSProfile may raise MinVersion to the cluster-configured floor.
 			authConfig.ApplyTLSProfile(tlsClientConfig)
-			var pushTransport http.RoundTripper = &http.Transport{
+			pushTransport = &http.Transport{
 				MaxIdleConnsPerHost: 20,
 				TLSClientConfig:     tlsClientConfig,
 				DialContext:         safeDial,
 			}
-			// When OAuth is enabled the callback also requires a bearer token, so
-			// wrap the transport to attach this client's ServiceAccount token to
-			// every outbound push. The token is re-read per request inside the
-			// RoundTripper so rotated projected tokens are always current.
-			if authConfig.EnableOAuth && authConfig.ServiceAccountToken != "" {
-				pushTransport = &bearerTokenRoundTripper{
-					base:      pushTransport,
-					tokenPath: authConfig.ServiceAccountToken,
-				}
-				log.Info("InitServer: outbound mTLS pushes will carry a ServiceAccount bearer token")
-			}
-			ServerInstance.HTTPClient = &http.Client{
-				Transport:     pushTransport,
-				Timeout:       10 * time.Second,
-				CheckRedirect: noRedirectPolicy,
-			}
 			log.Info("InitServer: configured HTTPClient with CA verification for mTLS endpoint validation")
 		} else {
-			// Use default HTTP client for non-mTLS configurations
-			ServerInstance.HTTPClient = &http.Client{
-				Transport: &http.Transport{
-					MaxIdleConnsPerHost: 20,
-					DialContext:         safeDial,
-				},
-				Timeout:       10 * time.Second,
-				CheckRedirect: noRedirectPolicy,
+			// Non-mTLS configuration (OAuth-only or no auth): default transport.
+			pushTransport = &http.Transport{
+				MaxIdleConnsPerHost: 20,
+				DialContext:         safeDial,
 			}
+		}
+		// When OAuth is enabled the callback requires a bearer token on the push,
+		// independent of whether mTLS is also in use (an OAuth-only callback still
+		// needs it). Wrap the transport to attach this client's ServiceAccount
+		// token to outbound HTTPS pushes. The token is re-read per request inside
+		// the RoundTripper so rotated projected tokens are always current, and is
+		// only sent over https so the credential never traverses plaintext.
+		if authConfig != nil && authConfig.EnableOAuth && authConfig.ServiceAccountToken != "" {
+			pushTransport = &bearerTokenRoundTripper{
+				base:      pushTransport,
+				tokenPath: authConfig.ServiceAccountToken,
+			}
+			log.Info("InitServer: outbound pushes will carry a ServiceAccount bearer token")
+		}
+		ServerInstance.HTTPClient = &http.Client{
+			Transport:     pushTransport,
+			Timeout:       10 * time.Second,
+			CheckRedirect: noRedirectPolicy,
 		}
 	})
 	// singleton
@@ -506,7 +505,7 @@ func (s *Server) GetHostPath() *types.URI {
 	path := s.apiPath
 
 	if s.authConfig != nil && s.authConfig.EnableMTLS {
-		protocol = "https"
+		protocol = schemeHTTPS
 		fmt.Printf("GetHostPath: Using HTTPS protocol (authConfig.EnableMTLS=%t)\n", s.authConfig.EnableMTLS)
 	} else {
 		fmt.Printf("GetHostPath: Using HTTP protocol (authConfig=%v, EnableMTLS=%t)\n", s.authConfig != nil, s.authConfig != nil && s.authConfig.EnableMTLS)
@@ -520,7 +519,7 @@ func (s *Server) GetHostPath() *types.URI {
 func (s *Server) GetHealthPath() string {
 	protocol := "http"
 	if s.authConfig != nil && s.authConfig.EnableMTLS {
-		protocol = "https"
+		protocol = schemeHTTPS
 	}
 	return fmt.Sprintf("%s://localhost:%d%shealth", protocol, s.port, s.apiPath)
 }
