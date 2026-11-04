@@ -37,6 +37,9 @@ spec:
               value: "PTP"
             - name: ENABLE_STATUS_CHECK
               value: "true"
+          volumeMounts:
+            - name: pubsubstore
+              mountPath: /store
       volumes:
         - name: pubsubstore
           emptyDir: {}

@@ -47,6 +47,18 @@ func New() *Rest {
 	}
 }
 
+// NewWithClient returns a Rest client that uses the supplied *http.Client. This
+// lets callers inject an SSRF-hardened client (resolve-then-validate dialer plus
+// a no-redirect policy) when POSTing to caller-supplied endpoints, instead of
+// the default client which follows redirects and dials arbitrary resolved
+// addresses. A nil client falls back to the default configuration.
+func NewWithClient(client *http.Client) *Rest {
+	if client == nil {
+		return New()
+	}
+	return &Rest{client: *client}
+}
+
 // PostEvent post an event to the give url and check for error
 func (r *Rest) PostCloudEvent(url *types.URI, e ce.Event) (status int, err error) {
 	b, err := json.Marshal(e)

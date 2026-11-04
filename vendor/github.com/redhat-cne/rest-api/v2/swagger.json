@@ -6,17 +6,32 @@
     "application/json"
   ],
   "schemes": [
-    "http",
     "https"
   ],
   "swagger": "2.0",
   "info": {
-    "description": "REST API Spec.",
-    "title": "O-RAN Compliant REST API",
-    "version": "2.0.0"
+    "description": "O-RAN compliant REST API for cloud event notifications with mTLS and OAuth 2.0 authentication support. This API provides secure event subscription management, publisher control, and real-time event notifications for OpenShift and Kubernetes environments.",
+    "title": "O-RAN Compliant REST API with Authentication",
+    "version": "2.0.0",
+    "contact": {
+      "name": "Red Hat CNE Team",
+      "url": "https://github.com/redhat-cne/rest-api"
+    },
+    "license": {
+      "name": "Apache 2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+    }
   },
   "host": "localhost:9043",
   "basePath": "/api/ocloudNotifications/v2",
+  "securityDefinitions": {
+    "BearerToken": {
+      "type": "apiKey",
+      "name": "Authorization",
+      "in": "header",
+      "description": "OAuth 2.0 Bearer token supplied in the Authorization header, e.g. `Authorization: Bearer <token>`. Tokens (OpenShift OAuth or Kubernetes ServiceAccount tokens) are validated server-side via the Kubernetes TokenReview API, which checks the issuer, signature, expiry and audience. NOTE: in addition to the Bearer token, every protected endpoint also requires mutual TLS - the client must present a certificate signed by the trusted CA. mTLS cannot be represented in the Swagger 2.0 security model but is enforced at the transport layer for all non-loopback requests. CONFIGURATION-DEPENDENT: this document describes the fully-secured (strict) deployment. Each mechanism is applied only when enabled in the server's AuthConfig - the Bearer token is required only when OAuth is enabled (EnableOAuth) and mTLS only when mTLS is enabled (EnableMTLS); a deployment may enable either, both, or neither. Loopback (same-pod) requests bypass both checks."
+    }
+  },
   "paths": {
     "/health": {
       "get": {
@@ -41,9 +56,17 @@
         ],
         "summary": "(Extensions to O-RAN API) Get publishers.",
         "operationId": "getPublishers",
+        "security": [
+          {
+            "BearerToken": []
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/responses/publishers"
+          },
+          "401": {
+            "description": "Unauthorized. Authentication required (mTLS and/or OAuth)."
           },
           "404": {
             "description": "Publishers not found"
@@ -59,12 +82,20 @@
         ],
         "summary": "Retrieves a list of subscriptions.",
         "operationId": "getSubscriptions",
+        "security": [
+          {
+            "BearerToken": []
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/responses/subscriptions"
           },
           "400": {
             "description": "Bad request by the client."
+          },
+          "401": {
+            "description": "Unauthorized. Authentication required (mTLS and/or OAuth)."
           }
         }
       },
@@ -75,6 +106,11 @@
         ],
         "summary": "Creates a subscription resource for the Event Consumer.",
         "operationId": "createSubscription",
+        "security": [
+          {
+            "BearerToken": []
+          }
+        ],
         "parameters": [
           {
             "description": "The payload will include an event notification request, endpointUri and ResourceAddress. The SubscriptionId and UriLocation are ignored in the POST body (these will be sent to the client after the resource is created).",
@@ -92,6 +128,9 @@
           "400": {
             "description": "Bad request. For example, the endpoint URI is not correctly formatted."
           },
+          "401": {
+            "description": "Unauthorized. Authentication required (mTLS and/or OAuth)."
+          },
           "404": {
             "description": "Not Found. Subscription resource is not available."
           },
@@ -107,9 +146,17 @@
         ],
         "summary": "(Extensions to O-RAN API) Delete all subscriptions.",
         "operationId": "deleteAllSubscriptions",
+        "security": [
+          {
+            "BearerToken": []
+          }
+        ],
         "responses": {
           "204": {
             "description": "Deleted all subscriptions."
+          },
+          "401": {
+            "description": "Unauthorized. Authentication required (mTLS and/or OAuth)."
           }
         }
       }
@@ -122,6 +169,11 @@
         ],
         "summary": "Returns details for a specific subscription.",
         "operationId": "getSubscriptionByID",
+        "security": [
+          {
+            "BearerToken": []
+          }
+        ],
         "parameters": [
           {
             "type": "string",
@@ -136,6 +188,9 @@
           "200": {
             "$ref": "#/responses/subscription"
           },
+          "401": {
+            "description": "Unauthorized. Authentication required (mTLS and/or OAuth)."
+          },
           "404": {
             "description": "Not Found. Subscription resources are not available (not created)."
           }
@@ -148,6 +203,11 @@
         ],
         "summary": "Delete a specific subscription.",
         "operationId": "deleteSubscription",
+        "security": [
+          {
+            "BearerToken": []
+          }
+        ],
         "parameters": [
           {
             "type": "string",
@@ -161,6 +221,9 @@
         "responses": {
           "204": {
             "description": "Success."
+          },
+          "401": {
+            "description": "Unauthorized. Authentication required (mTLS and/or OAuth)."
           },
           "404": {
             "description": "Not Found. Subscription resources are not available (not created)."
@@ -176,6 +239,11 @@
         ],
         "summary": "Pulls the event status notifications for specified ResourceAddress.",
         "operationId": "getCurrentState",
+        "security": [
+          {
+            "BearerToken": []
+          }
+        ],
         "parameters": [
           {
             "type": "string",
@@ -189,6 +257,9 @@
         "responses": {
           "200": {
             "$ref": "#/responses/eventResp"
+          },
+          "401": {
+            "description": "Unauthorized. Authentication required (mTLS and/or OAuth)."
           },
           "404": {
             "description": "Not Found. Event notification resource is not available on this node."
@@ -366,12 +437,24 @@
   },
   "tags": [
     {
-      "description": "Manage Subscriptions",
-      "name": "Subscriptions"
+      "name": "Subscriptions",
+      "description": "Manage event subscriptions for O-RAN compliant notifications. Includes both O-RAN standard operations and extensions."
     },
     {
-      "description": "Event Pull Status Notification",
-      "name": "Events"
+      "name": "Publishers",
+      "description": "Manage event publishers and their configurations. Extensions to O-RAN API for internal cluster management."
+    },
+    {
+      "name": "Events",
+      "description": "Event publication and status notification endpoints. Includes current state retrieval and event creation."
+    },
+    {
+      "name": "HealthCheck",
+      "description": "Health and status monitoring endpoints. Extensions to O-RAN API for service availability checking."
+    },
+    {
+      "name": "Authentication",
+      "description": "Authentication and authorization using mTLS (mutual TLS) and OAuth 2.0 with OpenShift integration."
     }
   ]
 }
