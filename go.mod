@@ -78,6 +78,7 @@ require (
 replace k8s.io/kube-openapi => k8s.io/kube-openapi v0.0.0-20220328201542-3ee0da9b0b42 // indirect
 
 replace golang.org/x/net => github.com/openshift-sustaining/net v0.43.0-sec.4
+
 // TEMPORARY: point rest-api at the PR #113 fork head, which removes two stray
 // subscription-store JSON artifacts accidentally committed in the upstream
 // pin (7f73e7b). Those files make `go mod vendor` drift and fail verify-deps.
