@@ -70,6 +70,7 @@ var (
 	transportHost           string
 	apiPort                 int
 	apiVersion              string
+	configMapCleanup        bool
 	channelBufferSize       = 100
 	statusChannelBufferSize = 50
 	scConfig                *common.SCConfiguration
@@ -129,6 +130,12 @@ func main() {
 		"The transport bus hostname or service name.")
 	flag.IntVar(&apiPort, "api-port", 9043, "The address the rest api endpoint binds to.")
 	flag.StringVar(&apiVersion, "api-version", "2.0", "The address the rest api endpoint binds to.")
+	// configMapCleanup controls whether subscriptions deleted after repeated
+	// delivery failures are also removed from the persistent configmap.
+	// When false, the subscriber is deleted from the in-memory store only and
+	// the configmap entry is restored on restart.
+	flag.BoolVar(&configMapCleanup, "configmap-cleanup", false,
+		"Also delete subscriber entries from the configmap upon connection loss.")
 
 	flag.Parse()
 
@@ -333,8 +340,10 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 												log.Errorf("connection lost for address %s, proceed to clean up subscription", d.Address)
 												if numSubDeleted, err = scConfig.SubscriberAPI.DeleteAllSubscriptionsForClient(clientID); err != nil {
 													log.Errorf("failed to delete all subscriptions for client %s: %s", clientID.String(), err.Error())
-												} else {
+												} else if configMapCleanup {
 													cleanupConfigMap(clientID)
+												} else {
+													log.Warnf("configmap cleanup disabled, subscription for client %s remains in configmap", clientID.String())
 												}
 												apiMetrics.UpdateSubscriptionCount(apiMetrics.ACTIVE, -(numSubDeleted))
 											} else {
