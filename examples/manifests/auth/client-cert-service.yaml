@@ -38,3 +38,31 @@ spec:
     name: cloud-events-ca-issuer
     kind: Issuer
     group: cert-manager.io
+---
+# Publisher client certificate for the outbound push callback. It is created in
+# cloud-events so the namespaced Issuer can sign it; setup-secrets.sh copies the
+# resulting keypair to openshift-ptp/ptp-event-publisher-client-tls.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: publisher-client-cert
+  namespace: cloud-events
+spec:
+  secretName: publisher-client-certs
+  duration: 2160h
+  renewBefore: 360h
+  subject:
+    organizations:
+      - ptp-event-publisher
+  commonName: ptp-event-publisher
+  usages:
+    - digital signature
+    - key encipherment
+    - client auth
+  privateKey:
+    algorithm: RSA
+    size: 4096
+  issuerRef:
+    name: cloud-events-ca-issuer
+    kind: Issuer
+    group: cert-manager.io

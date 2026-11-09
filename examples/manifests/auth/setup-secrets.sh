@@ -9,7 +9,8 @@
 #                             Service CA serving certs are serverAuth-only and are
 #                             NOT valid as client certs.
 #   - server-ca-bundle      : the Service CA cert, so the consumer trusts the
-#                             publisher's Service CA-signed server certificate.
+#                             publisher's server certificate, plus the client CA
+#                             so its callback server trusts the publisher client.
 #   - consumer-auth-config  : config.json consumed via --auth-config.
 # The consumer's own callback server cert (consumer-server-certs) is minted by
 # the Service CA via the serving-cert annotation the secured overlay adds to the
@@ -20,6 +21,8 @@
 # the publisher's trust bundle (ca-bundle.crt) so the publisher trusts this
 # consumer's client certificate. This replaces the old manual "overwrite the
 # publisher CA bundle + scale the operator to 0" workaround.
+# It creates ptp-event-publisher-client-tls in openshift-ptp from the same client
+# CA so outbound push callbacks use mTLS as well as a bearer token.
 #
 # Client-cert provisioning method (CERT_MANAGER):
 #   - default (CERT_MANAGER unset/false): openssl. Zero cluster dependencies;
@@ -33,6 +36,7 @@ set -euo pipefail
 NAMESPACE="${NAMESPACE:-cloud-events}"
 PUBLISHER_NAMESPACE="${PUBLISHER_NAMESPACE:-openshift-ptp}"
 CLIENT_CA_CONFIGMAP="${CLIENT_CA_CONFIGMAP:-ptp-event-publisher-client-ca}"
+PUBLISHER_CLIENT_SECRET="${PUBLISHER_CLIENT_SECRET:-ptp-event-publisher-client-tls}"
 DIR_CERTS="${DIR_CERTS:-/tmp/certs}"
 CERT_MANAGER="${CERT_MANAGER:-false}"
 TIMEOUT="${TIMEOUT:-60}"
@@ -111,6 +115,7 @@ EOF
     # auth/client-cert-service.yaml mints consumer-client-certs from the CA issuer.
     oc apply -f "$SCRIPT_DIR/client-cert-service.yaml"
     wait_for "consumer-client-certs (cert-manager)" oc get secret consumer-client-certs -n "$NAMESPACE"
+    wait_for "publisher-client-certs (cert-manager)" oc get secret publisher-client-certs -n "$NAMESPACE"
     wait_for "cloud-events-ca secret (cert-manager)" oc get secret cloud-events-ca -n "$NAMESPACE"
     CLIENT_CA_PEM="$(oc get secret cloud-events-ca -n "$NAMESPACE" -o jsonpath='{.data.tls\.crt}' | base64 -d)"
 else
@@ -136,6 +141,13 @@ else
         --namespace="$NAMESPACE" --dry-run=client -o yaml | oc apply -f -
     CLIENT_CA_PEM="$(cat "$DIR_CERTS/client-ca.crt")"
     echo "✓ consumer-client-certs secret created (openssl)"
+
+    openssl req -newkey rsa:4096 -nodes \
+        -keyout "$DIR_CERTS/publisher-client.key" -out "$DIR_CERTS/publisher-client.csr" \
+        -subj "/O=ptp-event-publisher/CN=ptp-event-publisher" >/dev/null 2>&1
+    openssl x509 -req -in "$DIR_CERTS/publisher-client.csr" \
+        -CA "$DIR_CERTS/client-ca.crt" -CAkey "$DIR_CERTS/client-ca.key" -CAcreateserial \
+        -out "$DIR_CERTS/publisher-client.crt" -days 365 -extfile "$ext" >/dev/null 2>&1
 fi
 
 ########################################
@@ -147,6 +159,20 @@ if oc get namespace "$PUBLISHER_NAMESPACE" >/dev/null 2>&1; then
         --from-literal=client-ca.crt="$CLIENT_CA_PEM" \
         --namespace="$PUBLISHER_NAMESPACE" --dry-run=client -o yaml | oc apply -f -
     echo "✓ $CLIENT_CA_CONFIGMAP published (ptp-operator folds it into the publisher trust bundle)"
+
+    if [ "$CERT_MANAGER" = "true" ]; then
+        PUBLISHER_CLIENT_CERT="$(oc get secret publisher-client-certs -n "$NAMESPACE" -o jsonpath='{.data.tls\.crt}' | base64 -d)"
+        PUBLISHER_CLIENT_KEY="$(oc get secret publisher-client-certs -n "$NAMESPACE" -o jsonpath='{.data.tls\.key}' | base64 -d)"
+        oc create secret tls "$PUBLISHER_CLIENT_SECRET" \
+            --cert=<(printf '%s' "$PUBLISHER_CLIENT_CERT") \
+            --key=<(printf '%s' "$PUBLISHER_CLIENT_KEY") \
+            --namespace="$PUBLISHER_NAMESPACE" --dry-run=client -o yaml | oc apply -f -
+    else
+        oc create secret tls "$PUBLISHER_CLIENT_SECRET" \
+            --cert="$DIR_CERTS/publisher-client.crt" --key="$DIR_CERTS/publisher-client.key" \
+            --namespace="$PUBLISHER_NAMESPACE" --dry-run=client -o yaml | oc apply -f -
+    fi
+    echo "✓ $PUBLISHER_CLIENT_SECRET published for authenticated push callbacks"
 else
     echo "Warning: namespace $PUBLISHER_NAMESPACE not found; skipping client-CA publish."
     echo "         The publisher will not trust this consumer's client cert until"
@@ -159,8 +185,9 @@ fi
 wait_for "Service CA injection into server-ca-bundle-configmap" \
     bash -c "oc get configmap server-ca-bundle-configmap -n $NAMESPACE -o jsonpath='{.data.service-ca\.crt}' 2>/dev/null | grep -q 'BEGIN CERTIFICATE'"
 CA_CERT="$(oc get configmap server-ca-bundle-configmap -n "$NAMESPACE" -o jsonpath='{.data.service-ca\.crt}')"
+TRUST_BUNDLE="${CA_CERT%$'\n'}"$'\n'"${CLIENT_CA_PEM%$'\n'}"$'\n'
 oc create secret generic server-ca-bundle \
-    --from-literal=service-ca.crt="$CA_CERT" \
+    --from-literal=service-ca.crt="$TRUST_BUNDLE" \
     --namespace="$NAMESPACE" --dry-run=client -o yaml | oc apply -f -
 echo "✓ server-ca-bundle secret created"
 
