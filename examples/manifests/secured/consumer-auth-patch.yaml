@@ -16,7 +16,10 @@ spec:
           args:
             - "--local-api-addr=consumer-events-subscription-service.cloud-events.svc.cluster.local:9043"
             - "--api-path=/api/ocloudNotifications/v2/"
-            - "--http-event-publishers=ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043"
+            # The Service CA serving certificate is issued for this service
+            # name. Using the legacy per-node service here fails hostname
+            # verification because it is not present in the certificate SANs.
+            - "--http-event-publishers=ptp-event-publisher-server.openshift-ptp.svc.cluster.local:9043"
             - "--auth-config=/etc/cloud-event-consumer/auth/config.json"
           volumeMounts:
             # Consumer client keypair (mTLS to the publisher). clientAuth cert
