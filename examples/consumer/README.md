@@ -35,6 +35,8 @@ Authentication is configured using a JSON configuration file. The configuration 
   "useServiceCA": true,
   "clientCertPath": "/etc/cloud-event-consumer/client-certs/tls.crt",
   "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
+  "serverCertPath": "/etc/cloud-event-consumer/server-certs/tls.crt",
+  "serverKeyPath": "/etc/cloud-event-consumer/server-certs/tls.key",
   "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
   "enableOAuth": true,
   "requiredAudiences": ["https://kubernetes.default.svc"],
@@ -50,6 +52,8 @@ Authentication is configured using a JSON configuration file. The configuration 
 - `useServiceCA`: Use OpenShift Service CA (recommended)
 - `clientCertPath`: Path to client certificate file
 - `clientKeyPath`: Path to client private key file
+- `serverCertPath`: Path to the callback server certificate file
+- `serverKeyPath`: Path to the callback server private key file
 - `caCertPath`: Path to CA certificate file
 - `certManagerIssuer`: cert-manager ClusterIssuer name (alternative to Service CA)
 - `certManagerNamespace`: Namespace for cert-manager resources
@@ -101,6 +105,8 @@ Authentication is configured using a JSON configuration file. The configuration 
   "useServiceCA": true,
   "clientCertPath": "/etc/cloud-event-consumer/client-certs/tls.crt",
   "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
+  "serverCertPath": "/etc/cloud-event-consumer/server-certs/tls.crt",
+  "serverKeyPath": "/etc/cloud-event-consumer/server-certs/tls.key",
   "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
   "enableOAuth": false
 }
@@ -112,6 +118,8 @@ Authentication is configured using a JSON configuration file. The configuration 
 {
   "enableMTLS": false,
   "enableOAuth": true,
+  "serverCertPath": "/etc/cloud-event-consumer/server-certs/tls.crt",
+  "serverKeyPath": "/etc/cloud-event-consumer/server-certs/tls.key",
   "requiredAudiences": ["https://kubernetes.default.svc"],
   "serviceAccountName": "consumer-sa",
   "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
@@ -126,6 +134,8 @@ Authentication is configured using a JSON configuration file. The configuration 
   "useServiceCA": true,
   "clientCertPath": "/etc/cloud-event-consumer/client-certs/tls.crt",
   "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
+  "serverCertPath": "/etc/cloud-event-consumer/server-certs/tls.crt",
+  "serverKeyPath": "/etc/cloud-event-consumer/server-certs/tls.key",
   "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
   "enableOAuth": true,
   "requiredAudiences": ["https://kubernetes.default.svc"],
@@ -142,8 +152,8 @@ Authentication is configured using a JSON configuration file. The configuration 
 # Build the consumer
 go build -o consumer main.go
 
-# Build with authentication examples
-go build -o authenticated-consumer-example authenticated-consumer-example.go
+# Build the authentication examples
+(cd ../auth-examples && go build -o auth-examples auth-examples.go)
 ```
 
 ### Running Examples
@@ -153,7 +163,7 @@ go build -o authenticated-consumer-example authenticated-consumer-example.go
 ./consumer --auth-config=auth-config-example.json
 
 # Run the authentication examples
-./authenticated-consumer-example
+../auth-examples/auth-examples
 ```
 
 ## Integration with Kubernetes/OpenShift

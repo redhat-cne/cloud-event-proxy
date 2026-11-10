@@ -145,8 +145,10 @@ deploy-consumer-secured: ## Deploy consumer with mTLS + OAuth (shortcut for depl
 	$(MAKE) deploy-consumer SECURED=true
 
 undeploy-consumer: kustomize ## Undeploy consumer
-	cd $(CONSUMER_OVERLAY) && $(KUSTOMIZE) edit set image cloud-event-consumer=${CONSUMER_IMG}
-	$(KUSTOMIZE) build $(CONSUMER_OVERLAY) | kubectl delete -f -
+	$(KUSTOMIZE) build ./examples/manifests/secured | kubectl delete --ignore-not-found -f -
+	$(KUSTOMIZE) build ./examples/manifests | kubectl delete --ignore-not-found -f -
+	kubectl delete secret ptp-event-publisher-client-tls -n openshift-ptp --ignore-not-found
+	kubectl delete configmap ptp-event-publisher-client-ca -n openshift-ptp --ignore-not-found
 
 # For GitHub Actions CI.
 #

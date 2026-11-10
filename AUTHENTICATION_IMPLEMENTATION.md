@@ -8,8 +8,8 @@ The authentication implementation provides a comprehensive solution for securing
 
 1. **mTLS (Mutual TLS)** - Transport layer security with client certificate authentication
 2. **OAuth** - Application layer authentication using Kubernetes ServiceAccount bearer tokens, validated in-process via the **TokenReview** API
-3. **OpenShift Integration** - Native support for OpenShift Service CA and OAuth server
-4. **Dynamic Configuration** - Support for `CLUSTER_NAME` environment variable for flexible deployment
+3. **OpenShift Integration** - Native support for OpenShift Service CA and Kubernetes TokenReview
+4. **Portable Configuration** - No cluster-specific OAuth issuer or JWKS URL is required
 
 ### Security Features
 
@@ -86,6 +86,8 @@ The authentication system supports multiple configuration options:
   "useServiceCA": true,
   "clientCertPath": "/etc/cloud-event-consumer/client-certs/tls.crt",
   "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
+  "serverCertPath": "/etc/cloud-event-consumer/server-certs/tls.crt",
+  "serverKeyPath": "/etc/cloud-event-consumer/server-certs/tls.key",
   "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
   "enableOAuth": true,
   "requiredAudiences": ["ptp-event-publisher"],

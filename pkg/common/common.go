@@ -300,11 +300,10 @@ func CreatePublisher(config *SCConfiguration, publisher pubsub.PubSub) (pub pubs
 		} else if config.AuthConfig != nil {
 			// Use authenticated client for non-localhost connections
 			// Create ClientAuthConfig that embeds the restapi.AuthConfig
-			// For client connections, use server certificates as client certificates
 			clientAuthConfig := &auth.ClientAuthConfig{
 				AuthConfig:     config.AuthConfig,
-				ClientCertPath: config.AuthConfig.ServerCertPath, // Use server cert as client cert
-				ClientKeyPath:  config.AuthConfig.ServerKeyPath,  // Use server key as client key
+				ClientCertPath: config.AuthConfig.ClientCertPath,
+				ClientKeyPath:  config.AuthConfig.ClientKeyPath,
 			}
 			rc, err = restclient.NewAuthenticated(clientAuthConfig)
 			if err != nil {

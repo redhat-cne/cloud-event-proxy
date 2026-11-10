@@ -1,223 +1,66 @@
 # Cloud Event Consumer Example
 
-This directory contains example Kubernetes manifests for deploying a cloud event consumer with mTLS and OAuth authentication using OpenShift's built-in components.
+These manifests deploy an example cloud-event consumer in either plaintext or
+secured mode. Secured mode combines mTLS with ServiceAccount bearer tokens
+validated through the Kubernetes TokenReview API.
 
-## Overview
-
-The example consumer is designed to work with **OpenShift clusters of any size** (single node or multi-node). It demonstrates how to:
-
-- Deploy a cloud event consumer
-- Configure mTLS authentication using OpenShift Service CA
-- Set up OAuth authentication using OpenShift's built-in OAuth server
-- Use OpenShift's native authentication components
-- Restrict network reachability of the O-RAN API with a NetworkPolicy
-
-### Network policy
-
-`network-policy.yaml` applies a default-deny-ingress `NetworkPolicy` to the
-consumer pods, allowing traffic to the O-RAN ocloudNotifications API (port
-9043) only from the PTP event publisher namespace (`openshift-ptp`), cluster
-monitoring (`openshift-monitoring`), and the cluster's OVN-Kubernetes join
-subnet. This is defense-in-depth on top of mTLS + OAuth: it stops arbitrary
-in-cluster pods from even reaching the port. It is an example — adapt the
-selectors to your cluster, and constrain the publisher side (managed by
-ptp-operator in `openshift-ptp`) similarly.
-
-**Host-network push source (required for subscribe to work).** The PTP publisher
-(`linuxptp-daemon` / `cloud-event-proxy`) runs with `hostNetwork: true`, so the
-initial-notification push it sends to this consumer does **not** originate from a
-pod in `openshift-ptp` — on OVN-Kubernetes it is SNATed to the cluster's internal
-**join subnet** (default `100.64.0.0/16`). A `namespaceSelector` can never match
-it, so without an `ipBlock` for the join subnet the push is silently dropped and
-subscriptions never complete (no initial notification ⇒ CurrentState unavailable).
-`network-policy.yaml` therefore includes `ipBlock: 100.64.0.0/16` on port 9043.
-If your cluster overrides the join subnet
-(`network.operator/cluster: spec.defaultNetwork.ovnKubernetesConfig.ipv4.internalJoinSubnet`,
-formerly `v4InternalSubnet`), substitute that value; on non-OVN CNIs the source is
-typically the node IP instead.
-
-Note also that NetworkPolicy does not apply to hostNetwork pods, so the ptp
-daemon's **own** 9043 port (the publisher API) needs host-level firewalling
-rather than a NetworkPolicy.
-
-## Prerequisites
-
-- OpenShift cluster (single node or multi-node)
-- oc or kubectl configured to access your cluster
-- No additional operators required (uses OpenShift's built-in components)
-- OpenShift Service CA will automatically generate certificates
-
-## Quick Start
-
-### Automated Deployment (Recommended)
-
-From the `cloud-event-proxy` repository root:
+## Deploy
 
 ```bash
-# Deploy consumer with default cluster name (openshift.local)
+# Plaintext compatibility mode
 make deploy-consumer
 
-# Deploy consumer with custom cluster name
-export CLUSTER_NAME=your-cluster-name.com
-make deploy-consumer
-```
+# Secured mode
+make deploy-consumer SECURED=true
 
-This will:
-1. Deploy all Kubernetes resources
-2. Set up mTLS certificates using OpenShift Service CA
-3. Configure authentication secrets with correct OAuth URLs
-4. Generate dynamic authentication configuration based on cluster name
-5. Wait for the consumer pod to be ready
-
-### Cluster Name Configuration
-
-The deployment supports dynamic cluster configuration:
-
-- **Default**: `openshift.local` (consistent with ptp-operator)
-- **Custom**: Set `CLUSTER_NAME` environment variable before deployment
-- **OAuth URLs**: Automatically generated as `https://oauth-openshift.apps.${CLUSTER_NAME}`
-- **Security**: OAuth tokens are validated against the exact configured issuer with no bypass mechanisms
-
-#### Updating Cluster Name for Consumer at Runtime
-
-If the PTP operator's cluster name is updated, or you need to deploy the consumer to a different cluster, follow these detailed steps:
-
-**Method 1: Automated Redeployment (Recommended)**
-```bash
-# Step 1: Set the new cluster name
-export CLUSTER_NAME=your-actual-cluster.example.com
-
-# Step 2: Redeploy consumer with new configuration
+# Remove resources from either mode
 make undeploy-consumer
-make deploy-consumer
-
-# Step 3: Verify the consumer is running with correct configuration
-oc get pods -n cloud-events
-oc logs deployment/cloud-consumer-deployment -n cloud-events --tail=10
 ```
 
-**Method 2: Manual ConfigMap Update**
-```bash
-# Step 1: Update the consumer-auth-config ConfigMap with new OAuth URLs
-CLUSTER_NAME=your-actual-cluster.example.com
-oc patch configmap consumer-auth-config -n cloud-events --type='json' -p="[
-  {\"op\": \"replace\", \"path\": \"/data/config.json\", \"value\": \"{\\\"enableMTLS\\\": true, \\\"useServiceCA\\\": true, \\\"clientCertPath\\\": \\\"/etc/cloud-event-consumer/client-certs/tls.crt\\\", \\\"clientKeyPath\\\": \\\"/etc/cloud-event-consumer/client-certs/tls.key\\\", \\\"caCertPath\\\": \\\"/etc/cloud-event-consumer/ca-bundle/service-ca.crt\\\", \\\"enableOAuth\\\": true, \\\"useOpenShiftOAuth\\\": true, \\\"oauthIssuer\\\": \\\"https://oauth-openshift.apps.$CLUSTER_NAME\\\", \\\"oauthJWKSURL\\\": \\\"https://oauth-openshift.apps.$CLUSTER_NAME/oauth/jwks\\\", \\\"requiredScopes\\\": [\\\"user:info\\\"], \\\"requiredAudience\\\": \\\"openshift\\\", \\\"serviceAccountName\\\": \\\"consumer-sa\\\", \\\"serviceAccountToken\\\": \\\"/var/run/secrets/kubernetes.io/serviceaccount/token\\\"}\"}
-]"
+Secured deployment performs these steps:
 
-# Step 2: Restart consumer deployment to pick up changes
-oc rollout restart deployment/cloud-consumer-deployment -n cloud-events
+1. Applies the secured Kustomize overlay.
+2. Waits for OpenShift Service CA serving certificates.
+3. Creates dedicated consumer and publisher client-auth certificates.
+4. Writes the client CA to the operator input ConfigMap
+   `ptp-event-publisher-client-ca`.
+5. Creates a static authentication ConfigMap using `requiredAudiences`.
 
-# Step 3: Wait for rollout to complete
-oc rollout status deployment/cloud-consumer-deployment -n cloud-events
-```
+There are no cluster-specific OAuth issuer or JWKS URLs. `CLUSTER_NAME` is not
+used to generate authentication settings.
 
-**Step-by-Step Verification Process:**
-
-```bash
-# 1. Check if consumer pod is running
-oc get pods -n cloud-events -l app=cloud-consumer
-
-# 2. Verify the updated OAuth configuration
-oc get configmap consumer-auth-config -n cloud-events -o jsonpath='{.data.config\.json}' | jq '.oauthIssuer'
-
-# 3. Check consumer logs for authentication success
-oc logs deployment/cloud-consumer-deployment -n cloud-events --tail=20 | grep -i "auth\|oauth\|token"
-
-# 4. Test OAuth server connectivity from consumer pod
-oc exec deployment/cloud-consumer-deployment -n cloud-events -- curl -k "https://oauth-openshift.apps.$CLUSTER_NAME/oauth/jwks" | head -5
-
-# 5. Verify consumer can connect to PTP publisher
-oc logs deployment/cloud-consumer-deployment -n cloud-events --tail=50 | grep -i "subscription\|publisher\|connection"
-```
-
-**Complete Example: Updating from Default to Real Cluster**
-
-```bash
-# Current configuration uses default cluster name
-echo "Current OAuth issuer:"
-oc get configmap consumer-auth-config -n cloud-events -o jsonpath='{.data.config\.json}' | jq '.oauthIssuer'
-# Output: "https://oauth-openshift.apps.openshift.local"
-
-# Update to real cluster name
-export CLUSTER_NAME=cnfdg4.sno.ptp.eng.rdu2.dc.redhat.com
-
-# Method 1: Automated redeployment
-make undeploy-consumer
-make deploy-consumer
-
-# Verify the update
-echo "Updated OAuth issuer:"
-oc get configmap consumer-auth-config -n cloud-events -o jsonpath='{.data.config\.json}' | jq '.oauthIssuer'
-# Expected output: "https://oauth-openshift.apps.cnfdg4.sno.ptp.eng.rdu2.dc.redhat.com"
-
-# Check consumer pod status
-oc get pods -n cloud-events
-oc logs deployment/cloud-consumer-deployment -n cloud-events --tail=10
-```
-
-**Troubleshooting Consumer OAuth Issues:**
-
-```bash
-# Check if OAuth server is accessible
-CLUSTER_NAME=$(oc get configmap consumer-auth-config -n cloud-events -o jsonpath='{.data.config\.json}' | jq -r '.oauthIssuer' | sed 's|https://oauth-openshift.apps.||' | sed 's|/oauth/jwks||')
-curl -k "https://oauth-openshift.apps.$CLUSTER_NAME/oauth/jwks"
-
-# Verify consumer ServiceAccount token
-oc get serviceaccount consumer-sa -n cloud-events
-oc describe serviceaccount consumer-sa -n cloud-events
-
-# Check consumer authentication configuration
-oc get configmap consumer-auth-config -n cloud-events -o jsonpath='{.data.config\.json}' | jq .
-
-# View consumer authentication logs
-oc logs deployment/cloud-consumer-deployment -n cloud-events | grep -E "OAuth|authentication|token|issuer"
-```
-
-**Important Notes:**
-- Always update the consumer configuration when the PTP operator's cluster name changes
-- OAuth tokens must match the exact issuer URL - mismatches will cause authentication failures
-- The consumer will automatically retry connections after configuration updates
-- Changes take effect after the consumer pod restarts (usually within 30 seconds)
-
-### Manual Deployment
-
-If you prefer to deploy manually:
-
-```bash
-# Apply the manifests
-oc apply -k .
-
-# Set up authentication secrets (OpenShift only)
-./auth/setup-secrets.sh
-```
-
-### Verify Deployment
-
-```bash
-kubectl get deployment cloud-consumer-deployment -n cloud-events
-kubectl get pods -n cloud-events
-kubectl logs -f deployment/cloud-consumer-deployment -n cloud-events
-```
+See [the authentication guide](auth/README.md) for configuration and
+verification commands.
 
 ## Components
 
-### Core Resources
+- `base/`: shared namespace, ServiceAccount, service, deployment, and RBAC.
+- `secured/`: TLS/auth volumes, HTTPS publisher address, NetworkPolicy, and
+  `--auth-config` arguments.
+- `auth/setup-secrets.sh`: provisions authentication material.
+- `auth/certificate-example.md`: certificate-generation background.
 
-- **`namespace.yaml`**: Creates the `cloud-events` namespace
-- **`service.yaml`**: Creates a service for the consumer
-- **`consumer.yaml`**: Main deployment for the cloud event consumer
+## Network Policy
 
-### Authentication Resources
+The secured overlay applies default-deny ingress to the consumer callback API
+and permits port 9043 from `openshift-ptp`, cluster monitoring, and the
+OVN-Kubernetes join subnet. The PTP publisher uses `hostNetwork: true`; its push
+traffic is commonly source-NATed to that join subnet rather than retaining a
+namespace-selectable pod identity.
 
-- **`setup-secrets.sh`**: Script that creates authentication configuration dynamically using CLUSTER_NAME
-- **`auth/service-account.yaml`**: Service account and RBAC
-- **`auth/certificate-example.md`**: Certificate generation guide
+The example uses `100.64.0.0/16`. If the cluster overrides the internal join
+subnet, update `network-policy.yaml` before deployment:
 
-## Configuration
+```bash
+oc get network.operator cluster -o jsonpath='{.spec.defaultNetwork.ovnKubernetesConfig.ipv4.internalJoinSubnet}'
+```
 
-### Authentication Settings
+NetworkPolicy does not cover the host-network publisher listener. Apply the
+appropriate host-level firewall policy for that endpoint.
 
-The consumer supports both mTLS and OAuth authentication with **strict security validation**. The configuration is automatically generated during deployment based on the cluster name:
+## Authentication Settings
+
+The generated consumer configuration is:
 
 ```json
 {
@@ -225,112 +68,50 @@ The consumer supports both mTLS and OAuth authentication with **strict security 
   "useServiceCA": true,
   "clientCertPath": "/etc/cloud-event-consumer/client-certs/tls.crt",
   "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
+  "serverCertPath": "/etc/cloud-event-consumer/server-certs/tls.crt",
+  "serverKeyPath": "/etc/cloud-event-consumer/server-certs/tls.key",
   "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
   "enableOAuth": true,
-  "useOpenShiftOAuth": true,
-  "oauthIssuer": "https://oauth-openshift.apps.${CLUSTER_NAME}",
-  "oauthJWKSURL": "https://oauth-openshift.apps.${CLUSTER_NAME}/oauth/jwks",
-  "requiredScopes": ["user:info"],
-  "requiredAudience": "openshift",
+  "requiredAudiences": ["https://kubernetes.default.svc"],
   "serviceAccountName": "consumer-sa",
   "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
 }
 ```
 
-#### Security Features
+TokenReview delegates issuer, signature, expiry, and requested-audience checks
+to the Kubernetes API server. The legacy JSON field name `enableOAuth` enables
+this bearer-token mechanism; it does not make the application call the
+OpenShift OAuth server.
 
-- **Strict OAuth Validation**: Token issuer must exactly match the configured OAuth issuer
-- **No Authentication Bypass**: Mismatched issuers are immediately rejected
-- **Comprehensive Validation**: Expiration, audience, and signature verification
-- **Dynamic Configuration**: OAuth URLs automatically generated based on cluster name
+## Certificate Ownership
 
-### Required Secrets
+| Resource | Owner | Purpose |
+|---|---|---|
+| `consumer-server-certs` Secret | OpenShift Service CA | Consumer callback server certificate |
+| `consumer-client-certs` Secret | Setup flow | Consumer mTLS client certificate |
+| `ptp-event-publisher-client-tls` Secret | Setup flow | Publisher push mTLS client certificate |
+| `ptp-event-publisher-client-ca` ConfigMap | External/operator input | Client CA published for merge |
+| `ptp-event-publisher-ca-bundle` ConfigMap | PTP operator | Merged live publisher trust bundle |
 
-The following secrets are **automatically generated** during deployment:
+The setup flow never overwrites the live operator-owned bundle and never scales
+the operator to zero.
 
-1. **`consumer-client-certs`**: TLS secret containing client certificate and key (generated by OpenShift Service CA)
-2. **`server-ca-bundle`**: Generic secret containing the CA certificate (extracted from Service CA)
-
-For manual setup or troubleshooting, see [Certificate Generation](auth/certificate-example.md) for detailed instructions.
-
-## Customization
-
-### Namespace
-
-Change the namespace by updating the `namespace.yaml` file and all references to `cloud-events` in other files.
-
-### Service Discovery
-
-The service discovery configuration in `consumer.yaml` points to the server in the `openshift-ptp` namespace:
-
-```yaml
-args:
-  - "--http-event-publishers=ptp-event-publisher-service-NODE_NAME.openshift-ptp.svc.cluster.local:9043"
-```
-
-This assumes the cloud-event-proxy server is running in the `openshift-ptp` namespace. If your server is in a different namespace, update this configuration accordingly.
-
-### OAuth Provider
-
-OAuth provider settings are automatically configured based on your `CLUSTER_NAME` environment variable:
-
-- `oauthIssuer` is set to `https://oauth-openshift.apps.${CLUSTER_NAME}`
-- `oauthJWKSURL` is set to `https://oauth-openshift.apps.${CLUSTER_NAME}/oauth/jwks`
-- Adjust `requiredScopes` and `requiredAudience` as needed
-
-## Troubleshooting
-
-### Check Pod Status
+## Verify
 
 ```bash
-kubectl get pods -n cloud-events
-kubectl describe pod -l app=consumer -n cloud-events
+oc rollout status deployment/cloud-consumer-deployment -n cloud-events
+oc get pods -n cloud-events
+oc get configmap consumer-auth-config -n cloud-events \
+  -o jsonpath='{.data.config\.json}' | jq .requiredAudiences
+oc logs deployment/cloud-consumer-deployment -n cloud-events
 ```
 
-### View Logs
+Certificate files are loaded at process startup. Restart the consumer and the
+publisher workload after certificate or trust-bundle rotation.
 
-```bash
-kubectl logs deployment/cloud-consumer-deployment -n cloud-events
-```
+## Security Scope
 
-### Verify Secrets
-
-```bash
-kubectl get secrets -n cloud-events
-kubectl describe secret consumer-client-certs -n cloud-events
-kubectl describe secret server-ca-bundle -n cloud-events
-```
-
-### Test Authentication
-
-```bash
-# Test RBAC permissions
-kubectl auth can-i get services -n openshift-ptp --as system:serviceaccount:cloud-events:consumer-sa
-```
-
-## Security Considerations
-
-1. **Certificate Management**: Certificates must be manually managed and rotated
-2. **OAuth Tokens**: Obtain tokens from your OAuth provider and rotate regularly
-3. **RBAC**: Review and adjust RBAC permissions based on your security requirements
-4. **Network Policies**: Consider implementing network policies for additional security
-
-## Production Deployment
-
-For production environments:
-
-1. Use a proper certificate management solution (e.g., cert-manager)
-2. Implement automated certificate rotation
-3. Use a production-grade OAuth provider
-4. Set up monitoring and alerting
-5. Implement proper logging and audit trails
-6. Review and harden RBAC permissions
-
-## Support
-
-For issues and questions:
-
-1. Check the [Authentication Guide](auth/README.md) for detailed authentication setup
-2. Review the [Certificate Generation Guide](auth/certificate-example.md) for certificate management
-3. Check the main project documentation
-4. Open an issue in the project repository
+mTLS and TokenReview provide transport protection and caller authentication.
+They do not implement per-caller authorization for individual event API
+operations. Add authorization policy, callback allow-listing, dedicated token
+audiences, and automated credential reload as a separate hardening phase.

@@ -120,7 +120,17 @@ EOF
     CLIENT_CA_PEM="$(oc get secret cloud-events-ca -n "$NAMESPACE" -o jsonpath='{.data.tls\.crt}' | base64 -d)"
 else
     echo "Generating a client CA and client certificate with openssl into $DIR_CERTS..."
-    mkdir -p "$DIR_CERTS"
+    umask 077
+    if [ -L "$DIR_CERTS" ]; then
+        echo "ERROR: DIR_CERTS must not be a symbolic link: $DIR_CERTS" >&2
+        exit 1
+    fi
+    if [ -e "$DIR_CERTS" ] && [ ! -d "$DIR_CERTS" ]; then
+        echo "ERROR: DIR_CERTS exists but is not a directory: $DIR_CERTS" >&2
+        exit 1
+    fi
+    mkdir -p -m 700 "$DIR_CERTS"
+    chmod 700 "$DIR_CERTS"
     ext="$DIR_CERTS/client-ext.cnf"
     printf 'extendedKeyUsage=clientAuth\nkeyUsage=digitalSignature,keyEncipherment\n' > "$ext"
     # Client CA (only regenerated if missing, so re-runs keep the published CA stable).

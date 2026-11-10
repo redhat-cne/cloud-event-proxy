@@ -67,7 +67,7 @@ func TestNewAuthenticatedClient_MTLS(t *testing.T) {
 }
 
 func TestNewAuthenticatedClient_OAuth(t *testing.T) {
-	tok := writeFile(t, "token", "the-token")
+	tok := writeFile(t, "token", "  the-token\n")
 	cfg := &AuthConfig{AuthConfig: &restapi.AuthConfig{EnableOAuth: true, ServiceAccountToken: tok}}
 	ac, err := NewAuthenticatedClient(cfg)
 	require.NoError(t, err)
@@ -101,7 +101,7 @@ func TestDo_OAuthSetsBearerOverHTTPS(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	tok := writeFile(t, "token", "the-token")
+	tok := writeFile(t, "token", "  the-token\n")
 	cfg := &AuthConfig{AuthConfig: &restapi.AuthConfig{EnableOAuth: true, ServiceAccountToken: tok}}
 	ac, err := NewAuthenticatedClient(cfg)
 	require.NoError(t, err)

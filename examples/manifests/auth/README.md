@@ -1,196 +1,108 @@
 # Authentication Configuration for Cloud Event Consumer
 
-This guide explains how to use mTLS and OAuth authentication in the example cloud event consumer deployment using OpenShift's built-in components. This unified approach works seamlessly for both single node and multi-node OpenShift clusters.
+This example secures both directions of the event flow with TLS, mutual client
+certificate authentication, and Kubernetes ServiceAccount bearer tokens.
+Bearer tokens are validated in-process through the Kubernetes TokenReview API;
+the OpenShift OAuth issuer and JWKS endpoints are not configured or contacted
+directly.
 
-## Overview
+## Authentication Configuration
 
-The example consumer is configured to authenticate with the cloud-event-proxy server using:
-- mTLS (Mutual TLS) using OpenShift Service CA for transport security
-- OAuth with JWT tokens using OpenShift's built-in OAuth server for client authentication
+`setup-secrets.sh` creates `consumer-auth-config` with this shape:
 
-## Components
-
-### Authentication Configuration
-
-The authentication configuration uses OpenShift's built-in components:
-
-The authentication settings are stored in a ConfigMap (`consumer-auth-config`):
-```yaml
-data:
-  config.json: |
-    {
-      "enableMTLS": true,
-      "useServiceCA": true,
-      "clientCertPath": "/etc/cloud-event-consumer/client-certs/tls.crt",
-      "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
-      "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
-      "enableOAuth": true,
-      "useOpenShiftOAuth": true,
-      "oauthIssuer": "https://oauth-openshift.apps.your-cluster.com",
-      "oauthJWKSURL": "https://oauth-openshift.apps.your-cluster.com/.well-known/jwks.json",
-      "requiredScopes": ["user:info"],
-      "requiredAudience": "openshift",
-      "serviceAccountName": "consumer-sa",
-      "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
-    }
+```json
+{
+  "enableMTLS": true,
+  "useServiceCA": true,
+  "clientCertPath": "/etc/cloud-event-consumer/client-certs/tls.crt",
+  "clientKeyPath": "/etc/cloud-event-consumer/client-certs/tls.key",
+  "serverCertPath": "/etc/cloud-event-consumer/server-certs/tls.crt",
+  "serverKeyPath": "/etc/cloud-event-consumer/server-certs/tls.key",
+  "caCertPath": "/etc/cloud-event-consumer/ca-bundle/service-ca.crt",
+  "enableOAuth": true,
+  "requiredAudiences": ["https://kubernetes.default.svc"],
+  "serviceAccountName": "consumer-sa",
+  "serviceAccountToken": "/var/run/secrets/kubernetes.io/serviceaccount/token"
+}
 ```
 
-### Service Account
-
-The consumer uses a dedicated service account (`consumer-sa`) with:
-- RBAC permissions to access the cloud-event-proxy service
-- Basic Kubernetes service account functionality
-- No OpenShift-specific dependencies
-
-### Certificate Management
-
-The consumer accesses certificates through:
-- Client certificates mounted from Kubernetes secrets
-- CA bundle mounted from Kubernetes secrets
-- Manual certificate management (no automatic rotation)
-- Secure volume mounts in the pod
+The callback server and the publisher serving endpoint use OpenShift Service CA
+certificates. Dedicated client-auth certificates are signed by a separate
+client CA. The script publishes only that CA certificate to the operator input
+ConfigMap `ptp-event-publisher-client-ca`; the operator merges it into its
+managed publisher trust bundle. Do not overwrite the managed bundle or scale
+the operator down.
 
 ## Deployment
 
-The authentication components are automatically deployed when you apply the example manifests:
+From the repository root:
 
 ```bash
-# Create namespace and resources
-kubectl apply -k examples/manifests/
-
-# Verify the deployment
-kubectl get deployment cloud-consumer-deployment -n cloud-events
+make deploy-consumer SECURED=true
+oc rollout status deployment/cloud-consumer-deployment -n cloud-events
 ```
 
-## Configuration Options
+The default setup uses OpenSSL for client certificates. To use cert-manager:
 
-### Authentication Settings
+```bash
+make deploy-consumer SECURED=true CERT_MANAGER=true
+```
 
-Authentication settings are automatically configured by the `setup-secrets.sh` script based on your `CLUSTER_NAME` environment variable:
-- mTLS is enabled by default using OpenShift Service CA
-- OAuth is enabled by default using OpenShift OAuth server
-- OAuth issuer URLs are automatically set based on `CLUSTER_NAME`
-- Required scopes and audience are set for OpenShift integration
+The OpenSSL path stores its client CA key under `DIR_CERTS` (default
+`/tmp/certs`) with mode `0700`. Use a protected persistent directory if the CA
+must survive workstation cleanup:
 
-### Service Account Permissions
+```bash
+make deploy-consumer SECURED=true DIR_CERTS=/secure/path/cloud-events-certs
+```
 
-Adjust RBAC permissions in `auth/service-account.yaml`:
-- Modify role permissions
-- Add additional role bindings
-- Configure access to other services
+## Validation
+
+```bash
+# Confirm the active settings and required token audience.
+oc get configmap consumer-auth-config -n cloud-events \
+  -o jsonpath='{.data.config\.json}' | jq .
+
+# Confirm the consumer and publisher credentials exist without printing them.
+oc get secret consumer-client-certs consumer-server-certs server-ca-bundle \
+  -n cloud-events
+oc get secret ptp-event-publisher-client-tls -n openshift-ptp
+oc get configmap ptp-event-publisher-client-ca -n openshift-ptp
+
+# Confirm the consumer can create TokenReviews.
+oc auth can-i create tokenreviews.authentication.k8s.io \
+  --as system:serviceaccount:cloud-events:consumer-sa
+
+oc logs deployment/cloud-consumer-deployment -n cloud-events
+```
 
 ## Troubleshooting
 
-### Certificate Issues
+- A TLS hostname error usually means the client is using a node-specific
+  service name that is not present in the serving certificate. Use the
+  certificate-bearing service from the secured overlay.
+- `Client certificate required` means the caller did not present a certificate
+  signed by a CA in the server trust bundle.
+- `Invalid OAuth token` means TokenReview rejected the token or its audience.
+- Certificate and trust files are loaded at process startup. Restart the
+  affected workload after rotation.
 
-Check the mounted certificates:
+## Security Boundaries
+
+- mTLS authenticates certificate holders and TokenReview authenticates the
+  bearer-token identity. Per-caller endpoint authorization is a separate policy
+  layer and is not implemented by this example.
+- Keep client CA private keys outside the cluster unless a certificate manager
+  is intentionally responsible for them.
+- Use short-lived projected ServiceAccount tokens and a dedicated audience when
+  moving beyond this compatibility-oriented example.
+- Constrain callback destinations and network reachability for production.
+
+## Cleanup
+
 ```bash
-# View CA bundle secret
-kubectl get secret server-ca-bundle -n cloud-events -o yaml
-
-# Check client certificates
-kubectl get secret consumer-client-certs -n cloud-events -o yaml
-
-# Check certificate mounting in pod
-kubectl describe pod -l app=consumer -n cloud-events
+make undeploy-consumer
 ```
 
-### Authentication Errors
-
-Check the consumer logs:
-```bash
-# View pod logs
-kubectl logs deployment/cloud-consumer-deployment -n cloud-events
-
-# Check service account
-kubectl describe sa consumer-sa -n cloud-events
-```
-
-### RBAC Issues
-
-Verify RBAC configuration:
-```bash
-# Check role binding
-kubectl get rolebinding cloud-event-consumer -n openshift-ptp -o yaml
-
-# Test permissions
-kubectl auth can-i get services -n openshift-ptp --as system:serviceaccount:cloud-events:consumer-sa
-```
-
-## Security Considerations
-
-1. **Certificate Management**
-   - Certificates must be manually managed and rotated
-   - CA bundle should be kept up to date
-   - Private keys never leave the pod
-   - Consider using a certificate management solution in production
-
-2. **Token Security**
-   - OAuth tokens should be obtained from your OAuth provider
-   - Tokens should be rotated regularly
-   - Access is controlled via RBAC
-
-3. **Network Security**
-   - All traffic is encrypted with TLS
-   - Authentication required for all requests
-   - Network policies can be added for additional security
-
-## Development Notes
-
-When developing a custom consumer, implement authentication using the provided configuration:
-
-```go
-import (
-    "crypto/tls"
-    "crypto/x509"
-    "net/http"
-    "os"
-)
-
-func createAuthenticatedClient(authConfig *AuthConfig) (*http.Client, error) {
-    // Load CA certificate
-    caCert, err := os.ReadFile(authConfig.CACertPath)
-    if err != nil {
-        return nil, err
-    }
-    caCertPool := x509.NewCertPool()
-    caCertPool.AppendCertsFromPEM(caCert)
-
-    // Create TLS config
-    tlsConfig := &tls.Config{
-        RootCAs: caCertPool,
-    }
-
-    // Create HTTP client
-    client := &http.Client{
-        Transport: &http.Transport{
-            TLSClientConfig: tlsConfig,
-        },
-    }
-
-    return client, nil
-}
-
-func makeAuthenticatedRequest(client *http.Client, url string) error {
-    // Get OAuth token from your OAuth provider
-    token := getOAuthToken() // Implement this function to get token from your OAuth provider
-
-    // Create request
-    req, err := http.NewRequest("POST", url, nil)
-    if err != nil {
-        return err
-    }
-
-    // Add OAuth token
-    req.Header.Set("Authorization", "Bearer "+token)
-
-    // Make request
-    resp, err := client.Do(req)
-    if err != nil {
-        return err
-    }
-    defer resp.Body.Close()
-
-    return nil
-}
-```
+Cleanup removes both plaintext and secured overlays plus the publisher-side
+client certificate and client-CA input created by the setup script.

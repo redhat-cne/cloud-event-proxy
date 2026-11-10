@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	restapi "github.com/redhat-cne/rest-api/v2"
@@ -111,6 +112,7 @@ func (ac *AuthenticatedClient) Do(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to read OAuth token: %v", err)
 		}
+		token = strings.TrimSpace(token)
 		if token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}

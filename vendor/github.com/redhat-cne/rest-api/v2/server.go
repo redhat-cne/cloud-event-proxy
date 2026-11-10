@@ -504,11 +504,11 @@ func (s *Server) GetHostPath() *types.URI {
 	port := s.port
 	path := s.apiPath
 
-	if s.authConfig != nil && s.authConfig.EnableMTLS {
+	if s.authConfig != nil && (s.authConfig.EnableMTLS || s.authConfig.EnableOAuth) {
 		protocol = schemeHTTPS
-		fmt.Printf("GetHostPath: Using HTTPS protocol (authConfig.EnableMTLS=%t)\n", s.authConfig.EnableMTLS)
+		fmt.Printf("GetHostPath: Using HTTPS protocol (mTLS=%t, OAuth=%t)\n", s.authConfig.EnableMTLS, s.authConfig.EnableOAuth)
 	} else {
-		fmt.Printf("GetHostPath: Using HTTP protocol (authConfig=%v, EnableMTLS=%t)\n", s.authConfig != nil, s.authConfig != nil && s.authConfig.EnableMTLS)
+		fmt.Printf("GetHostPath: Using HTTP protocol (authentication disabled)\n")
 	}
 	uri := types.ParseURI(fmt.Sprintf("%s://localhost:%d%s", protocol, port, path))
 	fmt.Printf("GetHostPath: Returning URI=%s\n", uri.String())
@@ -518,7 +518,7 @@ func (s *Server) GetHostPath() *types.URI {
 // GetHealthPath returns the health check URL
 func (s *Server) GetHealthPath() string {
 	protocol := "http"
-	if s.authConfig != nil && s.authConfig.EnableMTLS {
+	if s.authConfig != nil && (s.authConfig.EnableMTLS || s.authConfig.EnableOAuth) {
 		protocol = schemeHTTPS
 	}
 	return fmt.Sprintf("%s://localhost:%d%shealth", protocol, s.port, s.apiPath)
@@ -747,10 +747,11 @@ func (s *Server) Start() {
 			Handler:           api,
 		}
 
-		// Configure TLS if mTLS is enabled
-		if s.authConfig != nil && s.authConfig.EnableMTLS {
+		// Bearer tokens must never be accepted over plaintext, so OAuth-only
+		// mode uses server-side TLS even when client certificates are disabled.
+		if s.authConfig != nil && (s.authConfig.EnableMTLS || s.authConfig.EnableOAuth) {
 			if s.authConfig.ServerCertPath == "" || s.authConfig.ServerKeyPath == "" {
-				log.Error("mTLS enabled but server certificate or key path not provided")
+				log.Error("authentication enabled but server certificate or key path not provided")
 				s.SetStatus(failed)
 				return
 			}
@@ -758,7 +759,7 @@ func (s *Server) Start() {
 			// Fail closed: without a CA pool, presented client certificates
 			// cannot be verified against a trusted authority, so an mTLS
 			// server must not begin listening.
-			if s.caCertPool == nil {
+			if s.authConfig.EnableMTLS && s.caCertPool == nil {
 				log.Error("mTLS enabled but CA certificate pool is not initialized; refusing to start (fail closed)")
 				s.SetStatus(failed)
 				return
@@ -772,16 +773,16 @@ func (s *Server) Start() {
 				return
 			}
 
-			// VerifyClientCertIfGiven lets loopback clients connect without a
-			// certificate (trusted same-pod fast-path) while cryptographically
-			// verifying any certificate that IS presented against the CA pool.
-			// The middleware then requires a verified certificate for all
-			// non-loopback (FQDN/service-DNS/external) requests.
 			tlsConfig := &tls.Config{
 				Certificates: []tls.Certificate{cert},
-				ClientAuth:   tls.VerifyClientCertIfGiven,
-				ClientCAs:    s.caCertPool,
 				MinVersion:   tls.VersionTLS12,
+			}
+			if s.authConfig.EnableMTLS {
+				// VerifyClientCertIfGiven lets loopback clients connect without a
+				// certificate while verifying any certificate that is presented.
+				// Middleware requires a verified certificate for non-loopback requests.
+				tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
+				tlsConfig.ClientCAs = s.caCertPool
 			}
 			// Apply the centrally-managed TLS profile (min version + ciphers).
 			// A configured profile may raise MinVersion above the TLS 1.2 floor.

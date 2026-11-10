@@ -11,7 +11,6 @@
 * [Transport Protocol](#event-transporter)
     * [HTTP Protocol](#http-protocol)
 * [Authentication](#authentication)
-    * [mTLS and OAuth Support](#mtls-and-oauth-support)
     * [Consumer Examples](#consumer-examples)
 * [Publishers](#creating-publisher)
     * [JSON Example](#publisher-json-example)
