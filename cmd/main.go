@@ -49,10 +49,12 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redhat-cne/cloud-event-proxy/pkg/auth"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/common"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/plugins"
 	"github.com/redhat-cne/cloud-event-proxy/pkg/restclient"
 	apiMetrics "github.com/redhat-cne/rest-api/pkg/localmetrics"
+	restapi "github.com/redhat-cne/rest-api/v2"
 	"github.com/redhat-cne/sdk-go/pkg/channel"
 	sdkMetrics "github.com/redhat-cne/sdk-go/pkg/localmetrics"
 	v1event "github.com/redhat-cne/sdk-go/v1/event"
@@ -78,10 +80,36 @@ var (
 	pluginHandler           plugins.Handler
 	nodeName                string
 	namespace               string
+	authConfigPath          string
+
+	// authenticatedPushClient, when non-nil, is used to PUSH events to
+	// subscriber callback endpoints registered with an https:// EndpointURI. It
+	// presents the producer's client certificate (mTLS) and/or bearer token per
+	// O-RAN CR-0003 clause 3.2. It stays nil when no push credentials are
+	// configured, in which case only plaintext http:// (same-pod loopback)
+	// callbacks are pushed to.
+	authenticatedPushClient *restclient.Rest
 
 	// Git commit of current build set at build time
 	GitCommit = "Undefined"
 )
+
+// pushClientFor selects the REST client used to push an event to a subscriber
+// callback. An https:// EndpointURI (a remote consumer, per CR-0003) requires
+// the authenticated client so the push carries a client certificate and/or
+// bearer token over TLS; a plaintext http:// EndpointURI (same-pod loopback)
+// uses the plain client. If a subscriber registers https:// but no push
+// credentials were configured, nil is returned so the caller fails closed and
+// skips delivery rather than pushing the event unauthenticated (CWE-287).
+func pushClientFor(endPointURI *types.URI) *restclient.Rest {
+	if endPointURI != nil && endPointURI.Scheme == "https" {
+		// Remote consumer: only push over the authenticated client. When it is
+		// unavailable, return nil so the caller skips this (unauthenticated)
+		// delivery.
+		return authenticatedPushClient
+	}
+	return restclient.New()
+}
 
 func getMajorVersion(version string) (int, error) {
 	if version == "" {
@@ -129,8 +157,45 @@ func main() {
 		"The transport bus hostname or service name.")
 	flag.IntVar(&apiPort, "api-port", 9043, "The address the rest api endpoint binds to.")
 	flag.StringVar(&apiVersion, "api-version", "2.0", "The address the rest api endpoint binds to.")
+	flag.StringVar(&authConfigPath, "auth-config", "", "Path to authentication configuration file for mTLS and OAuth.")
 
 	flag.Parse()
+
+	// Load authentication configuration if provided
+	var authConfig *restapi.AuthConfig
+	if authConfigPath != "" {
+		var err error
+		authConfig, err = restapi.LoadAuthConfig(authConfigPath)
+		if err != nil {
+			log.Fatalf("Failed to load authentication configuration from %s: %v", authConfigPath, err)
+		}
+		log.Infof("Authentication configuration loaded: %s", authConfig.GetConfigSummary())
+
+		// Build the client used to PUSH events to subscriber callback endpoints.
+		// A subscriber in a separate POD/VM registers an https:// EndpointURI
+		// (O-RAN CR-0003), and clause 4.1.1/3.2 require that push to be protected
+		// by mTLS and/or OAuth. Load the client-role config (which adds the
+		// producer's client cert/key paths on top of the shared server config)
+		// and, if push credentials are present, build an authenticated client.
+		pushAuthConfig, perr := auth.LoadAuthConfig(authConfigPath)
+		if perr != nil {
+			log.Fatalf("Failed to load push authentication configuration from %s: %v", authConfigPath, perr)
+		}
+		if pushAuthConfig.IsAuthenticationEnabled() {
+			if authenticatedPushClient, err = restclient.NewAuthenticated(pushAuthConfig); err != nil {
+				// Do not crash: a deployment may secure only its inbound API and
+				// still push to a same-pod loopback consumer over http. Warn so
+				// the misconfiguration is visible; pushes to https:// callbacks
+				// will then fail closed instead of leaking cleartext.
+				log.Warnf("push client will not present credentials (%v); events pushed to https:// subscriber endpoints will fail until producer client cert/token are configured", err)
+				authenticatedPushClient = nil
+			} else {
+				log.Info("Authenticated push client configured for secured subscriber callbacks")
+			}
+		}
+	} else {
+		log.Info("No authentication configuration provided, running without authentication")
+	}
 
 	// Register metrics
 	localmetrics.RegisterMetrics()
@@ -206,7 +271,7 @@ func main() {
 		scConfig.APIPath)
 
 	// Enable pub/sub services
-	err = common.StartPubSubService(scConfig)
+	err = common.StartPubSubService(scConfig, authConfig)
 	if err != nil {
 		log.Fatal("pub/sub service API failed to start.")
 	}
@@ -259,7 +324,11 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 			}
 			if pub.EndPointURI != nil {
 				log.Debugf("posting acknowledgment with status: %s to publisher: %s", status, pub.EndPointURI)
-				restClient := restclient.New()
+				restClient := pushClientFor(pub.EndPointURI)
+				if restClient == nil {
+					log.Errorf("no authenticated push client for secured callback %s; skipping acknowledgment", pub.EndPointURI)
+					return
+				}
 				if _, err := restClient.Post(pub.EndPointURI,
 					[]byte(fmt.Sprintf(`{eventId:"%s",status:"%s"}`, pub.ID, status))); err != nil {
 					log.Errorf("error posting acknowledgment at %s : %s", pub.EndPointURI, err)
@@ -298,7 +367,12 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 					} else if sub, ok := scConfig.PubSubAPI.HasSubscription(d.Address); ok {
 						// V1 only
 						if sub.EndPointURI != nil {
-							restClient := restclient.New()
+							restClient := pushClientFor(sub.EndPointURI)
+							if restClient == nil {
+								log.Errorf("no authenticated push client for secured callback %s; skipping event", sub.EndPointURI)
+								postHandler(fmt.Errorf("no authenticated push client for %s", sub.EndPointURI), sub.EndPointURI, d.Address)
+								continue
+							}
 							event.ID = sub.ID // set ID to the subscriptionID
 							err = restClient.PostEvent(sub.EndPointURI, event)
 							postHandler(err, sub.EndPointURI, d.Address)
@@ -310,9 +384,18 @@ func ProcessOutChannel(wg *sync.WaitGroup, scConfig *common.SCConfiguration) {
 						// V2
 						eventSubscribers := scConfig.SubscriberAPI.GetClientIDAddressByResource(d.Address)
 						if len(eventSubscribers) != 0 {
-							restClient := restclient.New()
 							for clientID, endPointURI := range eventSubscribers {
 								if endPointURI != nil {
+									// Select per subscriber: an https:// callback
+									// (remote consumer) is pushed to over an
+									// authenticated TLS client; an http:// callback
+									// (same-pod loopback) over the plain client.
+									restClient := pushClientFor(endPointURI)
+									if restClient == nil {
+										log.Errorf("no authenticated push client for secured callback %s; skipping event", endPointURI)
+										localmetrics.UpdateEventReceivedCount(d.Address, localmetrics.FAILED)
+										continue
+									}
 									log.Infof("post events %s to subscriber %s", d.Address, endPointURI)
 									// make sure event ID is unique
 									event.ID = uuid.New().String()

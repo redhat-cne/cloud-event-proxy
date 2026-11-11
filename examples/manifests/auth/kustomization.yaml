@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# Secured-only auth add-ons, consumed as a base by ../secured. The runtime
+# consumer ServiceAccount and its get-Services RBAC live in service-account.yaml,
+# which the plaintext base references directly, so they are intentionally NOT
+# listed here (they are needed in both modes). client-cert-service.yaml is
+# cert-manager-specific and applied by the Makefile only on the cert-manager
+# path, so it is not listed here either.
+resources:
+- rbac.yaml
+- ca-bundle-configmap.yaml
