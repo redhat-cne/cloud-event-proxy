@@ -1,5 +1,6 @@
 # Netdevsim CI: DKMS smoke tests on every PR, then build ptp-operator
 # images (with this PR's code) and run e2e tests for all scenarios.
+# Pinned to a CEPv1 stack (see PTP_BRANCH) - this repo ships CEPv1.
 
 name: Netdevsim CI
 
@@ -17,7 +18,14 @@ env:
   DKMS_REPO: https://github.com/redhat-cne/netdevsim-dkms.git
   DKMS_BRANCH: main
   PTP_REPO: https://github.com/k8snetworkplumbingwg/ptp-operator.git
-  PTP_BRANCH: main
+  # Last CEPv1-capable ptp-operator (= 8dac70ea0^)
+  PTP_BRANCH: ba3debb40558858e199e87e4de95c044ccf1b5ae
+  # Last pre-CEPv2 linuxptp-daemon (feeds the CEPv1 sidecar over the
+  # unix socket); patched into ptp-tools/Dockerfile.lptpd below.
+  LPTPD_PIN: 29dc0e08c0b868c173dc034cab0fa22c25367ab4
+  # Fedora :latest no longer ships /etc/yum.repos.d/fedora-updates.repo,
+  # which Dockerfile.openvswitch seds; pinned base, patched in below.
+  OVS_BASE: quay.io/fedora/fedora:42
 
 jobs:
   # ------------------------------------------------------------------
@@ -173,17 +181,44 @@ jobs:
           sudo chmod +x "${CRUN_PATH}"
           crun --version | head -1
 
-      - name: Clone ptp-operator
-        run: git clone --depth 1 --branch "${PTP_BRANCH}" "${PTP_REPO}" /tmp/ptp-operator
+      - name: Clone ptp-operator (pinned CEPv1 stack)
+        run: |
+          # PTP_BRANCH is a SHA; clone --branch cannot take one.
+          git init /tmp/ptp-operator
+          git -C /tmp/ptp-operator remote add origin "${PTP_REPO}"
+          git -C /tmp/ptp-operator fetch --depth 1 origin "${PTP_BRANCH}"
+          git -C /tmp/ptp-operator checkout FETCH_HEAD
 
-      - name: Patch Dockerfile to use PR branch
+      - name: Patch Dockerfiles to use PR branch and pinned daemon
         run: |
           PR_BRANCH="${{ github.head_ref || github.ref_name }}"
           PR_REPO="${{ github.event.pull_request.head.repo.full_name || github.repository }}"
           sed -i "s|^RUN git clone .*cloud-event-proxy.*|RUN git clone -b ${PR_BRANCH} https://github.com/${PR_REPO} /go/src/github.com/redhat-cne/cloud-event-proxy|" \
             /tmp/ptp-operator/ptp-tools/Dockerfile.cep
+          grep -q "git clone -b ${PR_BRANCH}" /tmp/ptp-operator/ptp-tools/Dockerfile.cep || {
+            echo "::error::Dockerfile.cep patch did not apply - the CI would build upstream code instead of this PR. Check the PTP_BRANCH pin."
+            exit 1
+          }
+          # Daemon pin: pre-CEPv2 daemon feeds the CEPv1 sidecar.
+          sed -i "s|^RUN git clone .*linuxptp-daemon.*|RUN git clone https://github.com/k8snetworkplumbingwg/linuxptp-daemon.git /go/src/github.com/k8snetworkplumbingwg/linuxptp-daemon \&\& git -C /go/src/github.com/k8snetworkplumbingwg/linuxptp-daemon checkout ${LPTPD_PIN}|" \
+            /tmp/ptp-operator/ptp-tools/Dockerfile.lptpd
+          grep -q "checkout ${LPTPD_PIN}" /tmp/ptp-operator/ptp-tools/Dockerfile.lptpd || {
+            echo "::error::Dockerfile.lptpd daemon pin did not apply - the daemon would be CEPv2-era and the event flow would break."
+            exit 1
+          }
+          # Base pin: Fedora :latest dropped fedora-updates.repo.
+          sed -i "s|^FROM quay.io/fedora/fedora:latest|FROM ${OVS_BASE}|" \
+            /tmp/ptp-operator/ptp-tools/Dockerfile.openvswitch
+          grep -q "^FROM ${OVS_BASE}" /tmp/ptp-operator/ptp-tools/Dockerfile.openvswitch || {
+            echo "::error::Dockerfile.openvswitch base pin did not apply - the build would fail against moving Fedora :latest."
+            exit 1
+          }
           echo "=== Patched Dockerfile.cep ==="
           cat /tmp/ptp-operator/ptp-tools/Dockerfile.cep
+          echo "=== Patched Dockerfile.lptpd (clone line) ==="
+          grep "linuxptp-daemon.git" /tmp/ptp-operator/ptp-tools/Dockerfile.lptpd
+          echo "=== Patched Dockerfile.openvswitch (FROM line) ==="
+          grep "^FROM" /tmp/ptp-operator/ptp-tools/Dockerfile.openvswitch
 
       - name: Copy to /root/ptp-operator
         run: sudo cp -a /tmp/ptp-operator /root/ptp-operator
@@ -281,9 +316,13 @@ jobs:
           sudo cp /tmp/netdevsim-dkms/99-nsim-ptp.rules /etc/udev/rules.d/
           sudo udevadm control --reload-rules
 
-      - name: Clone ptp-operator
+      - name: Clone ptp-operator (pinned CEPv1 stack)
         run: |
-          git clone --depth 1 --branch "${PTP_BRANCH}" "${PTP_REPO}" /tmp/ptp-operator
+          # Same pin as ptp-images: templates must match the tarball.
+          git init /tmp/ptp-operator
+          git -C /tmp/ptp-operator remote add origin "${PTP_REPO}"
+          git -C /tmp/ptp-operator fetch --depth 1 origin "${PTP_BRANCH}"
+          git -C /tmp/ptp-operator checkout FETCH_HEAD
           sudo cp -a /tmp/ptp-operator /root/ptp-operator
 
       - name: Download image tarball
