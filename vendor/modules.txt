@@ -231,7 +231,7 @@ go.uber.org/zap/internal/exit
 go.uber.org/zap/internal/pool
 go.uber.org/zap/internal/stacktrace
 go.uber.org/zap/zapcore
-# golang.org/x/net v0.42.0 => github.com/openshift-sustaining/net v0.43.0-sec.4
+# golang.org/x/net v1.26.9 => github.com/openshift-sustaining/net v0.43.0-sec.4
 ## explicit; go 1.23.0
 golang.org/x/net/context
 golang.org/x/net/html
