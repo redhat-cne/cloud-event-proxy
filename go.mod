@@ -15,7 +15,7 @@ require (
 	github.com/redhat-cne/sdk-go v1.23.4
 	github.com/sirupsen/logrus v1.9.3
 	github.com/stretchr/testify v1.8.1
-	golang.org/x/net v0.42.0
+	golang.org/x/net v1.26.9
 	k8s.io/api v0.26.0
 	k8s.io/apiextensions-apiserver v0.24.2
 	k8s.io/apimachinery v0.26.3
